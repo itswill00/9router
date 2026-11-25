@@ -1,4 +1,4 @@
-# 9Router Android — Native Gateway (Preview)
+# 9Router Android 0.1.1
 
 This is the first installable native Android build of the 9Router routing
 gateway. It is written in Kotlin and runs entirely on the device. **No Termux,
@@ -89,11 +89,11 @@ This is a first native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.0-android` (version code 1)
+- Version: `0.1.1-android` (version code 2)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15)
 - Source branch: `feat/android-native-gateway`
 - SHA-256 of the attached APK:
-  `45411bf87f36798db6b0f2c13021e3ad23ef9b48754565d5db5e14522811b93f`
+  `ba677fe4ab5a10957ff54dfb385fc5430fb7c3fee3ffd74ee3b3e496116435a6`
 
 See `android/README.md` for the module layout and build instructions.
