@@ -92,6 +92,7 @@ class MainActivity : ComponentActivity() {
                     projectId = processed.projectId,
                     email = processed.email,
                     accountId = processed.accountId,
+                    deviceId = processed.deviceId,
                 )
             )
             Store.save()

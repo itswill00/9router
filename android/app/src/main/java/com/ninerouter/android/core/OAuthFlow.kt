@@ -43,6 +43,7 @@ object OAuthFlow {
         val email: String = "",
         val accountId: String = "",
         val idToken: String = "",
+        val deviceId: String = "",
     )
 
     data class LoginResult(val tokens: Tokens?, val error: String? = null)
@@ -110,7 +111,7 @@ object OAuthFlow {
             server = ServerSocket(def.fixedPort.takeIf { it > 0 } ?: 0, 4, InetAddress.getByName("127.0.0.1"))
             server.soTimeout = 500
             val port = server.localPort
-            val redirectUri = "http://localhost:$port$path"
+            val redirectUri = def.redirectUri.ifBlank { "http://localhost:$port$path" }
             val verifier = randomToken(64)
             val challenge = base64Url(MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray()))
             val state = UUID.randomUUID().toString()
@@ -138,18 +139,21 @@ object OAuthFlow {
         }
     }
 
-    private fun usesPkce(def: ProviderDef): Boolean = def.id.startsWith("minimax")
+    private fun usesPkce(def: ProviderDef): Boolean =
+        def.codeChallengeMethod.isNotBlank() || def.id.startsWith("minimax")
 
     /** Extra request headers some device flows require (mirrors the CLI clients). */
     private fun deviceHeaders(def: ProviderDef, deviceId: String): Map<String, String> = when (def.id) {
         "kimi" -> mapOf(
             "X-Msh-Platform" to "9router",
-            "X-Msh-Version" to "9router-android",
+            "X-Msh-Version" to com.ninerouter.android.AppInfo.VERSION_NAME,
             "X-Msh-Device-Name" to (android.os.Build.MODEL ?: "android"),
             "X-Msh-Device-Model" to "Android ${android.os.Build.VERSION.RELEASE}",
             "X-Msh-Device-Id" to deviceId,
         )
-        "grok-cli" -> mapOf("User-Agent" to "grok-cli/pager")
+        "grok-cli" -> mapOf(
+            "User-Agent" to "grok-pager/1.0.44 grok-shell/1.0.44 (linux; x86_64)",
+        )
         "muse" -> mapOf("x-api-version" to "1.0.0")
         else -> emptyMap()
     }
@@ -161,7 +165,7 @@ object OAuthFlow {
         val deviceId = UUID.randomUUID().toString()
         val builder = FormBody.Builder().add("client_id", def.clientId)
         if (def.scope.isNotBlank()) builder.add("scope", def.scope)
-        if (def.id == "grok-cli") builder.add("referrer", "grok-build")
+        if (def.id == "grok-cli") builder.add("referrer", def.extraParams["referrer"] ?: "grok-build")
         if (def.id.startsWith("minimax")) {
             val audience = def.extraParams["audience"] ?: "agent-backend"
             builder.add("audience", audience)
@@ -184,13 +188,36 @@ object OAuthFlow {
         fun s(key: String) = (obj[key] as? JsonPrimitive)?.content ?: ""
         val deviceCode = s("device_code").ifBlank { s("user_code") }
         val pollByUser = s("device_code").isBlank()
-        val expires = s("expires_in").toLongOrNull() ?: 600L
+        val rawExpires = s("expires_in").toLongOrNull() ?: s("expired_in").toLongOrNull() ?: 600L
+        val expires = if (rawExpires > 1_000_000_000_000L) {
+            ((rawExpires - System.currentTimeMillis()) / 1000).coerceAtLeast(60)
+        } else {
+            rawExpires
+        }
+        var interval = s("interval").toLongOrNull() ?: 5L
+        if (pollByUser && interval >= 60) interval = (interval / 1000).coerceAtLeast(2)
+        val verification = s("verification_uri_complete")
+            .ifBlank { s("verification_uri") }
+            .ifBlank { s("verification_url") }
+            .ifBlank { def.deviceAuthUrl }
+        val userCode = s("user_code")
+        val verificationWithCode = if (
+            (def.id == "kimi" || def.id.startsWith("minimax")) &&
+            userCode.isNotBlank() &&
+            verification.isNotBlank() &&
+            !verification.contains("user_code=") &&
+            !verification.contains("code=")
+        ) {
+            verification + (if (verification.contains("?")) "&" else "?") + "user_code=" +
+                android.net.Uri.encode(userCode)
+        } else {
+            verification
+        }
         return DeviceChallenge(
             deviceCode = deviceCode,
-            userCode = s("user_code"),
-            verificationUri = s("verification_uri").ifBlank { s("verification_url") }
-                .ifBlank { s("verification_uri_complete") },
-            interval = s("interval").toLongOrNull() ?: 5L,
+            userCode = userCode,
+            verificationUri = verificationWithCode,
+            interval = interval,
             expiresAt = System.currentTimeMillis() + expires * 1000L,
             verifier = if (usesPkce(def)) verifier else "",
             pollByUser = pollByUser,
@@ -238,11 +265,14 @@ object OAuthFlow {
             "client_id" to def.clientId,
             "redirect_uri" to redirectUri,
             "scope" to def.scope.ifBlank { "openid profile email offline_access" },
-            "code_challenge" to challenge,
-            "code_challenge_method" to "S256",
-            "state" to state,
         )
+        if (usesPkce(def)) {
+            params["code_challenge"] = challenge
+            params["code_challenge_method"] = "S256"
+        }
+        params["state"] = state
         if (def.id == "claude") params["code"] = "true"
+        if (def.id == "xai") params["nonce"] = randomToken(16)
         if (def.id == "gemini" || def.id == "gemini-cli" || def.id == "antigravity") {
             params["access_type"] = "offline"
             params["prompt"] = "consent"
@@ -289,7 +319,7 @@ object OAuthFlow {
                 put("grant_type", "authorization_code")
                 put("client_id", def.clientId)
                 put("redirect_uri", redirectUri)
-                put("code_verifier", verifier)
+                if (usesPkce(def)) put("code_verifier", verifier)
                 if (def.clientSecret.isNotBlank()) put("client_secret", def.clientSecret)
             }
             val req = Request.Builder()
@@ -304,7 +334,7 @@ object OAuthFlow {
                 .add("code", authCode)
                 .add("redirect_uri", redirectUri)
                 .add("client_id", def.clientId)
-                .add("code_verifier", verifier)
+                .apply { if (usesPkce(def)) add("code_verifier", verifier) }
                 .apply { if (def.clientSecret.isNotBlank()) add("client_secret", def.clientSecret) }
                 .build()
             postTokens(def, form)
@@ -326,15 +356,17 @@ object OAuthFlow {
         return try {
             client.newCall(req).execute().use { res ->
                 val raw = res.body?.string().orEmpty()
-                val obj = try { json.parseToJsonElement(raw) as? JsonObject } catch (_: Exception) { null }
+                val obj = parseTokenBody(raw)
                     ?: return LoginResult(null, "Invalid token response (${res.code}).")
                 val error = (obj["error"] as? JsonPrimitive)?.content
                     ?: (obj["status"] as? JsonPrimitive)?.content?.takeIf {
                         it == "pending" || it == "slow_down" || it == "denied" || it == "expired"
                     }
-                if (!res.isSuccessful || error != null) {
+                val success = (obj["success"] as? JsonPrimitive)?.content
+                if (!res.isSuccessful || error != null || success == "false") {
                     val desc = (obj["error_description"] as? JsonPrimitive)?.content
                         ?: (obj["message"] as? JsonPrimitive)?.content
+                        ?: (obj["msg"] as? JsonPrimitive)?.content
                         ?: raw.take(180)
                     return LoginResult(null, desc.ifBlank { "Token exchange failed (${res.code})." })
                 }
@@ -350,11 +382,29 @@ object OAuthFlow {
         }
     }
 
+    /** Some providers return application/x-www-form-urlencoded even with Accept: json. */
+    private fun parseTokenBody(raw: String): JsonObject? {
+        val trimmed = raw.trim()
+        if (trimmed.startsWith("{")) {
+            return runCatching { json.parseToJsonElement(trimmed) as? JsonObject }.getOrNull()
+        }
+        if (!trimmed.contains("=")) return null
+        val obj = buildJsonObject {
+            android.net.Uri.parse("http://localhost/?$trimmed").let { uri ->
+                uri.queryParameterNames.forEach { key ->
+                    uri.getQueryParameter(key)?.let { put(key, it) }
+                }
+            }
+        }
+        return obj
+    }
+
     /** GitHub Copilot needs a short-lived Copilot token derived from the GitHub OAuth token. */
     fun postProcess(def: ProviderDef, tokens: Tokens): LoginResult {
         if (def.id == "muse") return mintMuseKey(tokens)
+        if (def.id == "nous" && def.agentKeyUrl.isNotBlank()) return mintNousKey(def, tokens)
         if (def.format == "gemini-cli" || def.format == "antigravity") {
-            val (project, email) = googleProject(tokens.access)
+            val (project, email) = googleProject(def, tokens.access)
             return LoginResult(tokens.copy(projectId = project, email = email))
         }
         if (def.id == "codex") {
@@ -365,11 +415,16 @@ object OAuthFlow {
             val email = (claims["email"] as? JsonPrimitive)?.content.orEmpty()
             return LoginResult(tokens.copy(accountId = accountId, email = email))
         }
+        if (def.id == "xai" || def.id == "grok-cli") {
+            val email = (decodeJwt(tokens.idToken)?.get("email") as? JsonPrimitive)?.content.orEmpty()
+            return LoginResult(tokens.copy(email = email))
+        }
         if (def.id != "github" || def.copilotTokenUrl.isBlank()) return LoginResult(tokens)
         val req = Request.Builder()
             .url(def.copilotTokenUrl)
-            .header("Authorization", "token ${tokens.access}")
+            .header("Authorization", "Bearer ${tokens.access}")
             .header("Accept", "application/json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
             .header("User-Agent", "GitHubCopilotChat/0.26.7")
             .header("Editor-Version", "vscode/1.85.0")
             .header("Editor-Plugin-Version", "copilot-chat/0.26.7")
@@ -377,18 +432,37 @@ object OAuthFlow {
         return try {
             client.newCall(req).execute().use { res ->
                 val raw = res.body?.string().orEmpty()
-                val obj = json.parseToJsonElement(raw) as? JsonObject
+                val obj = parseTokenBody(raw)
                 val token = (obj?.get("token") as? JsonPrimitive)?.content
                 if (!res.isSuccessful || token.isNullOrBlank()) {
                     return LoginResult(null, "GitHub Copilot token exchange failed (${res.code}).")
                 }
                 val expiresAt = (obj["expires_at"] as? JsonPrimitive)?.content?.toLongOrNull()
                 val expiresIn = expiresAt?.let { (it - System.currentTimeMillis() / 1000).coerceAtLeast(60) } ?: 1800L
-                LoginResult(Tokens(token, tokens.access, expiresIn))
+                val email = githubEmail(def, tokens.access)
+                LoginResult(Tokens(token, tokens.access, expiresIn, email = email))
             }
         } catch (e: Exception) {
             LoginResult(null, e.message ?: e.javaClass.simpleName)
         }
+    }
+
+    private fun githubEmail(def: ProviderDef, githubToken: String): String {
+        val url = def.userInfoUrl.ifBlank { "https://api.github.com/user" }
+        return runCatching {
+            val req = Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer $githubToken")
+                .header("Accept", "application/vnd.github+json")
+                .header("X-GitHub-Api-Version", "2022-11-28")
+                .header("User-Agent", "GitHubCopilotChat/0.26.7")
+                .build()
+            client.newCall(req).execute().use { res ->
+                if (!res.isSuccessful) return@use ""
+                val obj = json.parseToJsonElement(res.body?.string().orEmpty()) as? JsonObject ?: return@use ""
+                (obj["email"] as? JsonPrimitive)?.content.orEmpty()
+            }
+        }.getOrDefault("")
     }
 
     /** Decode a JWT payload without verifying the signature (identity claims only). */
@@ -402,39 +476,83 @@ object OAuthFlow {
     }
 
     /** Cloud Code Assist project id (loadCodeAssist), plus the account email. */
-    private fun googleProject(accessToken: String): Pair<String, String> {
+    private fun googleProject(def: ProviderDef, accessToken: String): Pair<String, String> {
         var project = ""
         var email = ""
-        runCatching {
-            val payload = buildJsonObject {
-                put("metadata", buildJsonObject {
-                    put("ideType", 9)
-                    put("platform", "PLATFORM_UNSPECIFIED")
-                    put("pluginType", 2)
-                })
-                put("mode", 1)
-            }
+        val antigravity = def.format == "antigravity"
+        val userAgent = if (antigravity) "antigravity/hub/2.33.0 darwin/arm64" else ""
+        val metadata = buildJsonObject {
+            put("ideType", 9)
+            // 3 = Linux x86_64 in the Antigravity ClientMetadata enum.
+            put("platform", 3)
+            put("pluginType", 2)
+        }
+        fun postJson(url: String, payload: JsonObject): JsonObject? = runCatching {
             val req = Request.Builder()
-                .url("https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist")
+                .url(url)
                 .header("Authorization", "Bearer $accessToken")
                 .header("Content-Type", "application/json")
+                .apply {
+                    if (userAgent.isNotBlank()) header("User-Agent", userAgent)
+                    if (antigravity) header("x-request-source", "local")
+                }
                 .post(payload.toString().toRequestBody("application/json".toMediaType()))
                 .build()
             client.newCall(req).execute().use { res ->
-                if (!res.isSuccessful) return@use
-                val obj = json.parseToJsonElement(res.body?.string().orEmpty()) as? JsonObject ?: return@use
-                val proj = obj["cloudaicompanionProject"]
-                project = when (proj) {
+                if (!res.isSuccessful) return@use null
+                json.parseToJsonElement(res.body?.string().orEmpty()) as? JsonObject
+            }
+        }.getOrNull()
+
+        val load = buildJsonObject {
+            put("metadata", metadata)
+            if (!antigravity) put("mode", 1)
+        }
+        var tierId = "legacy-tier"
+        postJson("https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist", load)?.let { obj ->
+            val proj = obj["cloudaicompanionProject"]
+            project = when (proj) {
+                is JsonPrimitive -> proj.content
+                is JsonObject -> (proj["id"] as? JsonPrimitive)?.content.orEmpty()
+                else -> ""
+            }
+            val tiers = obj["allowedTiers"] as? kotlinx.serialization.json.JsonArray
+            tiers?.forEach { element ->
+                val tier = element as? JsonObject ?: return@forEach
+                val isDefault = (tier["isDefault"] as? JsonPrimitive)?.content == "true"
+                val id = (tier["id"] as? JsonPrimitive)?.content ?: ""
+                if (isDefault && id.isNotBlank()) tierId = id
+            }
+        }
+
+        // Antigravity needs the onboarding call before the project is usable.
+        if (antigravity && project.isBlank()) {
+            for (attempt in 0 until 3) {
+                val onboard = buildJsonObject {
+                    put("tierId", tierId)
+                    put("metadata", metadata)
+                }
+                val obj = postJson("https://cloudcode-pa.googleapis.com/v1internal:onboardUser", onboard)
+                val id = when (val proj = obj?.get("cloudaicompanionProject")) {
                     is JsonPrimitive -> proj.content
                     is JsonObject -> (proj["id"] as? JsonPrimitive)?.content.orEmpty()
                     else -> ""
                 }
+                if (id.isNotBlank()) {
+                    project = id
+                    break
+                }
+                if (obj?.get("done")?.toString() == "true") break
+                Thread.sleep(1000L * (attempt + 1))
             }
         }
+
         runCatching {
+            val url = def.userInfoUrl.ifBlank { "https://www.googleapis.com/oauth2/v1/userinfo" }
             val req = Request.Builder()
-                .url("https://www.googleapis.com/oauth2/v1/userinfo?alt=json")
+                .url("$url?alt=json")
                 .header("Authorization", "Bearer $accessToken")
+                .apply { if (antigravity) header("x-request-source", "local") }
                 .build()
             client.newCall(req).execute().use { res ->
                 if (!res.isSuccessful) return@use
@@ -445,6 +563,34 @@ object OAuthFlow {
         return project to email
     }
 
+    /** Nous returns an OAuth token, but inference wants a short-lived agent key. */
+    private fun mintNousKey(def: ProviderDef, tokens: Tokens): LoginResult {
+        val payload = buildJsonObject { put("min_ttl_seconds", 7200) }
+        return try {
+            val req = Request.Builder()
+                .url(def.agentKeyUrl)
+                .header("Authorization", "Bearer ${tokens.access}")
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/json")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            client.newCall(req).execute().use { res ->
+                val raw = res.body?.string().orEmpty()
+                val obj = runCatching { json.parseToJsonElement(raw) as? JsonObject }.getOrNull()
+                val apiKey = (obj?.get("api_key") as? JsonPrimitive)?.content
+                if (!res.isSuccessful || apiKey.isNullOrBlank()) {
+                    val detail = (obj?.get("detail") as? JsonPrimitive)?.content
+                        ?: (obj?.get("title") as? JsonPrimitive)?.content
+                    return LoginResult(null, "Nous agent key mint failed: ${detail ?: "HTTP ${res.code}"}")
+                }
+                val expires = (obj["expires_in"] as? JsonPrimitive)?.content?.toLongOrNull() ?: 7200L
+                LoginResult(Tokens(apiKey, tokens.refresh, expires, email = tokens.email))
+            }
+        } catch (e: Exception) {
+            LoginResult(null, e.message ?: e.javaClass.simpleName)
+        }
+    }
+
     /**
      * Meta Muse Code hands out a Meta account token, but inference needs the
      * Model API key minted from it. The minted key never expires, so keep the
@@ -452,23 +598,33 @@ object OAuthFlow {
      */
     private fun mintMuseKey(tokens: Tokens): LoginResult {
         val payload = buildJsonObject { put("onboard", true) }
-        val req = Request.Builder()
-            .url("https://api.meta.ai/muse-code/key")
-            .header("Accept", "application/json")
-            .header("Authorization", "Bearer ${tokens.access}")
-            .header("Content-Type", "application/json")
-            .header("x-api-version", "1.0.0")
-            .post(payload.toString().toRequestBody("application/json".toMediaType()))
-            .build()
         return try {
-            client.newCall(req).execute().use { res ->
+            var response: okhttp3.Response? = null
+            for (attempt in 0 until 3) {
+                val req = Request.Builder()
+                    .url("https://api.meta.ai/muse-code/key")
+                    .header("Accept", "application/json")
+                    .header("Authorization", "Bearer ${tokens.access}")
+                    .header("Content-Type", "application/json")
+                    .header("x-api-version", "1.0.0")
+                    .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+                val res = client.newCall(req).execute()
+                response = res
+                if (res.code != 429 && res.code < 500) break
+                if (attempt == 2) break
+                res.close()
+                Thread.sleep(2000L * (attempt + 1))
+            }
+            response!!.use { res ->
                 val raw = res.body?.string().orEmpty()
                 val obj = try { json.parseToJsonElement(raw) as? JsonObject } catch (_: Exception) { null }
                 val apiKey = (obj?.get("api_key") as? JsonPrimitive)?.content
                 if (!res.isSuccessful || apiKey.isNullOrBlank()) {
                     val detail = (obj?.get("detail") as? JsonPrimitive)?.content
                         ?: (obj?.get("title") as? JsonPrimitive)?.content
-                    return LoginResult(null, "Muse Code key mint failed: ${detail ?: "HTTP ${res.code}"}")
+                        ?: raw.take(180)
+                    return LoginResult(null, "Muse Code key mint failed: ${detail.ifBlank { "HTTP ${res.code}" }}")
                 }
                 if ((obj["is_subs_active"] as? JsonPrimitive)?.content == "false") {
                     return LoginResult(null, "Muse Code subscription is inactive on this account.")

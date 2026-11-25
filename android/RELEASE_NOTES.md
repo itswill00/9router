@@ -1,10 +1,42 @@
-# 9Router Android 0.1.11
+# 9Router Android 0.1.12
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.10
+## What changed since 0.1.11
+
+OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
+
+- **Antigravity was using the Gemini client id.** It now uses the real
+  Antigravity Google client, numeric Code Assist metadata, and the
+  `onboardUser` call when `loadCodeAssist` returns no project.
+- **PKCE is no longer sent to providers that do not use it.** Claude, Codex,
+  xAI and MiniMax use PKCE; Gemini, Antigravity and iFlow do not. Sending
+  `code_verifier` to Google is no longer done.
+- **Claude/Codex token refresh** now respects the registry refresh encoding and
+  scope. Claude refreshes as JSON, Codex sends `openid profile email
+  offline_access` again.
+- **xAI browser OAuth was added** (PKCE, fixed port 56121, `127.0.0.1`
+  callback, nonce/plan/referrer).
+- **Nous device OAuth was added**: device code flow plus the `/agent-key`
+  mint, with its inference base URL restored.
+- **Kimi device OAuth now keeps its device id** and sends the `X-Msh-*` headers
+  on both inference and refresh.
+- **MiniMax OAuth now sends `audience`, normalizes `expired_in`/interval, and
+  sends the MiniMax session/timezone headers on inference.**
+- **GitHub Copilot exchange** uses `Bearer` and stores the GitHub email.
+- **Grok CLI** uses the correct `grok-pager/1.0.44` user agent and
+  `referrer=grok-build`.
+- **Muse key minting retries 429/5xx**, and Muse no longer attempts a Meta
+  refresh grant that always fails.
+- **OAuth post-processing runs off the main thread**, so Google project
+  discovery and key minting cannot ANR.
+- **Token responses** now accept form-encoded bodies as well as JSON.
+- **Unsupported custom OAuth providers** say why (Cline callback, CodeBuddy
+  state polling, Cursor import, Kiro IDC, etc.) instead of a generic message.
+
+## What changed in 0.1.11
 
 - **Edge-to-edge is now first-class.** `MainActivity` uses
   `enableEdgeToEdge` with explicit dark system-bar styling (the app is always
@@ -22,16 +54,10 @@ bundled Linux userland are required.**
   avoid index lookups. The chat transcript auto-scrolls and keeps "sending"
   disabled until the stream finishes.
 - **R8 is enabled for release builds.** `isMinifyEnabled` + `isShrinkResources`
-  with `proguard-android-optimize.txt`, full mode on, and the standard
-  kotlinx.serialization keep rules. `android analyze` reports R8 full mode and
-  an obfuscation ratio of 0.97; the release DEX is about 2.5 MB.
-- **Unit tests.** Five JVM tests cover custom-endpoint URL building (chat,
-  Responses, Claude, `/models`, trailing slashes and case-insensitive types).
-- **Smaller fixes.** The gateway status page shows the app version and the
-  correct model count including custom nodes; the unused `WAKE_LOCK` permission
-  was removed.
-- **Build environment.** Gradle is capped at `-Xmx3g` with no idle daemon,
-  `org.gradle.parallel=false` and two workers for this 2-core / 8 GB machine.
+  with `proguard-android-optimize.txt` and the standard kotlinx.serialization
+  keep rules.
+- **Unit tests.** JVM tests cover custom-endpoint URL building and OAuth
+  provider capability rules.
 
 ## What changed in 0.1.10
 
@@ -269,11 +295,11 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.11-android` (version code 13)
+- Version: `0.1.12-android` (version code 14)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
 - SHA-256 of the attached APK:
-  `7584c8af000a759887eeee626d99dcb702f31cd8592218f4feb31ada682a8ead`
+  `2882c2a51666e74a863b569b3d03760e69557b00ca37d3f7221d02b8bff9d769`
 
 See `android/README.md` for the module layout and build instructions.

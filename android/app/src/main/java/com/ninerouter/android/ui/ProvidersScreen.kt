@@ -917,7 +917,7 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
                 if (ProviderAuth.customOAuth(def)) {
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "This provider needs a custom login flow. Paste an access token instead.",
+                        "${ProviderAuth.customOAuthHint(def)} Paste an access token instead.",
                         style = MaterialTheme.typography.labelSmall,
                         color = NineRouterColors.Warning,
                     )
@@ -1320,7 +1320,11 @@ private fun OAuthDialog(def: ProviderDef, onDismiss: () -> Unit, onSaved: () -> 
                 onStatus = { msg -> android.os.Handler(android.os.Looper.getMainLooper()).post { status = msg } },
                 manualCode = { manualRef.get() },
             )
-            val processed = if (result.tokens != null) OAuthFlow.postProcess(def, result.tokens) else result
+            val processed = if (result.tokens != null) {
+                withContext(Dispatchers.IO) { OAuthFlow.postProcess(def, result.tokens) }
+            } else {
+                result
+            }
             withContext(Dispatchers.Main) {
                 busy = false
                 val tokens = processed.tokens
@@ -1337,6 +1341,7 @@ private fun OAuthDialog(def: ProviderDef, onDismiss: () -> Unit, onSaved: () -> 
                             projectId = tokens.projectId,
                             email = tokens.email,
                             accountId = tokens.accountId,
+                            deviceId = tokens.deviceId,
                         )
                     )
                     Store.save()
@@ -1408,7 +1413,9 @@ private fun DeviceDialog(def: ProviderDef, onDismiss: () -> Unit, onSaved: () ->
         }
         challenge = ch
         status = "Waiting for authorization..."
-        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ch.verificationUri))) }
+        if (ch.verificationUri.isNotBlank()) {
+            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ch.verificationUri))) }
+        }
         var interval = ch.interval.coerceAtLeast(2)
         while (!cancelled && System.currentTimeMillis() < ch.expiresAt) {
             delay(interval * 1000L)
@@ -1416,7 +1423,8 @@ private fun DeviceDialog(def: ProviderDef, onDismiss: () -> Unit, onSaved: () ->
             val result = withContext(Dispatchers.IO) { OAuthFlow.pollDevice(def, ch) }
             val tokens = result.tokens
             if (tokens != null) {
-                val processed = withContext(Dispatchers.IO) { OAuthFlow.postProcess(def, tokens) }
+                val provenanced = tokens.copy(deviceId = ch.deviceId)
+                val processed = withContext(Dispatchers.IO) { OAuthFlow.postProcess(def, provenanced) }
                 withContext(Dispatchers.Main) {
                     if (processed.tokens != null) {
                         Store.state.connections.add(
@@ -1431,6 +1439,7 @@ private fun DeviceDialog(def: ProviderDef, onDismiss: () -> Unit, onSaved: () ->
                                 projectId = processed.tokens.projectId,
                                 email = processed.tokens.email,
                                 accountId = processed.tokens.accountId,
+                                deviceId = processed.tokens.deviceId,
                             )
                         )
                         Store.save()

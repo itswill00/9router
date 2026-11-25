@@ -21,7 +21,7 @@ object ProviderAuth {
      * grant. Everything else stays on the manual-token path.
      */
     private val DEVICE_PROVIDERS = setOf(
-        "github", "grok-cli", "kimi", "muse", "minimax-code", "minimax-code-global",
+        "github", "grok-cli", "kimi", "muse", "minimax-code", "minimax-code-global", "nous",
     )
 
     fun deviceOAuth(def: ProviderDef): Boolean =
@@ -52,5 +52,22 @@ object ProviderAuth {
     /** OAuth exists upstream but needs a provider-specific flow we cannot run. */
     fun customOAuth(def: ProviderDef): Boolean =
         def.hasOAuth && !browserOAuth(def) && !deviceOAuth(def) &&
-            !def.category.equals("webCookie", true)
+            !def.category.equals("webCookie", true) &&
+            (def.category.equals("oauth", true) || def.authModes.any { it.equals("oauth", true) })
+
+    /** Short, honest explanation shown on the provider detail page. */
+    fun customOAuthHint(def: ProviderDef): String = when (def.id) {
+        "cline", "clinepass" -> "Cline returns an encoded token from its browser callback."
+        "codebuddy-cn", "codebuddy-intl" -> "CodeBuddy uses a state-polling login that is not ported."
+        "glm" -> "Z.ai uses a multi-step CLI polling login that is not ported."
+        "kilocode" -> "Kilocode device login is not ported."
+        "qoder", "qoder-cn" -> "Qoder uses a nonce/PKCE device handshake that is not ported."
+        "gitlab" -> "GitLab Duo needs your own OAuth application client id."
+        "kimchi" -> "Kimchi returns its token through a browser callback."
+        "trae", "windsurf", "zed" -> "This provider uses a native-app callback that is not ported."
+        "kiro" -> "Kiro uses an AWS Builder ID/IDC flow that is not ported."
+        "cursor" -> "Cursor tokens are imported from the desktop IDE."
+        "xiaomi-mimo" -> "Xiaomi uses an ECDH-encrypted callback that is not ported."
+        else -> "This provider needs a custom login flow."
+    }
 }

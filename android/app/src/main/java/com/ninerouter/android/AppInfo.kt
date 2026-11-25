@@ -2,7 +2,7 @@ package com.ninerouter.android
 
 /** Single source of truth for the user-visible build version. */
 object AppInfo {
-    const val VERSION = "0.1.11"
+    const val VERSION = "0.1.12"
     const val VERSION_NAME = "$VERSION-android"
     const val REPO = "itswill00/9router"
     const val GITHUB_URL = "https://github.com/$REPO"

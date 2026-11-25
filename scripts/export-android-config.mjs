@@ -20,6 +20,37 @@ const root = path.resolve(import.meta.dirname, "..");
 const registryDir = path.join(root, "open-sse", "providers", "registry");
 const output = path.join(root, "android", "app", "src", "main", "assets", "provider_registry.json");
 
+// Public installed-app OAuth clients. The upstream constants live in a module
+// that also imports a CommonJS MITM helper, so keep the two Google clients here.
+const GOOGLE_CLIENT_ID = "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com";
+const GOOGLE_CLIENT_SECRET = "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";
+const ANTIGRAVITY_CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com";
+const ANTIGRAVITY_CLIENT_SECRET = "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";
+
+// A few OAuth configs live in src/lib/oauth but not in the registry's oauth
+// block (or reference module constants the static parser cannot resolve).
+const OAUTH_OVERRIDES = {
+  nous: {
+    clientId: "hermes-cli",
+    deviceCodeUrl: "https://portal.nousresearch.com/api/oauth/device/code",
+    tokenUrl: "https://portal.nousresearch.com/api/oauth/token",
+    agentKeyUrl: "https://portal.nousresearch.com/api/oauth/agent-key",
+    scope: "inference:invoke inference:mint_agent_key",
+    baseUrl: "https://inference-api.nousresearch.com/v1/chat/completions",
+  },
+  xai: {
+    clientId: "b1a00492-073a-47ea-816f-4c329264a828",
+    authorizeUrl: "https://auth.x.ai/oauth2/authorize",
+    tokenUrl: "https://auth.x.ai/oauth2/token",
+    scope: "openid profile email offline_access grok-cli:access api:access",
+    codeChallengeMethod: "S256",
+    fixedPort: 56121,
+    callbackPath: "/callback",
+    redirectUri: "http://127.0.0.1:56121/callback",
+    extraParams: { plan: "generic", referrer: "cli-proxy-api" },
+  },
+};
+
 const str = (src, re, fallback = "") => {
   const m = src.match(re);
   return m ? m[1] : fallback;
@@ -90,18 +121,22 @@ for (const file of fs.readdirSync(registryDir).filter((f) => f.endsWith(".js")).
   const category = str(src, /^\s*category:\s*["']([^"']+)["']/m);
   const hasOAuth = /^\s*hasOAuth:\s*true/m.test(src) || category === "oauth" || oauth.length > 0;
   const authType = str(src, /^\s*authType:\s*["']([^"']+)["']/m) || (category === "oauth" ? "oauth" : "apikey");
-  // Public installed-app OAuth client shared by the Google CLI providers.
-  // Kept here because the upstream constant lives in a module that also imports
-  // a CommonJS MITM helper.
-  const GOOGLE_CLIENT_ID = "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com";
-  const GOOGLE_CLIENT_SECRET = "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";
-  const googleProvider = ["gemini", "gemini-cli", "antigravity"].includes(id);
+  const googleClient = id === "antigravity"
+    ? { id: ANTIGRAVITY_CLIENT_ID, secret: ANTIGRAVITY_CLIENT_SECRET }
+    : ["gemini", "gemini-cli"].includes(id)
+      ? { id: GOOGLE_CLIENT_ID, secret: GOOGLE_CLIENT_SECRET }
+      : { id: "", secret: "" };
 
   const scopes = [...(oauth.match(/scopes:\s*\[([\s\S]*?)\]/)?.[1] || "")
     .matchAll(/["']([^"']+)["']/g)].map((m) => m[1]);
   const extraBlock = block(oauth, "extraParams");
   const extraParams = {};
   for (const m of extraBlock.matchAll(/([A-Za-z0-9_]+):\s*["']([^"']*)["']/g)) extraParams[m[1]] = m[2];
+  for (const key of ["audience", "referrer", "platform", "providerId"]) {
+    const value = str(oauth, new RegExp(`^\\s*${key}:\\s*["']([^"']+)["']`, "m"));
+    if (value) extraParams[key] = value;
+  }
+  const refreshBlock = block(oauth, "refresh");
 
   const models = [];
   const modelNames = {};
@@ -140,7 +175,7 @@ for (const file of fs.readdirSync(registryDir).filter((f) => f.endsWith(".js")).
     }
   }
 
-  entries.push({
+  const entry = {
     id,
     alias: str(src, /^\s*alias:\s*["']([^"']+)["']/m) || id,
     name: str(display, /^\s*name:\s*["']([^"']+)["']/m) || id,
@@ -159,25 +194,52 @@ for (const file of fs.readdirSync(registryDir).filter((f) => f.endsWith(".js")).
     authHeader,
     authScheme,
     urlSuffix,
-    tokenUrl: str(oauth, /^\s*tokenUrl:\s*["']([^"']+)["']/m),
-    clientId: str(oauth, /^\s*clientId:\s*["']([^"']+)["']/m) || (googleProvider ? GOOGLE_CLIENT_ID : ""),
+    tokenUrl: str(oauth, /^\s*tokenUrl:\s*["']([^"']+)["']/m) ||
+      str(transport, /^\s*tokenUrl:\s*["']([^"']+)["']/m),
+    clientId: str(oauth, /^\s*clientId:\s*["']([^"']+)["']/m) ||
+      str(transport, /^\s*clientId:\s*["']([^"']+)["']/m) ||
+      googleClient.id,
     authorizeUrl: str(oauth, /^\s*authorizeUrl:\s*["']([^"']+)["']/m),
     deviceCodeUrl: str(oauth, /^\s*deviceCodeUrl:\s*["']([^"']+)["']/m) ||
       str(oauth, /^\s*deviceUrl:\s*["']([^"']+)["']/m),
+    deviceAuthUrl: str(oauth, /^\s*authorizeDeviceUrl:\s*["']([^"']+)["']/m) ||
+      str(oauth, /^\s*deviceAuthUrl:\s*["']([^"']+)["']/m),
+    stateUrl: str(oauth, /^\s*stateUrl:\s*["']([^"']+)["']/m),
+    initiateUrl: str(oauth, /^\s*initiateUrl:\s*["']([^"']+)["']/m),
+    pollUrlBase: str(oauth, /^\s*pollUrlBase:\s*["']([^"']+)["']/m),
+    platform: str(oauth, /^\s*platform:\s*["']([^"']+)["']/m),
+    userAgent: str(oauth, /^\s*userAgent:\s*["']([^"']+)["']/m),
+    pollInterval: Number.parseInt(str(oauth, /^\s*pollInterval:\s*(\d+)/m) || "5", 10),
     copilotTokenUrl: str(oauth, /^\s*copilotTokenUrl:\s*["']([^"']+)["']/m),
+    userInfoUrl: str(oauth, /^\s*userInfoUrl:\s*["']([^"']+)["']/m),
+    agentKeyUrl: str(oauth, /^\s*agentKeyUrl:\s*["']([^"']+)["']/m),
     redirectUri: str(oauth, /^\s*redirectUri:\s*["']([^"']+)["']/m),
     scope: str(oauth, /^\s*scope:\s*["']([^"']+)["']/m) ||
       str(oauth, /^\s*scopes:\s*["']([^"']+)["']/m) ||
       scopes.join(" "),
-    clientSecret: str(oauth, /^\s*clientSecret:\s*["']([^"']+)["']/m) || (googleProvider ? GOOGLE_CLIENT_SECRET : ""),
+    clientSecret: str(oauth, /^\s*clientSecret:\s*["']([^"']+)["']/m) ||
+      str(transport, /^\s*clientSecret:\s*["']([^"']+)["']/m) ||
+      googleClient.secret,
     tokenEncoding: str(oauth, /^\s*encoding:\s*["']([^"']+)["']/m) || "form",
+    codeChallengeMethod: str(oauth, /^\s*codeChallengeMethod:\s*["']([^"']+)["']/m),
+    refreshUrl: str(oauth, /^\s*refreshUrl:\s*["']([^"']+)["']/m) ||
+      str(transport, /^\s*refreshUrl:\s*["']([^"']+)["']/m),
+    refreshEncoding: str(refreshBlock, /^\s*encoding:\s*["']([^"']+)["']/m),
+    refreshScope: str(refreshBlock, /^\s*scope:\s*["']([^"']+)["']/m),
     callbackPath: str(oauth, /^\s*callbackPath:\s*["']([^"']+)["']/m) || "/callback",
     fixedPort: Number.parseInt(str(oauth, /^\s*fixedPort:\s*(\d+)/m) || "0", 10) || 0,
     extraParams,
     models,
     modelNames,
     modelCapabilities,
-  });
+  };
+  const override = OAUTH_OVERRIDES[id];
+  if (override) {
+    const { extraParams: extraOverride, ...rest } = override;
+    Object.assign(entry, rest);
+    if (extraOverride) entry.extraParams = { ...entry.extraParams, ...extraOverride };
+  }
+  entries.push(entry);
 }
 
 fs.mkdirSync(path.dirname(output), { recursive: true });

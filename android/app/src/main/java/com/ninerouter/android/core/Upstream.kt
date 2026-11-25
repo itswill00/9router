@@ -101,13 +101,15 @@ class Upstream {
     }
 
     private fun refreshable(def: ProviderDef, conn: Connection): Boolean =
-        conn.refreshToken.isNotBlank() && (def.tokenUrl.isNotBlank() || def.copilotTokenUrl.isNotBlank())
+        def.id != "muse" && def.id != "nous" && conn.refreshToken.isNotBlank() &&
+            (def.tokenUrl.isNotBlank() || def.copilotTokenUrl.isNotBlank())
 
     private fun refresh(def: ProviderDef, conn: Connection): Pair<String, String>? {
         if (def.copilotTokenUrl.isNotBlank()) {
             copilotToken(def, conn.refreshToken)?.let { return it to conn.refreshToken }
         }
-        if (def.tokenUrl.isBlank()) return null
+        val tokenUrl = def.refreshUrl.ifBlank { def.tokenUrl }
+        if (tokenUrl.isBlank()) return null
         if (def.id == "iflow") {
             val basic = java.util.Base64.getEncoder()
                 .encodeToString("${def.clientId}:${def.clientSecret}".toByteArray())
@@ -118,7 +120,7 @@ class Upstream {
                 .add("client_secret", def.clientSecret)
                 .build()
             val req = Request.Builder()
-                .url(def.tokenUrl)
+                .url(tokenUrl)
                 .header("Authorization", "Basic $basic")
                 .post(form)
                 .build()
@@ -134,7 +136,8 @@ class Upstream {
                 null
             }
         }
-        val req = if (def.tokenEncoding.equals("json", true)) {
+        val encoding = def.refreshEncoding.ifBlank { def.tokenEncoding }
+        var req = if (encoding.equals("json", true)) {
             val payload = buildJsonObject {
                 put("grant_type", "refresh_token")
                 put("refresh_token", conn.refreshToken)
@@ -142,7 +145,7 @@ class Upstream {
                 if (def.clientSecret.isNotBlank()) put("client_secret", def.clientSecret)
             }
             Request.Builder()
-                .url(def.tokenUrl)
+                .url(tokenUrl)
                 .post(payload.toString().toRequestBody(mediaJson))
                 .build()
         } else {
@@ -152,9 +155,24 @@ class Upstream {
                 .apply {
                     if (def.clientId.isNotBlank()) add("client_id", def.clientId)
                     if (def.clientSecret.isNotBlank()) add("client_secret", def.clientSecret)
+                    if (def.refreshScope.isNotBlank()) add("scope", def.refreshScope)
                 }
                 .build()
-            Request.Builder().url(def.tokenUrl).post(form).build()
+            Request.Builder().url(tokenUrl).post(form).build()
+        }
+        if (def.id == "kimi") {
+            req = req.newBuilder()
+                .header("X-Msh-Platform", "9router")
+                .header("X-Msh-Version", com.ninerouter.android.AppInfo.VERSION_NAME)
+                .header("X-Msh-Device-Name", android.os.Build.MODEL ?: "android")
+                .header("X-Msh-Device-Model", "Android ${android.os.Build.VERSION.RELEASE}")
+                .apply { if (conn.deviceId.isNotBlank()) header("X-Msh-Device-Id", conn.deviceId) }
+                .build()
+        }
+        if (def.id == "grok-cli") {
+            req = req.newBuilder()
+                .header("User-Agent", "grok-pager/1.0.44 grok-shell/1.0.44 (linux; x86_64)")
+                .build()
         }
         return try {
             client.newCall(req).execute().use { res ->
@@ -174,11 +192,12 @@ class Upstream {
         if (githubToken.isBlank()) return null
         val req = Request.Builder()
             .url(def.copilotTokenUrl)
-            .header("Authorization", "token $githubToken")
+            .header("Authorization", "Bearer $githubToken")
             .header("Accept", "application/json")
             .header("User-Agent", "GitHubCopilotChat/0.26.7")
             .header("Editor-Version", "vscode/1.85.0")
             .header("Editor-Plugin-Version", "copilot-chat/0.26.7")
+            .header("X-GitHub-Api-Version", "2022-11-28")
             .build()
         return try {
             client.newCall(req).execute().use { res ->
@@ -216,15 +235,36 @@ class Upstream {
             builder.header("session_id", java.util.UUID.randomUUID().toString())
             if (conn.accountId.isNotBlank()) builder.header("ChatGPT-Account-ID", conn.accountId)
         }
+        if (def.id == "kimi") {
+            builder.header("X-Msh-Platform", "9router")
+            builder.header("X-Msh-Version", com.ninerouter.android.AppInfo.VERSION_NAME)
+            builder.header("X-Msh-Device-Name", android.os.Build.MODEL ?: "android")
+            builder.header("X-Msh-Device-Model", "Android ${android.os.Build.VERSION.RELEASE}")
+            if (conn.deviceId.isNotBlank()) builder.header("X-Msh-Device-Id", conn.deviceId)
+        }
+        if (def.id == "minimax-code" || def.id == "minimax-code-global") {
+            builder.header("x-api-key", "sk-xxx")
+            builder.header("X-Mavis-Timezone-Offset", (java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 1000).toString())
+            builder.header("X-Mavis-Session-Id", java.util.UUID.randomUUID().toString())
+        }
+        if (def.id == "muse" && conn.accessToken.isNotBlank() && conn.apiKey.isBlank()) {
+            builder.header("x-api-version", "1.0.0")
+        }
+        if (def.format == "antigravity") {
+            builder.header("User-Agent", "antigravity/hub/2.33.0 darwin/arm64")
+            builder.header("x-request-source", "local")
+        }
         val oauth = conn.accessToken.isNotBlank()
         val token = conn.accessToken.ifBlank { conn.apiKey }
         when {
             // Web-session providers authenticate with the browser cookie header.
             conn.authType.equals("cookie", true) && conn.apiKey.isNotBlank() ->
                 builder.header("Cookie", conn.apiKey)
-            // OpenAI-compatible providers: Bearer, unless they declare x-api-key.
+            // Claude Code is special: OAuth tokens need the CLI identity and beta
+            // headers. Other format=claude providers (Kimi, MiniMax, GLM) use
+            // their registry-declared header instead.
             def.format == Formats.CLAUDE -> {
-                if (oauth) {
+                if (oauth && def.id == "claude") {
                     builder.header("Authorization", "Bearer ${conn.accessToken}")
                     builder.header(
                         "anthropic-beta",
@@ -234,7 +274,13 @@ class Upstream {
                     builder.header("user-agent", "claude-cli/2.0.0 (external, cli)")
                     builder.header("x-app", "cli")
                 } else if (token.isNotBlank()) {
-                    builder.header("x-api-key", token)
+                    if (def.authHeader.equals("Authorization", true) ||
+                        def.authScheme.equals("bearer", true)
+                    ) {
+                        builder.header("Authorization", "Bearer $token")
+                    } else {
+                        builder.header("x-api-key", token)
+                    }
                 }
             }
             def.authHeader.equals("x-api-key", true) && token.isNotBlank() ->
@@ -243,7 +289,7 @@ class Upstream {
                 if (token.isNotBlank()) builder.header("x-goog-api-key", token)
             token.isNotBlank() -> builder.header("Authorization", "Bearer $token")
         }
-        if (def.format == Formats.CLAUDE && !oauth && conn.apiKey.isNotBlank()) {
+        if (def.format == Formats.CLAUDE) {
             builder.header("anthropic-version", "2023-06-01")
         }
         return builder.post(payload.toRequestBody(mediaJson)).build()
