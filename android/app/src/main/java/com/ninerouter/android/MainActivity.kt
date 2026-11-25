@@ -34,6 +34,12 @@ class MainActivity : ComponentActivity() {
             ?.isAppearanceLightStatusBars = false
         androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
             ?.isAppearanceLightNavigationBars = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode =
+                    android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
         handleOAuthCallback()
         if (Store.state.settings.autoStartGateway) {
             GatewayService.start(this)
