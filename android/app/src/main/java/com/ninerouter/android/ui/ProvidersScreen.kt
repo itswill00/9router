@@ -1615,7 +1615,7 @@ private fun OAuthDialog(def: ProviderDef, onDismiss: () -> Unit, onSaved: () -> 
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "A browser tab opens on the provider's login page. The app catches the callback on a temporary localhost port, exactly like the desktop dashboard.",
+                    "A browser tab opens on the provider's login page. After you approve, the page shows a Return to 9Router button — tap it to come back. The app catches the callback on a temporary localhost port, exactly like the desktop dashboard.",
                     style = MaterialTheme.typography.bodySmall,
                     color = NineRouterColors.TextMuted,
                 )

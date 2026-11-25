@@ -667,9 +667,11 @@ object OAuthFlow {
                     }
                     return@use
                 }
-                val html = "<html><body style='font-family:sans-serif;padding:32px;background:#111;color:#eee'>" +
-                    "<h2>9Router</h2><p>Authorization complete. You can close this tab.</p>" +
-                    "<script>setTimeout(()=>window.close(),1200)</script></body></html>"
+                val code = uri.getQueryParameter("code")
+                val state = uri.getQueryParameter("state")
+                val error = uri.getQueryParameter("error")
+                val detail = uri.getQueryParameter("error_description").orEmpty()
+                val html = callbackPage(ok = error == null && !code.isNullOrBlank(), message = detail)
                 val bytes = html.toByteArray(Charsets.UTF_8)
                 val head = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n" +
                     "Content-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
@@ -679,9 +681,9 @@ object OAuthFlow {
                     flush()
                 }
                 return Callback(
-                    code = uri.getQueryParameter("code"),
-                    state = uri.getQueryParameter("state"),
-                    error = uri.getQueryParameter("error"),
+                    code = code,
+                    state = state,
+                    error = error,
                 )
             }
         }
@@ -699,6 +701,70 @@ object OAuthFlow {
             )
         }
         return Callback(value, null, null)
+    }
+
+    /**
+     * Loopback landing page. Browsers cannot be closed by an app, so the page
+     * offers an explicit deep link back into 9Router (and tries to follow it
+     * automatically). The manifest accepts ninerouter://oauth/callback.
+     */
+    private fun callbackPage(ok: Boolean, message: String): String {
+        val title = if (ok) "Authorization complete" else "Authorization failed"
+        val subtitle = if (ok) {
+            "9Router received the login. Tap below to go back to the app."
+        } else {
+            message.ifBlank { "The provider rejected the login. Return to 9Router and try again." }
+        }
+        val accent = if (ok) "#22c55e" else "#ef4444"
+        val icon = if (ok) "\u2713" else "!"
+        val safeSubtitle = subtitle
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        return """
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>9Router OAuth</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+         background:#0b0b0b; color:#f5f5f5;
+         font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; padding:24px; }
+  .card { width:100%; max-width:420px; background:#161616; border:1px solid #2a2a2a;
+          border-radius:20px; padding:28px; text-align:center; }
+  .mark { width:56px; height:56px; border-radius:16px; margin:0 auto 16px; display:flex;
+          align-items:center; justify-content:center; background:rgba(255,122,26,.14);
+          color:#ff7a1a; font-weight:800; font-size:20px; border:1px solid rgba(255,122,26,.28); }
+  .badge { width:44px; height:44px; border-radius:50%; margin:0 auto 14px; display:flex;
+           align-items:center; justify-content:center; background:${accent}22; color:$accent;
+           font-size:22px; font-weight:700; border:1px solid ${accent}55; }
+  h1 { font-size:20px; margin:0 0 8px; }
+  p { font-size:14px; line-height:1.5; color:#a3a3a3; margin:0 0 20px; }
+  a.button { display:block; text-decoration:none; background:#ff7a1a; color:#0b0b0b;
+             font-weight:700; padding:14px 18px; border-radius:12px; font-size:15px; }
+  a.button:active { opacity:.85; }
+  .hint { font-size:12px; color:#6b6b6b; margin:14px 0 0; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="mark">9R</div>
+  <div class="badge">$icon</div>
+  <h1>$title</h1>
+  <p>$safeSubtitle</p>
+  <a class="button" href="ninerouter://oauth/callback?status=done">Return to 9Router</a>
+  <p class="hint">If the button does nothing, switch back to the 9Router app manually.</p>
+</div>
+<script>
+  setTimeout(function () { window.location.href = "ninerouter://oauth/callback?status=done"; }, 650);
+</script>
+</body>
+</html>
+        """.trimIndent()
     }
 
     private fun readLine(input: InputStream): String? {

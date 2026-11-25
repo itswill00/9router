@@ -1,10 +1,34 @@
-# 9Router Android 0.1.14
+# 9Router Android 0.1.15
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.13
+## What changed since 0.1.14
+
+This fixes the OAuth return trip: the browser no longer strands you on the
+localhost callback page.
+
+- **Return to 9Router button.** The loopback callback page is now a branded
+  dark page with a large **Return to 9Router** button. Tapping it fires
+  `ninerouter://oauth/callback?status=done`, which brings the running app back
+  to the foreground.
+- **Automatic hand-back.** The page also tries the deep link by itself shortly
+  after it loads. If the browser blocks automatic custom-scheme navigation,
+  the button is the reliable fallback.
+- **`MainActivity` is `singleTask`.** Incoming deep links are delivered to the
+  existing activity via `onNewIntent` instead of stacking a second copy of the
+  app.
+- **The return signal never triggers a token exchange.** `status=done` is
+  consumed as a foreground nudge; only a real `code` + known `state` is
+  exchanged.
+- **Failure pages are honest.** If the provider returns `error`, the callback
+  page says the login failed and shows the provider's description instead of
+  “complete”.
+- **The OAuth dialog explains the new step** so it is clear that you must tap
+  the button (or switch back manually).
+
+## What changed in 0.1.14
 
 This is the motion pass: the app is no longer stiff, and chat now reports the
 model that actually answered plus real usage figures.
@@ -352,11 +376,11 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.14-android` (version code 16)
+- Version: `0.1.15-android` (version code 17)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
 - SHA-256 of the attached APK:
-  `de9438eb992cf532a78814651b7cf5ec657de4863c84d052bb650740e173aba7`
+  `b2aa71764e9b0edcd12f924239f6a66fc16d42816a9e9091c383e8a748502bb9`
 
 See `android/README.md` for the module layout and build instructions.

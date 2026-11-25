@@ -67,8 +67,11 @@ class MainActivity : ComponentActivity() {
         // Consume the deep link so a configuration change cannot exchange the
         // same authorization code twice.
         intent.data = null
+        // The loopback landing page fires this only to bring the app forward.
+        if (uri.getQueryParameter("status") == "done") return
         val code = uri.getQueryParameter("code").orEmpty()
         val state = uri.getQueryParameter("state").orEmpty()
+        if (code.isBlank() || state.isBlank()) return
         val providerId = OAuthFlow.providerFor(state) ?: return
         val def = Catalog.find(providerId) ?: return
         lifecycleScope.launch {
