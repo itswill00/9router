@@ -12,16 +12,22 @@ no Node.js, no shell, no root, and no bundled Linux userland are required.**
   `/v1/chat/completions` (JSON and SSE), `/v1/messages`, `/v1/responses`,
   `/v1/embeddings`, and `/api/settings`.
 - **In-app streaming chat**, so the APK is useful without any external CLI.
-- **Mobile-first UI built from the upstream design system**: the exact dark
-  palette from `src/app/globals.css`, brand orange, grouped provider cards,
-  bottom navigation, and an overflow menu for secondary sections.
+- **Compact mobile-first UI built from the upstream design system**: the exact
+  dark palette from `src/app/globals.css`, brand orange, grouped provider cards,
+  a dense 54 dp bottom navigation, a top-bar chat action, and edge-to-edge
+  status/navigation bars that blend into the app surfaces.
 - **Original brand assets**: the orange `hub` brand mark from the dashboard
   sidebar is used as the launcher icon and in the app header; the upstream
   provider icon set is bundled for provider cards.
 - **Routing core ported from the upstream project**: model/combo resolution,
-  account selection (`fill-first` and sticky `round-robin`), cooldown-based
-  fallback, 401/403 token refresh, RTK tool-result compression, and usage
-  tracking.
+  aliases, capability-aware ordering, Smart Router selection, account selection
+  (`fill-first` and sticky `round-robin`), cooldown-based fallback, 401/403
+  token refresh, RTK tool-result compression, caveman/ponytail/custom system
+  prompt injectors, and usage estimation when upstream usage is absent.
+- **Management API parity (subset)**: `/api/version`, `/api/auth/status`,
+  `/api/usage/stats`, `/api/usage/request-logs`, `/api/keys`,
+  `/api/providers`, `/api/combos`, `/api/provider-nodes`, and
+  `/api/models/alias`, in addition to the `/v1` inference surface.
 - **Provider registry**: 151 declarations exported from the repository into a
   JSON asset at build time. A build-time script regenerates it; the device
   never runs JavaScript.
@@ -78,8 +84,8 @@ This is a first native slice, not full parity with the Node gateway:
 - Translator coverage focuses on OpenAI, Claude, Gemini, and Responses.
   Thinking-block and tool-id edge cases are still being ported.
 - Streaming on `/v1/responses` currently emits Chat Completions-style chunks.
-- Combo strategies `fallback` and `round-robin` are available; `smart` and
-  `fusion` are not yet ported.
+- Combo strategies `fallback`, `round-robin`, and `smart` are available;
+  `fusion` (parallel panel + judge) is not yet ported.
 
 ## Build information
 
@@ -88,6 +94,6 @@ This is a first native slice, not full parity with the Node gateway:
 - Target SDK: 35 (Android 15)
 - Source branch: `feat/android-native-gateway`
 - SHA-256 of the attached APK:
-  `81faae3d92314d6cad4271cc952ea44a4da1c296ee72fc3f8c3085a3e4d3c161`
+  `45411bf87f36798db6b0f2c13021e3ad23ef9b48754565d5db5e14522811b93f`
 
 See `android/README.md` for the module layout and build instructions.

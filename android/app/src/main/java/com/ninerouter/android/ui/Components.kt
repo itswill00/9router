@@ -40,7 +40,7 @@ fun Panel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> 
         shape = RoundedCornerShape(14.dp),
         shadowElevation = 0.dp,
     ) {
-        Column(Modifier.padding(16.dp), content = content)
+        Column(Modifier.padding(12.dp), content = content)
     }
 }
 
@@ -52,10 +52,15 @@ fun SectionHeader(
 ) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleLarge, color = NineRouterColors.TextMain)
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = NineRouterColors.TextMain,
+            )
             if (subtitle != null) {
-                Spacer(Modifier.height(2.dp))
-                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = NineRouterColors.TextMuted)
+                Spacer(Modifier.height(1.dp))
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = NineRouterColors.TextMuted)
             }
         }
         action?.invoke()

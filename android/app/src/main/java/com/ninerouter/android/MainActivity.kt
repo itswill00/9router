@@ -24,6 +24,16 @@ class MainActivity : ComponentActivity() {
         ) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 7)
         }
+        // targetSdk 35 enforces edge-to-edge on Android 15; opt in everywhere
+        // and let Compose apply the status/navigation bar insets.
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
+        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+            ?.isAppearanceLightStatusBars = false
+        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+            ?.isAppearanceLightNavigationBars = false
         handleOAuthCallback()
         setContent {
             NineRouterTheme {

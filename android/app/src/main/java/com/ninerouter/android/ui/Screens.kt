@@ -74,8 +74,8 @@ fun EndpointScreen(refresh: () -> Unit) {
     val running by GatewayState.running.collectAsState()
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         SectionHeader("Endpoint", "API endpoint configuration")
         Panel {
@@ -84,7 +84,7 @@ fun EndpointScreen(refresh: () -> Unit) {
             StatusRow("Dashboard", GatewayState.BASE_URL)
             Spacer(Modifier.height(6.dp))
             StatusRow("Status", if (running) "Running" else "Stopped")
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
             PrimaryButton(if (running) "Shutdown" else "Start gateway", onClick = {
                 val intent = Intent(context, GatewayService::class.java)
                 if (running) context.stopService(intent) else context.startForegroundService(intent)
@@ -134,6 +134,7 @@ fun ProvidersScreen(refresh: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
+    var showAll by remember { mutableStateOf(false) }
     var showAdd by remember { mutableStateOf(false) }
     var showNodeDialog by remember { mutableStateOf(false) }
     var deviceChallenge by remember { mutableStateOf<OAuthFlow.DeviceChallenge?>(null) }
@@ -163,9 +164,9 @@ fun ProvidersScreen(refresh: () -> Unit) {
     )
 
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
             SectionHeader("Providers", "Manage your AI provider connections")
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 query, { query = it },
                 label = { Text("Search providers") },
@@ -241,13 +242,13 @@ fun ProvidersScreen(refresh: () -> Unit) {
         }
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             groups.forEach { (heading, list) ->
                 if (list.isNotEmpty()) {
                     item {
-                        Column(Modifier.padding(horizontal = 16.dp)) {
+                        Column(Modifier.padding(horizontal = 12.dp)) {
                             Spacer(Modifier.height(4.dp))
                             SectionHeader(
                                 heading,
@@ -259,16 +260,17 @@ fun ProvidersScreen(refresh: () -> Unit) {
                             )
                         }
                     }
-                    items(list, key = { "p-${it.id}" }) { p ->
+                    val visible = if (showAll || query.isNotBlank()) list else list.take(3)
+                    items(visible, key = { "p-${it.id}" }) { p ->
                         val count = Store.state.connections.count { c -> c.provider == p.id }
-                        androidx.compose.foundation.layout.Box(Modifier.padding(horizontal = 16.dp)) {
+                        androidx.compose.foundation.layout.Box(Modifier.padding(horizontal = 12.dp)) {
                             Panel {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    ProviderIcon(p.id, p.name)
-                                    Spacer(Modifier.width(12.dp))
+                                    ProviderIcon(p.id, p.name, 32.dp)
+                                    Spacer(Modifier.width(8.dp))
                                     Column(Modifier.weight(1f)) {
-                                        Text(p.name, style = MaterialTheme.typography.bodyLarge, color = NineRouterColors.TextMain)
-                                        Spacer(Modifier.height(3.dp))
+                                        Text(p.name, style = MaterialTheme.typography.bodyMedium, color = NineRouterColors.TextMain)
+                                        Spacer(Modifier.height(2.dp))
                                         ConnectedBadge(count)
                                     }
                                     TextButton(onClick = {
@@ -280,20 +282,27 @@ fun ProvidersScreen(refresh: () -> Unit) {
                             }
                         }
                     }
+                    if (visible.size < list.size) {
+                        item {
+                            TextButton(onClick = { showAll = true }, modifier = Modifier.padding(horizontal = 12.dp)) {
+                                Text("Show all ${list.size} providers")
+                            }
+                        }
+                    }
                 }
             }
             if (Store.state.nodes.isNotEmpty()) {
                 item {
-                    Column(Modifier.padding(horizontal = 16.dp)) {
+                    Column(Modifier.padding(horizontal = 12.dp)) {
                         Text("Compatible nodes", style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain)
                     }
                 }
                 items(Store.state.nodes, key = { it.id }) { node ->
-                    androidx.compose.foundation.layout.Box(Modifier.padding(horizontal = 16.dp)) {
+                    androidx.compose.foundation.layout.Box(Modifier.padding(horizontal = 12.dp)) {
                         Panel {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 ProviderIcon("openai", node.name)
-                                Spacer(Modifier.width(12.dp))
+                                Spacer(Modifier.width(8.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(node.name, color = NineRouterColors.TextMain)
                                     Text("${node.prefix}/…", style = MaterialTheme.typography.bodySmall, color = NineRouterColors.TextMuted)
@@ -309,16 +318,16 @@ fun ProvidersScreen(refresh: () -> Unit) {
                 }
             }
             item {
-                Column(Modifier.padding(horizontal = 16.dp)) {
+                Column(Modifier.padding(horizontal = 12.dp)) {
                     Text("Your connections", style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain)
                 }
             }
             items(Store.state.connections, key = { it.id }) { c ->
-                androidx.compose.foundation.layout.Box(Modifier.padding(horizontal = 16.dp)) {
+                androidx.compose.foundation.layout.Box(Modifier.padding(horizontal = 12.dp)) {
                     Panel {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             ProviderIcon(c.provider, c.name.ifBlank { c.provider })
-                            Spacer(Modifier.width(12.dp))
+                            Spacer(Modifier.width(8.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(c.name.ifBlank { c.provider }, color = NineRouterColors.TextMain)
                                 Text("${c.provider} · ${c.authType}", style = MaterialTheme.typography.bodySmall, color = NineRouterColors.TextMuted)
@@ -459,25 +468,30 @@ fun CombosScreen(refresh: () -> Unit) {
     var name by remember { mutableStateOf("") }
     var models by remember { mutableStateOf("") }
     var strategy by remember { mutableStateOf("fallback") }
+    var routerModel by remember { mutableStateOf("") }
 
     Column(Modifier.fillMaxSize()) {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.padding(12.dp)) {
             SectionHeader("Combos", "Model combos with fallback")
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
             PrimaryButton("Add combo", onClick = { showDialog = true })
         }
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items(Store.state.combos, key = { it.name }) { combo ->
-                androidx.compose.foundation.layout.Box(Modifier.padding(horizontal = 16.dp)) {
+                androidx.compose.foundation.layout.Box(Modifier.padding(horizontal = 12.dp)) {
                     Panel {
                         Text(combo.name, style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain)
                         Spacer(Modifier.height(4.dp))
                         Text(combo.models.joinToString(" → "), color = NineRouterColors.TextMuted)
-                        Text("strategy: ${combo.strategy}", style = MaterialTheme.typography.bodySmall, color = NineRouterColors.TextSubtle)
+                        Text(
+                            "strategy: ${combo.strategy}" + if (combo.routerModel.isNotBlank()) " · router: ${combo.routerModel}" else "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NineRouterColors.TextSubtle,
+                        )
                         TextButton(onClick = {
                             Store.state.combos.removeAll { it.name == combo.name }
                             Store.save()
@@ -498,16 +512,17 @@ fun CombosScreen(refresh: () -> Unit) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(name, { name = it }, label = { Text("Combo name") }, singleLine = true)
                     OutlinedTextField(models, { models = it }, label = { Text("Models, comma separated") })
-                    OutlinedTextField(strategy, { strategy = it }, label = { Text("Strategy: fallback | round-robin") }, singleLine = true)
+                    OutlinedTextField(strategy, { strategy = it }, label = { Text("Strategy: fallback | round-robin | smart") }, singleLine = true)
+                    OutlinedTextField(routerModel, { routerModel = it }, label = { Text("Router model (smart only)") }, singleLine = true)
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
                     val list = models.split(",").map { it.trim() }.filter { it.isNotBlank() }
                     if (name.isNotBlank() && list.isNotEmpty()) {
-                        Store.state.combos.add(Combo(name.trim(), list, strategy.trim()))
+                        Store.state.combos.add(Combo(name.trim(), list, strategy.trim(), routerModel.trim()))
                         Store.save()
-                        name = ""; models = ""; strategy = "fallback"
+                        name = ""; models = ""; strategy = "fallback"; routerModel = ""
                         showDialog = false
                         refresh()
                     }
@@ -526,9 +541,9 @@ fun CombosScreen(refresh: () -> Unit) {
 fun UsageScreen(refresh: () -> Unit) {
     val usage = Store.state.usage
     Column(Modifier.fillMaxSize()) {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.padding(12.dp)) {
             SectionHeader("Usage & Analytics", "Monitor your API usage, token consumption, and request logs")
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
             Panel {
                 StatusRow("Requests", usage.size.toString())
                 Spacer(Modifier.height(6.dp))
@@ -541,11 +556,11 @@ fun UsageScreen(refresh: () -> Unit) {
         }
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(usage.takeLast(100).asReversed()) { u ->
-                androidx.compose.foundation.layout.Box(Modifier.padding(horizontal = 16.dp)) {
+                androidx.compose.foundation.layout.Box(Modifier.padding(horizontal = 12.dp)) {
                     Panel {
                         Text("${u.provider} · ${u.model}", color = NineRouterColors.TextMain)
                         Text(
@@ -573,8 +588,8 @@ fun SettingsScreen(refresh: () -> Unit) {
     var createdKey by remember { mutableStateOf("") }
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         SectionHeader("Settings", "Manage your preferences")
         Panel {
@@ -589,7 +604,42 @@ fun SettingsScreen(refresh: () -> Unit) {
                 Spacer(Modifier.width(10.dp))
                 Text("RTK token saver", color = NineRouterColors.TextMain)
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(s.cavemanEnabled, { Store.mutate { settings = settings.copy(cavemanEnabled = it) }; refresh() })
+                Spacer(Modifier.width(10.dp))
+                Text("Caveman prompt", color = NineRouterColors.TextMain, modifier = Modifier.weight(1f))
+                OutlinedTextField(
+                    s.cavemanLevel,
+                    { Store.mutate { settings = settings.copy(cavemanLevel = it) }; refresh() },
+                    singleLine = true, modifier = Modifier.width(84.dp),
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(s.ponytailEnabled, { Store.mutate { settings = settings.copy(ponytailEnabled = it) }; refresh() })
+                Spacer(Modifier.width(10.dp))
+                Text("Ponytail prompt", color = NineRouterColors.TextMain, modifier = Modifier.weight(1f))
+                OutlinedTextField(
+                    s.ponytailLevel,
+                    { Store.mutate { settings = settings.copy(ponytailLevel = it) }; refresh() },
+                    singleLine = true, modifier = Modifier.width(84.dp),
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(s.customPromptEnabled, { Store.mutate { settings = settings.copy(customPromptEnabled = it) }; refresh() })
+                Spacer(Modifier.width(10.dp))
+                Text("Custom system prompt", color = NineRouterColors.TextMain)
+            }
+            if (s.customPromptEnabled) {
+                OutlinedTextField(
+                    s.customPrompt,
+                    { Store.mutate { settings = settings.copy(customPrompt = it) }; refresh() },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 s.fallbackStrategy,
                 { Store.mutate { settings = settings.copy(fallbackStrategy = it) }; refresh() },
@@ -702,7 +752,7 @@ fun ChatScreen() {
             } ?: "openai/gpt-5-mini"
     }
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
+    Column(Modifier.fillMaxSize().padding(12.dp)) {
         SectionHeader("Basic Chat", "Streaming chat through the local gateway")
         Spacer(Modifier.height(10.dp))
         OutlinedTextField(model, { model = it }, label = { Text("Model / combo") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -798,26 +848,3 @@ private fun deltaOf(parser: Json, data: String): String {
     return content?.content ?: ""
 }
 
-// ---------------------------------------------------------------------------
-// Secondary screens
-// ---------------------------------------------------------------------------
-
-@Composable
-fun InfoScreen(title: String) {
-    val body = when (title) {
-        "Console Log" -> "Request logs are written to the local gateway process. On-device log capture is not enabled in this preview."
-        "Quota Tracker" -> "Usage grouped by provider is available on the Usage tab. Live provider quota polling is not part of this build."
-        "MITM" -> "TLS interception and certificate injection are intentionally disabled on Android. Use provider OAuth or API keys instead."
-        "CLI Tools" -> "Point your client at ${GatewayState.BASE_URL}/v1 with the API key from the Endpoint tab."
-        "Proxy Pools" -> "Per-connection proxy settings are used by the routing engine. A dedicated proxy-pool editor is not included in this preview."
-        "Token Saver" -> "RTK compresses tool_result content in place. Toggle it on the Settings tab."
-        "Translator" -> "Supported wire formats: OpenAI Chat, OpenAI Responses, Claude, Gemini, Kiro, Cursor and commandcode (partial)."
-        "Skills" -> "Agent skills are documented in skills/README.md in the repository."
-        else -> "This section is available in the desktop dashboard."
-    }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        SectionHeader(title, null)
-        Spacer(Modifier.height(12.dp))
-        Panel { Text(body, color = NineRouterColors.TextMuted) }
-    }
-}

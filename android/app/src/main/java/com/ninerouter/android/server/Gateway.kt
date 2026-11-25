@@ -8,7 +8,9 @@ import com.ninerouter.android.core.Translator
 import com.ninerouter.android.core.Upstream
 import com.ninerouter.android.data.ApiKey
 import com.ninerouter.android.data.Catalog
+import com.ninerouter.android.data.Combo
 import com.ninerouter.android.data.Connection
+import com.ninerouter.android.data.ProviderNode
 import com.ninerouter.android.data.Store
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -133,12 +135,55 @@ class Gateway(private val context: Context) {
                     handleEmbeddings(body, output)
                 }
 
+                path == "/api/version" && method == "GET" -> writeJson(output, 200, versionJson())
+
+                path == "/api/tunnel/status" && method == "GET" ->
+                    writeJson(output, 200, "{\"enabled\":false,\"status\":\"disabled\",\"android\":true}")
+
+                path == "/api/models/availability" && method == "GET" ->
+                    writeJson(output, 200, "{\"models\":{}}")
+
+                path in setOf("/api/version/shutdown", "/api/shutdown") && method == "POST" -> {
+                    if (!authorized) return writeJson(output, 401, errorJson(401, "Invalid API key"))
+                    writeJson(output, 200, "{\"ok\":true}")
+                    context.stopService(android.content.Intent(context, com.ninerouter.android.GatewayService::class.java))
+                }
+
+                path == "/api/auth/status" && method == "GET" -> writeJson(output, 200, buildJsonObject {
+                    put("requireApiKey", Store.state.settings.requireApiKey)
+                    put("authenticated", authorized(headers))
+                    put("android", true)
+                }.let { json.encodeToString(it) })
+
+                path == "/api/usage/stats" && method == "GET" -> writeJson(output, 200, usageStatsJson())
+                path == "/api/usage/request-logs" && method == "GET" -> writeJson(output, 200, requestLogsJson())
+
+                path == "/api/keys" && method == "GET" -> writeJson(output, 200, keysJson())
+                path == "/api/keys" && method == "POST" -> createKey(body, output)
+                path.startsWith("/api/keys/") && method == "DELETE" -> deleteKey(path, output)
+                path.startsWith("/api/keys/") && method == "PATCH" -> patchKey(path, body, output)
+
+                path == "/api/providers" && method == "GET" -> writeJson(output, 200, connectionsJson())
+                path == "/api/providers" && method == "POST" -> createConnection(body, output)
+                path.startsWith("/api/providers/") && method == "PUT" -> patchConnection(path, body, output)
+                path.startsWith("/api/providers/") && method == "DELETE" -> deleteConnection(path, output)
+
+                path == "/api/combos" && method == "GET" -> writeJson(output, 200, combosJson())
+                path == "/api/combos" && method == "POST" -> createCombo(body, output)
+                path.startsWith("/api/combos/") && method == "DELETE" -> deleteCombo(path, output)
+
+                path == "/api/provider-nodes" && method == "GET" -> writeJson(output, 200, nodesJson())
+                path == "/api/provider-nodes" && method == "POST" -> createNode(body, output)
+
+                path == "/api/models/alias" && method == "GET" -> writeJson(output, 200, aliasesJson())
+                path == "/api/models/alias" && method == "POST" -> setAlias(body, output)
+
                 path == "/api/settings" && method == "GET" -> {
                     if (!authorized) return writeJson(output, 401, errorJson(401, "Invalid API key"))
                     writeJson(output, 200, json.encodeToString(settingsJson()))
                 }
 
-                path == "/api/settings" && method == "POST" -> {
+                path == "/api/settings" && (method == "POST" || method == "PATCH") -> {
                     if (!authorized) return writeJson(output, 401, errorJson(401, "Invalid API key"))
                     applySettings(body)
                     writeJson(output, 200, json.encodeToString(settingsJson()))
@@ -213,6 +258,251 @@ class Gateway(private val context: Context) {
         }
     }
 
+    // ---------- management API parity (subset) ----------
+
+    private fun bodyObject(raw: String): JsonObject? =
+        try { json.parseToJsonElement(raw) as? JsonObject } catch (_: Exception) { null }
+
+    private fun textOf(o: JsonObject?, key: String): String =
+        (o?.get(key) as? JsonPrimitive)?.content.orEmpty()
+
+    private fun boolOf(o: JsonObject?, key: String, fallback: Boolean): Boolean =
+        (o?.get(key) as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: fallback
+
+    private fun intOf(o: JsonObject?, key: String, fallback: Int): Int =
+        (o?.get(key) as? JsonPrimitive)?.content?.toIntOrNull() ?: fallback
+
+    private fun stringsOf(o: JsonObject?, key: String): List<String> =
+        ((o?.get(key) as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content }.orEmpty())
+
+    private fun idFrom(path: String): String = path.substringAfterLast('/')
+
+    private fun versionJson(): String = buildJsonObject {
+        put("version", "0.5.123")
+        put("android", true)
+        put("edition", "native-preview")
+    }.let { json.encodeToString(it) }
+
+    private fun usageStatsJson(): String {
+        val usage = Store.state.usage
+        return buildJsonObject {
+            put("requests", usage.size)
+            put("prompt_tokens", usage.sumOf { it.prompt })
+            put("completion_tokens", usage.sumOf { it.completion })
+            put("failed", usage.count { !it.ok })
+            put("providers", buildJsonArray {
+                usage.groupBy { it.provider }.forEach { (provider, entries) ->
+                    add(buildJsonObject {
+                        put("provider", provider)
+                        put("requests", entries.size)
+                        put("tokens", entries.sumOf { it.prompt + it.completion })
+                    })
+                }
+            })
+        }.let { json.encodeToString(it) }
+    }
+
+    private fun requestLogsJson(): String = json.encodeToString(buildJsonArray {
+        Store.state.usage.takeLast(200).asReversed().forEach { u ->
+            add(buildJsonObject {
+                put("ts", u.ts)
+                put("provider", u.provider)
+                put("model", u.model)
+                put("status", if (u.ok) "ok" else "failed")
+                put("prompt_tokens", u.prompt)
+                put("completion_tokens", u.completion)
+            })
+        }
+    })
+
+    private fun keysJson(): String = json.encodeToString(buildJsonArray {
+        Store.state.apiKeys.forEach { k ->
+            add(buildJsonObject {
+                put("id", k.id)
+                put("name", k.name)
+                put("key", k.key)
+                put("isActive", k.active)
+                put("allowedModels", JsonArray(k.allowedModels.map { JsonPrimitive(it) }))
+            })
+        }
+    })
+
+    private fun createKey(raw: String, output: OutputStream) {
+        val incoming = bodyObject(raw)
+        val key = com.ninerouter.android.data.ApiKey(
+            id = java.util.UUID.randomUUID().toString(),
+            name = textOf(incoming, "name"),
+            key = textOf(incoming, "key").ifBlank { Store.newKey() },
+            active = boolOf(incoming, "isActive", true),
+            allowedModels = stringsOf(incoming, "allowedModels"),
+        )
+        Store.mutate { apiKeys.add(key) }
+        writeJson(output, 201, json.encodeToString(buildJsonObject {
+            put("id", key.id); put("name", key.name); put("key", key.key); put("isActive", key.active)
+        }))
+    }
+
+    private fun deleteKey(path: String, output: OutputStream) {
+        val id = idFrom(path)
+        Store.mutate { apiKeys.removeAll { it.id == id } }
+        writeJson(output, 200, "{\"ok\":true}")
+    }
+
+    private fun patchKey(path: String, raw: String, output: OutputStream) {
+        val incoming = bodyObject(raw) ?: return writeJson(output, 400, errorJson(400, "Invalid JSON"))
+        val id = idFrom(path)
+        Store.mutate {
+            val index = apiKeys.indexOfFirst { it.id == id }
+            if (index >= 0) {
+                val old = apiKeys[index]
+                apiKeys[index] = old.copy(
+                    name = if (incoming["name"] != null) textOf(incoming, "name") else old.name,
+                    active = if (incoming["isActive"] != null) boolOf(incoming, "isActive", old.active) else old.active,
+                    allowedModels = if (incoming["allowedModels"] != null) stringsOf(incoming, "allowedModels") else old.allowedModels,
+                )
+            }
+        }
+        writeJson(output, 200, keysJson())
+    }
+
+    private fun connectionsJson(): String = json.encodeToString(buildJsonArray {
+        Store.state.connections.forEach { c ->
+            add(buildJsonObject {
+                put("id", c.id)
+                put("provider", c.provider)
+                put("name", c.name)
+                put("authType", c.authType)
+                put("isActive", c.enabled)
+                put("priority", c.priority)
+                put("testStatus", if (c.unavailableUntil > System.currentTimeMillis()) "error" else "active")
+                put("lastError", c.lastError)
+            })
+        }
+    })
+
+    private fun createConnection(raw: String, output: OutputStream) {
+        val incoming = bodyObject(raw)
+        val provider = textOf(incoming, "provider")
+        if (provider.isBlank()) return writeJson(output, 400, errorJson(400, "provider is required"))
+        val c = Connection(
+            id = java.util.UUID.randomUUID().toString(),
+            provider = provider,
+            name = textOf(incoming, "name"),
+            authType = textOf(incoming, "authType").ifBlank { "apikey" },
+            apiKey = textOf(incoming, "apiKey"),
+            accessToken = textOf(incoming, "accessToken"),
+            refreshToken = textOf(incoming, "refreshToken"),
+            enabled = boolOf(incoming, "isActive", true),
+            priority = intOf(incoming, "priority", 0),
+        )
+        Store.mutate { connections.add(c) }
+        writeJson(output, 201, json.encodeToString(buildJsonObject { put("id", c.id); put("provider", c.provider) }))
+    }
+
+    private fun patchConnection(path: String, raw: String, output: OutputStream) {
+        val incoming = bodyObject(raw) ?: return writeJson(output, 400, errorJson(400, "Invalid JSON"))
+        val id = idFrom(path)
+        Store.mutate {
+            val index = connections.indexOfFirst { it.id == id }
+            if (index >= 0) {
+                val old = connections[index]
+                connections[index] = old.copy(
+                    name = textOf(incoming, "name").ifBlank { old.name },
+                    enabled = if (incoming["isActive"] != null) boolOf(incoming, "isActive", old.enabled) else old.enabled,
+                    priority = if (incoming["priority"] != null) intOf(incoming, "priority", old.priority) else old.priority,
+                )
+            }
+        }
+        writeJson(output, 200, connectionsJson())
+    }
+
+    private fun deleteConnection(path: String, output: OutputStream) {
+        val id = idFrom(path)
+        Store.mutate { connections.removeAll { it.id == id } }
+        writeJson(output, 200, "{\"ok\":true}")
+    }
+
+    private fun combosJson(): String = json.encodeToString(buildJsonArray {
+        Store.state.combos.forEach { c ->
+            add(buildJsonObject {
+                put("id", c.name)
+                put("name", c.name)
+                put("models", JsonArray(c.models.map { JsonPrimitive(it) }))
+                put("strategy", c.strategy)
+                put("routerModel", c.routerModel)
+                put("judgeModel", c.judgeModel)
+            })
+        }
+    })
+
+    private fun createCombo(raw: String, output: OutputStream) {
+        val incoming = bodyObject(raw)
+        val name = textOf(incoming, "name")
+        val models = stringsOf(incoming, "models")
+        if (name.isBlank() || models.isEmpty()) return writeJson(output, 400, errorJson(400, "name and models are required"))
+        Store.mutate {
+            combos.add(
+                Combo(
+                    name = name,
+                    models = models,
+                    strategy = textOf(incoming, "strategy").ifBlank { "fallback" },
+                    routerModel = textOf(incoming, "routerModel"),
+                    judgeModel = textOf(incoming, "judgeModel"),
+                )
+            )
+        }
+        writeJson(output, 201, json.encodeToString(buildJsonObject { put("id", name); put("name", name) }))
+    }
+
+    private fun deleteCombo(path: String, output: OutputStream) {
+        val name = idFrom(path)
+        Store.mutate { combos.removeAll { it.name == name } }
+        writeJson(output, 200, "{\"ok\":true}")
+    }
+
+    private fun aliasesJson(): String = json.encodeToString(buildJsonObject {
+        Store.state.aliases.forEach { (alias, target) -> put(alias, target) }
+    })
+
+    private fun setAlias(raw: String, output: OutputStream) {
+        val incoming = bodyObject(raw)
+        val alias = textOf(incoming, "alias")
+        val target = textOf(incoming, "targetModel").ifBlank { textOf(incoming, "model") }
+        if (alias.isBlank() || target.isBlank()) {
+            return writeJson(output, 400, errorJson(400, "alias and targetModel are required"))
+        }
+        Store.mutate { aliases[alias] = target }
+        writeJson(output, 200, aliasesJson())
+    }
+
+    private fun nodesJson(): String = json.encodeToString(buildJsonArray {
+        Store.state.nodes.forEach { n ->
+            add(buildJsonObject {
+                put("id", n.id); put("name", n.name); put("prefix", n.prefix)
+                put("type", n.type); put("baseUrl", n.baseUrl)
+            })
+        }
+    })
+
+    private fun createNode(raw: String, output: OutputStream) {
+        val incoming = bodyObject(raw)
+        val prefix = textOf(incoming, "prefix")
+        val baseUrl = textOf(incoming, "baseUrl")
+        if (prefix.isBlank() || baseUrl.isBlank()) {
+            return writeJson(output, 400, errorJson(400, "prefix and baseUrl are required"))
+        }
+        val node = ProviderNode(
+            id = "node-" + java.util.UUID.randomUUID().toString().take(8),
+            prefix = prefix,
+            name = textOf(incoming, "name").ifBlank { prefix },
+            type = textOf(incoming, "type").ifBlank { "openai-compatible" },
+            baseUrl = baseUrl,
+            apiKey = textOf(incoming, "apiKey"),
+        )
+        Store.mutate { nodes.add(node) }
+        writeJson(output, 201, json.encodeToString(buildJsonObject { put("id", node.id) }))
+    }
+
     private fun embeddingsUrl(def: com.ninerouter.android.data.ProviderDef): String {
         val base = def.baseUrl.ifBlank { "https://api.openai.com/v1/chat/completions" }
         if (base.contains("/embeddings")) return base
@@ -250,6 +540,12 @@ class Gateway(private val context: Context) {
         put("rtkEnabled", s.rtkEnabled)
         put("fallbackStrategy", s.fallbackStrategy)
         put("stickyLimit", s.stickyLimit)
+        put("cavemanEnabled", s.cavemanEnabled)
+        put("cavemanLevel", s.cavemanLevel)
+        put("ponytailEnabled", s.ponytailEnabled)
+        put("ponytailLevel", s.ponytailLevel)
+        put("customPromptEnabled", s.customPromptEnabled)
+        put("customPrompt", s.customPrompt)
         put("connections", buildJsonArray {
             Store.state.connections.forEach { c ->
                 add(buildJsonObject {
@@ -289,6 +585,9 @@ class Gateway(private val context: Context) {
                 })
             }
         })
+        put("aliases", buildJsonObject {
+            Store.state.aliases.forEach { (alias, target) -> put(alias, target) }
+        })
     }
 
     private fun applySettings(raw: String) {
@@ -298,6 +597,12 @@ class Gateway(private val context: Context) {
             (incoming["rtkEnabled"] as? JsonPrimitive)?.content?.toBoolean()?.let { settings = settings.copy(rtkEnabled = it) }
             (incoming["fallbackStrategy"] as? JsonPrimitive)?.content?.let { settings = settings.copy(fallbackStrategy = it) }
             (incoming["stickyLimit"] as? JsonPrimitive)?.content?.toIntOrNull()?.let { settings = settings.copy(stickyLimit = it) }
+            (incoming["cavemanEnabled"] as? JsonPrimitive)?.content?.toBoolean()?.let { settings = settings.copy(cavemanEnabled = it) }
+            (incoming["ponytailEnabled"] as? JsonPrimitive)?.content?.toBoolean()?.let { settings = settings.copy(ponytailEnabled = it) }
+            (incoming["customPromptEnabled"] as? JsonPrimitive)?.content?.toBoolean()?.let { settings = settings.copy(customPromptEnabled = it) }
+            (incoming["customPrompt"] as? JsonPrimitive)?.content?.let { settings = settings.copy(customPrompt = it) }
+            (incoming["cavemanLevel"] as? JsonPrimitive)?.content?.let { settings = settings.copy(cavemanLevel = it) }
+            (incoming["ponytailLevel"] as? JsonPrimitive)?.content?.let { settings = settings.copy(ponytailLevel = it) }
         }
     }
 

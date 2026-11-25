@@ -8,6 +8,7 @@ object ModelResolver {
 
     fun resolve(modelStr: String): Target? {
         val trimmed = modelStr.trim()
+        Store.state.aliases[trimmed]?.let { return resolve(it) }
         if (trimmed.indexOf('/') >= 0) {
             val cut = trimmed.indexOf('/')
             val prefix = trimmed.substring(0, cut)

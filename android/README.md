@@ -21,28 +21,31 @@ http://127.0.0.1:20128/v1
 - Provider registry (151 entries) exported at build time from the repo into
   `app/src/main/assets/provider_registry.json` by `scripts/export-android-config.mjs`.
 - Model resolution (`provider/model`, aliases, custom node prefixes, bare-model
-  inference), combos (`fallback` / sticky `round-robin`), account selection
-  (`fill-first` / sticky `round-robin`), cooldown fallback, token refresh
-  (401/403), RTK tool-result compression, usage history.
+  inference, aliases, capability ordering), combos (`fallback` / sticky
+  `round-robin` / `smart`), account selection (`fill-first` / sticky
+  `round-robin`), cooldown fallback, token refresh (401/403), RTK tool-result
+  compression, caveman/ponytail/custom prompt injectors, and usage history.
 - OAuth PKCE (browser + `ninerouter://oauth/callback`) and device-code login.
 - Custom OpenAI/Anthropic-compatible nodes with per-node API key.
 - Multiple API keys with per-key model/combo allow-list, constant-time compare.
 - In-app streaming chat, so the APK is usable without any external CLI.
-- **Mobile-first dashboard** using the upstream visual language: exact dark
-  palette from `src/app/globals.css`, brand orange, the original `hub` brand
-  mark, provider icon set bundled from `public/providers`, grouped provider
-  cards, and bottom navigation with an overflow menu for secondary sections.
-- Dashboard screens: Endpoint, Providers, Combos, Usage, Settings, Basic Chat,
-  plus informational views for Console Log, Quota Tracker, MITM, CLI Tools,
-  Proxy Pools, Token Saver, Translator, and Skills.
+- **Compact mobile-first dashboard** using the upstream visual language: exact
+  dark palette from `src/app/globals.css`, brand orange, the original `hub`
+  brand mark, provider icon set bundled from `public/providers`, grouped
+  provider cards, a 54 dp bottom navigation, and edge-to-edge system bars.
+- Dashboard screens: Endpoint, Providers, Combos, Usage, Settings, and Basic
+  Chat, reached through a compact bottom navigation and a top-bar chat action.
+- Management API parity (subset): `/api/version`, `/api/auth/status`,
+  `/api/usage/stats`, `/api/usage/request-logs`, `/api/keys`,
+  `/api/providers`, `/api/combos`, `/api/provider-nodes`, `/api/models/alias`.
 - Secrets are AES-GCM boxed with the Android Keystore before disk write.
 
 ## Not in this slice yet
 
-- OAuth PKCE / device-code login flows (tokens can be pasted manually).
 - Native Kiro / Cursor / Antigravity / commandcode binary envelopes.
-- MITM certificate handling, cloud sync, image/tts/stt/embedding endpoints.
+- MITM certificate handling, cloud sync, image/TTS/STT/video endpoints.
 - Full translator parity for thinking blocks, tool-id edge cases, `is_error`.
+- Combo strategy `fusion` (panel + judge).
 - LAN exposure. The app never binds `0.0.0.0`; use `adb reverse` or an explicit
   tunnel if another device must reach it.
 

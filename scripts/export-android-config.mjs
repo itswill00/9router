@@ -47,9 +47,22 @@ for (const file of fs.readdirSync(registryDir).filter((f) => f.endsWith(".js")).
   const oauth = block(src, "oauth");
   const display = block(src, "display");
   const modelsBlock = block(src, "models", "[", "]");
-  const models = modelsBlock
-    ? [...modelsBlock.matchAll(/\{\s*id:\s*["']([^"']+)["']/g)].map((m) => m[1])
-    : [];
+  const models = [];
+  const modelCapabilities = {};
+  if (modelsBlock) {
+    for (const m of modelsBlock.matchAll(/\{[\s\S]*?\}/g)) {
+      const chunk = m[0];
+      const modelId = str(chunk, /^\s*id:\s*["']([^"']+)["']/m);
+      if (!modelId) continue;
+      models.push(modelId);
+      const caps = [...chunk.matchAll(/capabilities:\s*\[([^\]]*)\]/g)]
+        .flatMap((c) => [...c[1].matchAll(/["']([^"']+)["']/g)].map((v) => v[1]));
+      const type = str(chunk, /^\s*type:\s*["']([^"']+)["']/m);
+      if (type === "image") caps.push("image");
+      if (type === "embedding") caps.push("embedding");
+      if (caps.length) modelCapabilities[modelId] = [...new Set(caps)];
+    }
+  }
 
   entries.push({
     id,
@@ -66,6 +79,7 @@ for (const file of fs.readdirSync(registryDir).filter((f) => f.endsWith(".js")).
     redirectUri: str(oauth, /^\s*redirectUri:\s*["']([^"']+)["']/m),
     scope: str(oauth, /^\s*scope:\s*["']([^"']+)["']/m),
     models,
+    modelCapabilities,
   });
 }
 
