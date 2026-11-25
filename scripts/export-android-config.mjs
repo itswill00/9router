@@ -13,6 +13,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { MODEL_PRICING } from "../open-sse/providers/pricing.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const registryDir = path.join(root, "open-sse", "providers", "registry");
@@ -38,15 +39,43 @@ const block = (src, key, open = "{", close = "}") => {
   return "";
 };
 
+const lastBlock = (src, key, open = "{", close = "}") => {
+  const needle = `${key}: ${open}`;
+  const start = src.lastIndexOf(needle);
+  if (start < 0) return "";
+  let depth = 0;
+  for (let i = start + needle.length; i < src.length; i++) {
+    if (src[i] === open) depth++;
+    else if (src[i] === close) {
+      if (depth === 0) return src.slice(start, i + 1);
+      depth--;
+    }
+  }
+  return "";
+};
+
 const entries = [];
 for (const file of fs.readdirSync(registryDir).filter((f) => f.endsWith(".js")).sort()) {
   const src = fs.readFileSync(path.join(registryDir, file), "utf8");
   const id = str(src, /^\s*id:\s*["']([^"']+)["']/m);
   if (!id) continue;
   const transport = block(src, "transport");
-  const oauth = block(src, "oauth");
+  const oauth = lastBlock(src, "oauth");
   const display = block(src, "display");
   const modelsBlock = block(src, "models", "[", "]");
+  // Public installed-app OAuth client shared by the Google CLI providers.
+  // Kept here because the upstream constant lives in a module that also imports
+  // a CommonJS MITM helper.
+  const GOOGLE_CLIENT_ID = "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com";
+  const GOOGLE_CLIENT_SECRET = "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";
+  const googleProvider = ["gemini", "gemini-cli", "antigravity"].includes(id);
+
+  const scopes = [...(oauth.match(/scopes:\s*\[([\s\S]*?)\]/)?.[1] || "")
+    .matchAll(/["']([^"']+)["']/g)].map((m) => m[1]);
+  const extraBlock = block(oauth, "extraParams");
+  const extraParams = {};
+  for (const m of extraBlock.matchAll(/([A-Za-z0-9_]+):\s*["']([^"']*)["']/g)) extraParams[m[1]] = m[2];
+
   const models = [];
   const modelCapabilities = {};
   if (modelsBlock) {
@@ -73,11 +102,18 @@ for (const file of fs.readdirSync(registryDir).filter((f) => f.endsWith(".js")).
     format: str(transport, /^\s*format:\s*["']([^"']+)["']/m) || "openai",
     baseUrl: str(transport, /^\s*baseUrl:\s*["']([^"']+)["']/m),
     tokenUrl: str(oauth, /^\s*tokenUrl:\s*["']([^"']+)["']/m),
-    clientId: str(oauth, /^\s*clientId:\s*["']([^"']+)["']/m),
+    clientId: str(oauth, /^\s*clientId:\s*["']([^"']+)["']/m) || (googleProvider ? GOOGLE_CLIENT_ID : ""),
     authorizeUrl: str(oauth, /^\s*authorizeUrl:\s*["']([^"']+)["']/m),
     deviceCodeUrl: str(oauth, /^\s*deviceCodeUrl:\s*["']([^"']+)["']/m),
     redirectUri: str(oauth, /^\s*redirectUri:\s*["']([^"']+)["']/m),
-    scope: str(oauth, /^\s*scope:\s*["']([^"']+)["']/m),
+    scope: str(oauth, /^\s*scope:\s*["']([^"']+)["']/m) ||
+      str(oauth, /^\s*scopes:\s*["']([^"']+)["']/m) ||
+      scopes.join(" "),
+    clientSecret: str(oauth, /^\s*clientSecret:\s*["']([^"']+)["']/m) || (googleProvider ? GOOGLE_CLIENT_SECRET : ""),
+    tokenEncoding: str(oauth, /^\s*encoding:\s*["']([^"']+)["']/m) || "form",
+    callbackPath: str(oauth, /^\s*callbackPath:\s*["']([^"']+)["']/m) || "/callback",
+    fixedPort: Number.parseInt(str(oauth, /^\s*fixedPort:\s*(\d+)/m) || "0", 10) || 0,
+    extraParams,
     models,
     modelCapabilities,
   });
@@ -85,4 +121,7 @@ for (const file of fs.readdirSync(registryDir).filter((f) => f.endsWith(".js")).
 
 fs.mkdirSync(path.dirname(output), { recursive: true });
 fs.writeFileSync(output, JSON.stringify(entries) + "\n");
+const pricingOutput = path.join(root, "android", "app", "src", "main", "assets", "pricing.json");
+fs.writeFileSync(pricingOutput, JSON.stringify(MODEL_PRICING) + "\n");
 console.log(`Exported ${entries.length} providers → ${path.relative(root, output)}`);
+console.log(`Exported ${Object.keys(MODEL_PRICING).length} pricing rows → ${path.relative(root, pricingOutput)}`);

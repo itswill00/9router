@@ -48,9 +48,10 @@ fun Panel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> 
 fun SectionHeader(
     title: String,
     subtitle: String? = null,
+    modifier: Modifier = Modifier,
     action: (@Composable () -> Unit)? = null,
 ) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(
                 title,

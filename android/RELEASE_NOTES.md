@@ -33,9 +33,16 @@ no Node.js, no shell, no root, and no bundled Linux userland are required.**
   never runs JavaScript.
 - **Credential management**: API keys and OAuth tokens are encrypted with
   AES-GCM using the Android Keystore before being written to disk.
-- **Login flows**: generic OAuth PKCE through the browser with a
-  `ninerouter://oauth/callback` redirect, plus device-code login where the
-  provider supports it. Tokens can also be pasted manually.
+- **Login flows**: OAuth PKCE through the browser with a temporary loopback
+  callback server (the redirect shape provider client IDs expect), per-provider
+  form/JSON token exchange, Google client secrets, and device-code login.
+  Tokens can also be pasted manually.
+- **Working connection toggles** and a compact two-column provider page:
+  connected accounts are listed first, and one connect dialog offers browser
+  login, device login, API key, or token paste.
+- **Usage & Analytics**: Overview/Details tabs, Today/24h/7D/30D/60D/All
+  periods, overview cards, recent requests, an area chart, provider/model
+  breakdowns, and a per-model table with expandable provider detail.
 - **Access control**: multiple API keys with per-key model/combo allow-lists,
   compared in constant time.
 - **Custom nodes**: add OpenAI-compatible or Anthropic-compatible endpoints
@@ -89,11 +96,11 @@ This is a first native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.1-android` (version code 2)
+- Version: `0.1.1-android` (version code 3)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15)
 - Source branch: `feat/android-native-gateway`
 - SHA-256 of the attached APK:
-  `ba677fe4ab5a10957ff54dfb385fc5430fb7c3fee3ffd74ee3b3e496116435a6`
+  `f7c8ddbc254a4adf5ee0603ae6fb218df9b9ad12bea544043878e135735cbb27`
 
 See `android/README.md` for the module layout and build instructions.

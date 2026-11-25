@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ninerouter.android.R
+import com.ninerouter.android.data.Store
 import com.ninerouter.android.server.GatewayState
 
 private data class NavItem(val title: String, val icon: Int)
@@ -51,6 +52,7 @@ private val navItems = listOf(
 
 @Composable
 fun AppShell(refreshTrigger: () -> Unit) {
+    @Suppress("UNUSED_VARIABLE") val revision = Store.revision
     var tab by remember { mutableIntStateOf(0) }
     var showChat by remember { mutableStateOf(false) }
     val running by GatewayState.running.collectAsState()

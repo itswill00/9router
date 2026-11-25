@@ -289,6 +289,8 @@ class Gateway(private val context: Context) {
             put("requests", usage.size)
             put("prompt_tokens", usage.sumOf { it.prompt })
             put("completion_tokens", usage.sumOf { it.completion })
+            put("cached_tokens", usage.sumOf { it.cached })
+            put("total_cost", usage.sumOf { it.cost })
             put("failed", usage.count { !it.ok })
             put("providers", buildJsonArray {
                 usage.groupBy { it.provider }.forEach { (provider, entries) ->

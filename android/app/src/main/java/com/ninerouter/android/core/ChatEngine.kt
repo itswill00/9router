@@ -273,6 +273,11 @@ class ChatEngine(
             .takeIf { it > 0 } ?: estimateTokens(requestBody)
         val completion = n("completion_tokens", "output_tokens").toInt()
             .takeIf { it > 0 } ?: estimateTokens(responseBody)
+        val details = usage?.get("prompt_tokens_details") as? JsonObject
+        val cached = ((details?.get("cached_tokens") as? JsonPrimitive)?.content?.toIntOrNull()
+            ?: (usage?.get("cache_read_input_tokens") as? JsonPrimitive)?.content?.toIntOrNull()
+            ?: 0).coerceAtMost(prompt)
+        val cost = com.ninerouter.android.data.Pricing.cost(model, prompt, completion, cached)
         Store.mutate {
             this.usage.add(
                 com.ninerouter.android.data.UsageEntry(
@@ -281,6 +286,8 @@ class ChatEngine(
                     model = model,
                     prompt = prompt,
                     completion = completion,
+                    cached = cached,
+                    cost = cost,
                     ok = ok,
                 )
             )

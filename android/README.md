@@ -25,7 +25,9 @@ http://127.0.0.1:20128/v1
   `round-robin` / `smart`), account selection (`fill-first` / sticky
   `round-robin`), cooldown fallback, token refresh (401/403), RTK tool-result
   compression, caveman/ponytail/custom prompt injectors, and usage history.
-- OAuth PKCE (browser + `ninerouter://oauth/callback`) and device-code login.
+- OAuth PKCE with a temporary loopback callback server (the same redirect shape
+  the desktop app uses) plus device-code login. Provider-specific token
+  encodings (form vs JSON) and client secrets are honored.
 - Custom OpenAI/Anthropic-compatible nodes with per-node API key.
 - Multiple API keys with per-key model/combo allow-list, constant-time compare.
 - In-app streaming chat, so the APK is usable without any external CLI.
@@ -35,6 +37,12 @@ http://127.0.0.1:20128/v1
   provider cards, a 54 dp bottom navigation, and edge-to-edge system bars.
 - Dashboard screens: Endpoint, Providers, Combos, Usage, Settings, and Basic
   Chat, reached through a compact bottom navigation and a top-bar chat action.
+- **Usage & Analytics**: Overview/Details tabs, Today/24h/7D/30D/60D/All
+  periods, overview cards, recent requests, an area chart, provider/model
+  breakdowns, and a per-model table with expandable provider detail.
+- **Provider page**: two-column provider tiles, a connected-connections section
+  with working enable switches, and a single connect dialog that offers
+  browser login, device login, API key, or token paste.
 - Management API parity (subset): `/api/version`, `/api/auth/status`,
   `/api/usage/stats`, `/api/usage/request-logs`, `/api/keys`,
   `/api/providers`, `/api/combos`, `/api/provider-nodes`, `/api/models/alias`.
