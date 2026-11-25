@@ -101,6 +101,6 @@ This is a first native slice, not full parity with the Node gateway:
 - Target SDK: 35 (Android 15)
 - Source branch: `feat/android-native-gateway`
 - SHA-256 of the attached APK:
-  `f7c8ddbc254a4adf5ee0603ae6fb218df9b9ad12bea544043878e135735cbb27`
+  `c650070bed1a2dd30c062586f7ffa262d8dd45e3b663cdb998fad9d23dfbd825`
 
 See `android/README.md` for the module layout and build instructions.

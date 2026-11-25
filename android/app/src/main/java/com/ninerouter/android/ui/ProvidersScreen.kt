@@ -137,6 +137,7 @@ fun ProvidersScreen(refresh: () -> Unit) {
                     )
                 }
                 items(Store.state.connections, key = { "c-${it.id}" }) { c ->
+                    @Suppress("UNUSED_VARIABLE") val revision = Store.revision
                     Box(Modifier.padding(horizontal = 12.dp)) {
                         Panel {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -253,9 +254,9 @@ fun ProvidersScreen(refresh: () -> Unit) {
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     selected?.let { def ->
-                        if (def.authorizeUrl.isNotBlank() || def.deviceCodeUrl.isNotBlank()) {
+                        if (def.id in BROWSER_OAUTH || def.id in DEVICE_OAUTH) {
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                if (def.authorizeUrl.isNotBlank()) {
+                                if (def.id in BROWSER_OAUTH) {
                                     TextButton(onClick = {
                                         oauthBusy = def
                                         scope.launch(Dispatchers.IO) {
@@ -291,7 +292,7 @@ fun ProvidersScreen(refresh: () -> Unit) {
                                         }
                                     }) { Text("Browser login") }
                                 }
-                                if (def.deviceCodeUrl.isNotBlank()) {
+                                if (def.id in DEVICE_OAUTH) {
                                     TextButton(onClick = {
                                         scope.launch(Dispatchers.IO) {
                                             val challenge = OAuthFlow.startDevice(def)
@@ -330,6 +331,15 @@ fun ProvidersScreen(refresh: () -> Unit) {
                                 }
                             }
                         }
+                    }
+                    if (selected != null && selected!!.authType.equals("oauth", true) &&
+                        selected!!.id !in BROWSER_OAUTH && selected!!.id !in DEVICE_OAUTH
+                    ) {
+                        Text(
+                            "This provider uses a custom login flow. Paste an access token below.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NineRouterColors.TextMuted,
+                        )
                     }
                     OutlinedTextField(provider, { provider = it }, label = { Text("Provider id or alias") }, singleLine = true)
                     OutlinedTextField(label, { label = it }, label = { Text("Label (optional)") }, singleLine = true)
@@ -440,6 +450,14 @@ fun ProvidersScreen(refresh: () -> Unit) {
         )
     }
 }
+
+/** Providers whose OAuth can be completed with the generic loopback PKCE flow.
+ * Custom flows (Kiro/AWS SSO, Kilo device JSON, Cursor local DB import) are not
+ * presented as working buttons; those tokens must be pasted manually. */
+private val BROWSER_OAUTH = setOf(
+    "claude", "codex", "gemini", "gemini-cli", "antigravity", "iflow", "qwen",
+)
+private val DEVICE_OAUTH = setOf("github")
 
 @Composable
 private fun ProviderTile(
