@@ -123,7 +123,7 @@ class Gateway(private val context: Context) {
                 path == "/api/health" || path == "/health" -> writeJson(output, 200, buildJsonObject {
                     put("ok", true)
                     put("android", true)
-                    put("version", "0.1.8-android")
+                    put("version", "0.1.9-android")
                     put("baseUrl", GatewayState.BASE_URL)
                     put("connections", Store.state.connections.size)
                     put("models", Catalog.modelIds().size)

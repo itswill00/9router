@@ -23,6 +23,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -62,8 +64,15 @@ fun AppShell(refreshTrigger: () -> Unit) {
     val running by GatewayState.running.collectAsState()
     val updateState by UpdateManager.state.collectAsState()
     val context = LocalContext.current
+    var updatePrompt by remember { mutableStateOf<UpdateManager.Release?>(null) }
 
     LaunchedEffect(Unit) { UpdateManager.autoCheck(context) }
+    LaunchedEffect(updateState) {
+        val available = updateState as? UpdateManager.State.Available ?: return@LaunchedEffect
+        if (UpdateManager.shouldAnnounce(context, available.release.version)) {
+            updatePrompt = available.release
+        }
+    }
 
     // System back: close chat first, then return to the Endpoint tab. Only the
     // home tab with no chat open lets Android finish the activity.
@@ -108,7 +117,7 @@ fun AppShell(refreshTrigger: () -> Unit) {
                             color = NineRouterColors.TextMain,
                         )
                         Text(
-                            "v0.1.8 · ${if (running) "running" else "stopped"}",
+                            "v0.1.9 · ${if (running) "running" else "stopped"}",
                             style = MaterialTheme.typography.labelSmall,
                             color = if (running) NineRouterColors.Success else NineRouterColors.TextSubtle,
                         )
@@ -196,5 +205,47 @@ fun AppShell(refreshTrigger: () -> Unit) {
                 }
             }
         }
+    }
+
+    updatePrompt?.let { release ->
+        AlertDialog(
+            onDismissRequest = {
+                UpdateManager.markAnnounced(context, release.version)
+                updatePrompt = null
+            },
+            containerColor = NineRouterColors.Surface,
+            title = { Text("Update available", color = NineRouterColors.TextMain) },
+            text = {
+                Column {
+                    Text(
+                        "9Router ${release.version} is ready to install.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = NineRouterColors.TextMain,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        release.notes.trim().ifBlank { "No release notes." }.take(700),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NineRouterColors.TextMuted,
+                        maxLines = 8,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    UpdateManager.markAnnounced(context, release.version)
+                    updatePrompt = null
+                    showChat = false
+                    tab = 4
+                }) { Text("Update", color = NineRouterColors.BrandOrange) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    UpdateManager.markAnnounced(context, release.version)
+                    updatePrompt = null
+                }) { Text("Later") }
+            },
+        )
     }
 }

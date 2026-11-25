@@ -384,6 +384,25 @@ private fun UpdatePanel(state: UpdateManager.State) {
                 Text("Open releases on GitHub", color = NineRouterColors.TextMuted)
             }
         }
+
+        val lastChecked = remember(state) { UpdateManager.lastChecked(context) }
+        if (lastChecked > 0) {
+            Text(
+                "Last checked ${relativeAgo(lastChecked)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = NineRouterColors.TextSubtle,
+            )
+        }
+    }
+}
+
+private fun relativeAgo(timestamp: Long): String {
+    val diff = (System.currentTimeMillis() - timestamp).coerceAtLeast(0)
+    return when {
+        diff < 60_000 -> "just now"
+        diff < 3_600_000 -> "${diff / 60_000} min ago"
+        diff < 86_400_000 -> "${diff / 3_600_000} h ago"
+        else -> "${diff / 86_400_000} d ago"
     }
 }
 

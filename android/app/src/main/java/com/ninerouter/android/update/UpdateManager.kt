@@ -35,6 +35,7 @@ object UpdateManager {
     private const val API_URL = "https://api.github.com/repos/$REPO/releases?per_page=30"
     private const val PREFS = "ninerouter_updater"
     private const val KEY_LAST_CHECK = "last_check"
+    private const val KEY_ANNOUNCED = "announced_version"
     private const val CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
 
     sealed interface State {
@@ -73,6 +74,20 @@ object UpdateManager {
     fun currentVersion(context: Context): String = runCatching {
         context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty()
     }.getOrDefault("")
+
+    /** Epoch millis of the last successful check, or 0 when never checked. */
+    fun lastChecked(context: Context): Long =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_LAST_CHECK, 0L)
+
+    /** The launch prompt is shown once per version; "Later" is remembered. */
+    fun shouldAnnounce(context: Context, version: String): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_ANNOUNCED, "") != version
+
+    fun markAnnounced(context: Context, version: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_ANNOUNCED, version).apply()
+    }
 
     /** Runs at most once per [CHECK_INTERVAL_MS]; silent failures keep the UI quiet. */
     fun autoCheck(context: Context) {
