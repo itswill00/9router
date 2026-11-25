@@ -219,6 +219,9 @@ class Upstream {
         val oauth = conn.accessToken.isNotBlank()
         val token = conn.accessToken.ifBlank { conn.apiKey }
         when {
+            // Web-session providers authenticate with the browser cookie header.
+            conn.authType.equals("cookie", true) && conn.apiKey.isNotBlank() ->
+                builder.header("Cookie", conn.apiKey)
             // OpenAI-compatible providers: Bearer, unless they declare x-api-key.
             def.format == Formats.CLAUDE -> {
                 if (oauth) {

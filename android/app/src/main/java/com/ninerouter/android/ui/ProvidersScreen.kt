@@ -470,6 +470,14 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
                 if (ProviderAuth.cookie(def)) {
                     Spacer(Modifier.height(4.dp))
                     SecondaryButton("Paste cookie") { showCookie = true }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Web-session providers use the Cookie header. Some need browser-only " +
+                            "attestation the Android build does not reproduce, so a cookie may not " +
+                            "work for every web provider.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NineRouterColors.Warning,
+                    )
                 }
             }
         }

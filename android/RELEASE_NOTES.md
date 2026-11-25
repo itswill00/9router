@@ -1,10 +1,19 @@
-# 9Router Android 0.1.5
+# 9Router Android 0.1.6
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.4
+## What changed since 0.1.5
+
+- **Cookie connections now send the cookie.** A Web Cookie connection is sent as
+  the `Cookie` header instead of a bearer token.
+- **Web-session providers are labelled honestly.** The provider page explains
+  that some web providers need browser-only attestation (DeepSeek proof-of-work,
+  ChatGPT web sockets, etc.) that the Android build does not reproduce, so a
+  cookie may not work for every one of them.
+
+## What changed in 0.1.5
 
 - **Claude streaming now works.** Claude SSE (`content_block_delta` /
   `content_block_start`) is translated to OpenAI chunks, so streaming chat with
@@ -159,11 +168,11 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.5-android` (version code 7)
+- Version: `0.1.6-android` (version code 8)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15)
 - Source branch: `feat/android-native-gateway`
 - SHA-256 of the attached APK:
-  `d914c30afa9d61e1a69979df6fa21aad5ed0b8833f2b463d6260bb6f9595a258`
+  `d4764a11e2025a2b149b73679862109f334d65f6f8dae15cbbb128404aa0f12b`
 
 See `android/README.md` for the module layout and build instructions.
