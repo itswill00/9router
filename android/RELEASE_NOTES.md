@@ -43,7 +43,7 @@ Download `app-debug.apk` from this release and sideload it:
 adb install -r app-debug.apk
 ```
 
-Open the app, tap **Start gateway**, then copy the API key from the Overview
+Open the app, tap **Start gateway**, then copy the API key from the **Endpoint**
 tab. Point any OpenAI-compatible client at:
 
 ```text
