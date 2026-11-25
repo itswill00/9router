@@ -3,6 +3,12 @@ package com.ninerouter.android.ui
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -146,27 +152,33 @@ fun SettingsScreen(refresh: () -> Unit) {
                     style = MaterialTheme.typography.labelSmall,
                     color = NineRouterColors.TextMuted,
                 )
-                if (s.fallbackStrategy == "round-robin") {
-                    DividerLine(Modifier.padding(vertical = 8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Sticky limit", style = MaterialTheme.typography.bodyMedium, color = NineRouterColors.TextMain)
+                AnimatedVisibility(
+                    visible = s.fallbackStrategy == "round-robin",
+                    enter = fadeIn(tween(200)) + expandVertically(tween(240)),
+                    exit = fadeOut(tween(140)) + shrinkVertically(tween(180)),
+                ) {
+                    Column {
+                        DividerLine(Modifier.padding(vertical = 8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Sticky limit", style = MaterialTheme.typography.bodyMedium, color = NineRouterColors.TextMain)
+                                Text(
+                                    "Requests kept on one account before rotating.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = NineRouterColors.TextMuted,
+                                )
+                            }
+                            TextButton(onClick = { save { copy(stickyLimit = (stickyLimit - 1).coerceAtLeast(1)) } }) {
+                                Text("−", style = MaterialTheme.typography.titleMedium)
+                            }
                             Text(
-                                "Requests kept on one account before rotating.",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = NineRouterColors.TextMuted,
+                                s.stickyLimit.toString(),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = NineRouterColors.TextMain,
                             )
-                        }
-                        TextButton(onClick = { save { copy(stickyLimit = (stickyLimit - 1).coerceAtLeast(1)) } }) {
-                            Text("−", style = MaterialTheme.typography.titleMedium)
-                        }
-                        Text(
-                            s.stickyLimit.toString(),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = NineRouterColors.TextMain,
-                        )
-                        TextButton(onClick = { save { copy(stickyLimit = (stickyLimit + 1).coerceAtMost(50)) } }) {
-                            Text("+", style = MaterialTheme.typography.titleMedium)
+                            TextButton(onClick = { save { copy(stickyLimit = (stickyLimit + 1).coerceAtMost(50)) } }) {
+                                Text("+", style = MaterialTheme.typography.titleMedium)
+                            }
                         }
                     }
                 }
@@ -198,7 +210,11 @@ fun SettingsScreen(refresh: () -> Unit) {
                         }
                     } else null,
                 ) { value -> save { copy(cavemanEnabled = value) } }
-                if (s.cavemanEnabled) {
+                AnimatedVisibility(
+                    visible = s.cavemanEnabled,
+                    enter = fadeIn(tween(200)) + expandVertically(tween(220)),
+                    exit = fadeOut(tween(140)) + shrinkVertically(tween(160)),
+                ) {
                     Text(
                         "Level (for example 1–3). Higher means shorter answers.",
                         style = MaterialTheme.typography.labelSmall,
@@ -227,15 +243,21 @@ fun SettingsScreen(refresh: () -> Unit) {
                     "Prepend your own instructions to every request.",
                     s.customPromptEnabled,
                 ) { value -> save { copy(customPromptEnabled = value) } }
-                if (s.customPromptEnabled) {
-                    Spacer(Modifier.height(6.dp))
-                    OutlinedTextField(
-                        s.customPrompt,
-                        { value -> save { copy(customPrompt = value) } },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("System prompt") },
-                        minLines = 3,
-                    )
+                AnimatedVisibility(
+                    visible = s.customPromptEnabled,
+                    enter = fadeIn(tween(200)) + expandVertically(tween(240)),
+                    exit = fadeOut(tween(140)) + shrinkVertically(tween(180)),
+                ) {
+                    Column {
+                        Spacer(Modifier.height(6.dp))
+                        OutlinedTextField(
+                            s.customPrompt,
+                            { value -> save { copy(customPrompt = value) } },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("System prompt") },
+                            minLines = 3,
+                        )
+                    }
                 }
             }
         }
@@ -264,7 +286,7 @@ fun SettingsScreen(refresh: () -> Unit) {
             }
         }
         items(Store.state.apiKeys, key = { it.id }, contentType = { "api-key" }) { key ->
-            Panel {
+            Panel(modifier = Modifier.animateItem()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(

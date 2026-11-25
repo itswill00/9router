@@ -3,6 +3,15 @@ package com.ninerouter.android.ui
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -25,6 +34,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -88,18 +98,39 @@ fun ProvidersScreen(refresh: () -> Unit) {
             if (node != null) nodeId = null else detailId = null
         },
     )
-    when {
-        detail != null -> ProviderDetail(def = detail, onBack = { detailId = null }, refresh = refresh)
-        node != null -> NodeDetail(
-            nodeId = node.id,
-            onBack = { nodeId = null },
-            refresh = refresh,
-        )
-        else -> ProviderCatalog(
-            onOpen = { detailId = it.id },
-            onOpenNode = { nodeId = it.id },
-            refresh = refresh,
-        )
+    val screenKey = when {
+        node != null -> "node:${node.id}"
+        detail != null -> "detail:${detail.id}"
+        else -> "catalog"
+    }
+    AnimatedContent(
+        targetState = screenKey,
+        transitionSpec = {
+            val goingBack = targetState == "catalog"
+            val enter = if (goingBack) slideInHorizontally { -it / 6 } else slideInHorizontally { it / 6 }
+            val exit = if (goingBack) slideOutHorizontally { it / 6 } else slideOutHorizontally { -it / 6 }
+            (enter + fadeIn(tween(230))) togetherWith (exit + fadeOut(tween(150)))
+        },
+        label = "providerNav",
+    ) { key ->
+        when {
+            key.startsWith("node:") -> NodeDetail(
+                nodeId = key.removePrefix("node:"),
+                onBack = { nodeId = null },
+                refresh = refresh,
+            )
+            key.startsWith("detail:") -> {
+                val def = Catalog.find(key.removePrefix("detail:"))
+                if (def != null) {
+                    ProviderDetail(def = def, onBack = { detailId = null }, refresh = refresh)
+                }
+            }
+            else -> ProviderCatalog(
+                onOpen = { detailId = it.id },
+                onOpenNode = { nodeId = it.id },
+                refresh = refresh,
+            )
+        }
     }
 }
 
@@ -186,6 +217,27 @@ private fun ProviderCatalog(
                 query, { query = it },
                 label = { Text("Search providers") },
                 singleLine = true,
+                shape = NineRouterShapes.small,
+                leadingIcon = {
+                    Icon(
+                        Icons.Default.Search,
+                        contentDescription = null,
+                        tint = NineRouterColors.TextSubtle,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
+                trailingIcon = {
+                    AnimatedVisibility(visible = query.isNotEmpty()) {
+                        IconButton(onClick = { query = "" }, modifier = Modifier.size(32.dp)) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Clear search",
+                                tint = NineRouterColors.TextSubtle,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
+                },
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(6.dp))
@@ -234,7 +286,7 @@ private fun ProviderCatalog(
                 }
             } else {
                 items(Store.state.nodes, key = { "n-${it.id}" }, contentType = { "node" }) { node ->
-                    Box(Modifier.padding(horizontal = 12.dp)) {
+                    Box(Modifier.padding(horizontal = 12.dp).animateItem()) {
                         NodeCard(node = node, onClick = { onOpenNode(node) })
                     }
                 }
@@ -246,8 +298,9 @@ private fun ProviderCatalog(
                     item {
                         SectionHeader(
                             sectionTitle(section),
-                            "${list.size} providers",
+                            null,
                             modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp),
+                            action = { Pill("${list.size}") },
                         )
                     }
                     val visible = if (showAll || query.isNotBlank() || statusFilter != "all") {
@@ -257,7 +310,7 @@ private fun ProviderCatalog(
                     }
                     items(visible.chunked(2), key = { row -> row.joinToString("|") { it.id } }, contentType = { "provider-row" }) { row ->
                         Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                            Modifier.fillMaxWidth().padding(horizontal = 12.dp).animateItem(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             row.forEach { def ->
@@ -643,7 +696,7 @@ private fun NodeDetail(nodeId: String, onBack: () -> Unit, refresh: () -> Unit) 
         }
 
         item {
-            Panel {
+            Panel(modifier = Modifier.animateContentSize()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Models", style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain)
                     Spacer(Modifier.width(NineRouterSpacing.sm))
@@ -1010,7 +1063,7 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
         }
 
         item {
-            Panel {
+            Panel(modifier = Modifier.animateContentSize()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Connections", style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain)
                     Spacer(Modifier.width(NineRouterSpacing.sm))
@@ -1058,7 +1111,7 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
         }
 
         item {
-            Panel {
+            Panel(modifier = Modifier.animateContentSize()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Models", style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain)
                     Spacer(Modifier.width(NineRouterSpacing.sm))

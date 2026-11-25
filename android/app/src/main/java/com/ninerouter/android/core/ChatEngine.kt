@@ -23,13 +23,14 @@ class ChatEngine(
     private val json = Json { ignoreUnknownKeys = true }
 
     sealed class Outcome {
-        data class Json(val body: String) : Outcome()
+        data class Json(val body: String, val member: String = "") : Outcome()
         data class Stream(
             val response: Response,
             val targetFormat: String,
             val sourceFormat: String,
             val model: String,
             val cliEnvelope: Boolean = false,
+            val member: String = "",
         ) : Outcome()
         data class Error(val status: Int, val message: String) : Outcome()
     }
@@ -101,14 +102,14 @@ class ChatEngine(
                     markSuccess(conn)
                     val cliEnvelope = isCliEnvelope(def ?: emptyDef(target.provider))
                     if (wantsStream) {
-                        return Outcome.Stream(response, providerFormat, responseFormat, requestedModel, cliEnvelope)
+                        return Outcome.Stream(response, providerFormat, responseFormat, requestedModel, cliEnvelope, member)
                     }
                     val raw = response.body?.string().orEmpty()
                     val parsed = parseObject(raw) ?: JsonObject(emptyMap())
                     val upstreamJson = if (cliEnvelope) Translator.unwrapEnvelope(parsed) else parsed
                     val finalJson = Translator.responseBody(providerFormat, responseFormat, upstreamJson, requestedModel)
                     trackUsage(target.provider, member, upstreamJson, true, clientBody, raw)
-                    return Outcome.Json(json.encodeToString(finalJson))
+                    return Outcome.Json(json.encodeToString(finalJson), member)
                 }
 
                 val code = response.code

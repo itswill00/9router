@@ -1,6 +1,22 @@
 package com.ninerouter.android.ui
 
 import android.content.Intent
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
@@ -31,6 +47,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Search
@@ -73,6 +90,7 @@ import com.ninerouter.android.core.Translator
 import com.ninerouter.android.update.UpdateManager
 import com.ninerouter.android.data.Catalog
 import com.ninerouter.android.data.Combo
+import com.ninerouter.android.data.Pricing
 import com.ninerouter.android.data.Store
 import com.ninerouter.android.server.GatewayState
 import kotlinx.coroutines.CancellationException
@@ -116,8 +134,11 @@ fun EndpointScreen(refresh: () -> Unit) {
     ) {
         Panel {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                StatusDot(if (running) NineRouterColors.Success else NineRouterColors.TextSubtle, size = 9.dp)
-                Spacer(Modifier.width(9.dp))
+                Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) {
+                    if (running) PulsingDot(NineRouterColors.Success, size = 8.dp)
+                    else StatusDot(NineRouterColors.TextSubtle, size = 9.dp)
+                }
+                Spacer(Modifier.width(7.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
                         if (running) "Gateway running" else "Gateway stopped",
@@ -187,13 +208,19 @@ fun EndpointScreen(refresh: () -> Unit) {
                     testResult = result
                 }
             }
-            if (testResult.isNotBlank()) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    testResult,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (testResult.startsWith("OK")) NineRouterColors.Success else NineRouterColors.Warning,
-                )
+            AnimatedVisibility(
+                visible = testResult.isNotBlank(),
+                enter = fadeIn(tween(200)) + expandVertically(tween(220)),
+                exit = fadeOut(tween(140)) + shrinkVertically(tween(160)),
+            ) {
+                Column {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        testResult,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (testResult.startsWith("OK")) NineRouterColors.Success else NineRouterColors.Warning,
+                    )
+                }
             }
         }
 
@@ -241,11 +268,17 @@ fun EndpointScreen(refresh: () -> Unit) {
                     Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    MonoText(
-                        if (revealKey) Store.state.settings.apiKey else "••••••••••••••••••••••",
-                        color = NineRouterColors.Brand,
+                    Crossfade(
+                        targetState = revealKey,
+                        animationSpec = tween(180),
+                        label = "apiKeyReveal",
                         modifier = Modifier.weight(1f),
-                    )
+                    ) { revealed ->
+                        MonoText(
+                            if (revealed) Store.state.settings.apiKey else "••••••••••••••••••••••",
+                            color = NineRouterColors.Brand,
+                        )
+                    }
                     TextButton(onClick = { revealKey = !revealKey }) {
                         Text(if (revealKey) "Hide" else "Show", color = NineRouterColors.TextMuted)
                     }
@@ -299,14 +332,28 @@ fun EndpointScreen(refresh: () -> Unit) {
 
 @Composable
 private fun CopyRow(label: String, value: String, onCopy: () -> Unit) {
+    var copied by remember { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(1300)
+            copied = false
+        }
+    }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.labelSmall, color = NineRouterColors.TextSubtle)
             Spacer(Modifier.height(1.dp))
             MonoText(value)
         }
-        IconButton(onClick = onCopy, modifier = Modifier.size(32.dp)) {
-            Icon(CopyIcon, contentDescription = "Copy $label", tint = NineRouterColors.TextSubtle, modifier = Modifier.size(15.dp))
+        IconButton(onClick = { onCopy(); copied = true }, modifier = Modifier.size(32.dp)) {
+            Crossfade(copied, animationSpec = tween(160), label = "copyState") { done ->
+                Icon(
+                    if (done) Icons.Default.Check else CopyIcon,
+                    contentDescription = if (done) "Copied" else "Copy $label",
+                    tint = if (done) NineRouterColors.Success else NineRouterColors.TextSubtle,
+                    modifier = Modifier.size(15.dp),
+                )
+            }
         }
     }
 }
@@ -362,7 +409,7 @@ fun CombosScreen(refresh: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(Store.state.combos, key = { it.name }, contentType = { "combo" }) { combo ->
-                    Panel {
+                    Panel(modifier = Modifier.animateItem()) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 combo.name,
@@ -437,7 +484,11 @@ fun CombosScreen(refresh: () -> Unit) {
                             }
                         }
                     }
-                    if (strategy == "smart") {
+                    AnimatedVisibility(
+                        visible = strategy == "smart",
+                        enter = fadeIn(tween(200)) + expandVertically(tween(240)),
+                        exit = fadeOut(tween(140)) + shrinkVertically(tween(180)),
+                    ) {
                         OutlinedTextField(
                             routerModel,
                             { routerModel = it },
@@ -634,7 +685,18 @@ private fun relativeAgo(timestamp: Long): String {
 // Chat
 // ---------------------------------------------------------------------------
 
-private data class UiMessage(val role: String, val content: String, val id: Long = System.nanoTime())
+private data class UiMessage(
+    val role: String,
+    val content: String,
+    val id: Long = System.nanoTime(),
+    val model: String = "",
+    val inputTokens: Int = 0,
+    val outputTokens: Int = 0,
+    val elapsedMs: Long = 0L,
+) {
+    val tokensPerSecond: Float
+        get() = if (elapsedMs > 0L) outputTokens * 1000f / elapsedMs else 0f
+}
 
 @Composable
 fun ChatScreen() {
@@ -649,9 +711,11 @@ fun ChatScreen() {
     var messages by remember { mutableStateOf(listOf<UiMessage>()) }
     var busy by remember { mutableStateOf(false) }
     var showPicker by remember { mutableStateOf(false) }
-    var dotFrame by remember { mutableStateOf(0) }
     var generation by remember { mutableStateOf(0) }
     var streamJob by remember { mutableStateOf<Job?>(null) }
+    var runStartedAt by remember { mutableStateOf(0L) }
+    var liveElapsed by remember { mutableStateOf(0L) }
+    var introShown by remember { mutableStateOf(false) }
     val activeResponse = remember { mutableStateOf<okhttp3.Response?>(null) }
     val listState = rememberLazyListState()
     @Suppress("UNUSED_VARIABLE") val revision = Store.revision
@@ -670,6 +734,7 @@ fun ChatScreen() {
         model = Store.state.combos.firstOrNull()?.name
             ?: options.firstOrNull()
             ?: "openai/gpt-5-mini"
+        introShown = true
     }
 
     LaunchedEffect(messages.size, messages.lastOrNull()?.content?.length) {
@@ -678,13 +743,13 @@ fun ChatScreen() {
 
     LaunchedEffect(busy) {
         while (busy) {
-            delay(420)
-            dotFrame = (dotFrame + 1) % 3
+            liveElapsed = System.currentTimeMillis() - runStartedAt
+            delay(250)
         }
     }
 
-    fun updateAssistant(id: Long, value: String) {
-        messages = messages.map { if (it.id == id) it.copy(content = value) else it }
+    fun patch(id: Long, block: (UiMessage) -> UiMessage) {
+        messages = messages.map { if (it.id == id) block(it) else it }
     }
 
     fun stop() {
@@ -704,8 +769,12 @@ fun ChatScreen() {
         busy = true
         generation += 1
         val requestId = generation
+        val startedAt = System.currentTimeMillis()
+        runStartedAt = startedAt
+        liveElapsed = 0L
         val history = messages + UiMessage("user", text)
-        val placeholder = UiMessage("assistant", "")
+        val placeholder = UiMessage("assistant", "", model = model)
+        val inputTokens = (history.sumOf { it.content.length } / 4).coerceAtLeast(1)
         messages = history + placeholder
         streamJob = scope.launch(Dispatchers.IO) {
             val request = buildJsonObject {
@@ -719,13 +788,26 @@ fun ChatScreen() {
                 when (val out = engine.handle(request.toString(), Formats.OPENAI, Formats.OPENAI)) {
                     is ChatEngine.Outcome.Json -> {
                         val answer = contentOf(parser, out.body).ifBlank { "(empty response)" }
+                        val elapsed = System.currentTimeMillis() - startedAt
                         withContext(Dispatchers.Main) {
-                            if (generation == requestId) updateAssistant(placeholder.id, answer)
+                            if (generation == requestId) patch(placeholder.id) {
+                                it.copy(
+                                    content = answer,
+                                    model = out.member.ifBlank { model },
+                                    inputTokens = inputTokens,
+                                    outputTokens = (answer.length / 4).coerceAtLeast(1),
+                                    elapsedMs = elapsed,
+                                )
+                            }
                         }
                     }
                     is ChatEngine.Outcome.Stream -> {
                         activeResponse.value = out.response
+                        val resolved = out.member.ifBlank { model }
                         val answer = StringBuilder()
+                        withContext(Dispatchers.Main) {
+                            if (generation == requestId) patch(placeholder.id) { it.copy(model = resolved) }
+                        }
                         try {
                             out.response.body?.source()?.use { src ->
                                 while (true) {
@@ -737,7 +819,7 @@ fun ChatScreen() {
                                         answer.append(piece)
                                         val snapshot = answer.toString()
                                         withContext(Dispatchers.Main) {
-                                            if (generation == requestId) updateAssistant(placeholder.id, snapshot)
+                                            if (generation == requestId) patch(placeholder.id) { it.copy(content = snapshot) }
                                         }
                                     }
                                 }
@@ -746,15 +828,22 @@ fun ChatScreen() {
                             activeResponse.value = null
                             out.response.close()
                         }
-                        if (answer.isBlank()) {
-                            withContext(Dispatchers.Main) {
-                                if (generation == requestId) updateAssistant(placeholder.id, "(no content returned)")
+                        val elapsed = System.currentTimeMillis() - startedAt
+                        val finalText = answer.toString()
+                        withContext(Dispatchers.Main) {
+                            if (generation == requestId) patch(placeholder.id) {
+                                it.copy(
+                                    content = finalText.ifBlank { "(no content returned)" },
+                                    inputTokens = inputTokens,
+                                    outputTokens = (finalText.length / 4).coerceAtLeast(1),
+                                    elapsedMs = elapsed,
+                                )
                             }
                         }
                     }
                     is ChatEngine.Outcome.Error -> withContext(Dispatchers.Main) {
-                        if (generation == requestId) {
-                            updateAssistant(placeholder.id, "[error ${out.status}] ${out.message}")
+                        if (generation == requestId) patch(placeholder.id) {
+                            it.copy(content = "[error ${out.status}] ${out.message}")
                         }
                     }
                 }
@@ -762,8 +851,8 @@ fun ChatScreen() {
                 throw e
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    if (generation == requestId) {
-                        updateAssistant(placeholder.id, "[error] ${e.message ?: "request failed"}")
+                    if (generation == requestId) patch(placeholder.id) {
+                        it.copy(content = "[error] ${e.message ?: "request failed"}")
                     }
                 }
             } finally {
@@ -796,7 +885,8 @@ fun ChatScreen() {
                     Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    StatusDot(if (running) NineRouterColors.Success else NineRouterColors.TextSubtle)
+                    if (running) PulsingDot(NineRouterColors.Success, size = 7.dp)
+                    else StatusDot(NineRouterColors.TextSubtle)
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
@@ -845,35 +935,7 @@ fun ChatScreen() {
 
         if (messages.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Column(
-                    Modifier
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 18.dp, vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.brand_mark),
-                        contentDescription = null,
-                        modifier = Modifier.size(56.dp),
-                    )
-                    Spacer(Modifier.height(14.dp))
-                    Text(
-                        "How can I help?",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = NineRouterColors.TextMain,
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "Chat streams through your local 9Router gateway. Pick a model above, then send a prompt.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NineRouterColors.TextMuted,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.widthIn(max = 340.dp),
-                    )
-                    Spacer(Modifier.height(18.dp))
-                    ChatIdeas { prompt -> input = prompt }
-                }
+                ChatEmptyState(shown = introShown) { prompt -> input = prompt }
             }
         } else {
             LazyColumn(
@@ -883,14 +945,18 @@ fun ChatScreen() {
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(messages, key = { it.id }, contentType = { it.role }) { m ->
+                    val isLast = m.id == messages.lastOrNull()?.id
+                    val streamingNow = busy && isLast && m.role == "assistant"
                     MessageBubble(
                         message = m,
-                        thinking = busy && m.role == "assistant" && m.content.isBlank(),
-                        dotFrame = dotFrame,
+                        thinking = streamingNow && m.content.isBlank(),
+                        streaming = streamingNow,
+                        liveElapsedMs = liveElapsed,
                         onCopy = {
                             clipboard.setText(AnnotatedString(m.content))
                             Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
                         },
+                        modifier = Modifier.animateItem(),
                     )
                 }
             }
@@ -928,17 +994,19 @@ fun ChatScreen() {
                 )
                 Spacer(Modifier.width(8.dp))
                 val canSend = input.isNotBlank() && model.isNotBlank()
+                val sendColor by animateColorAsState(
+                    targetValue = when {
+                        busy -> NineRouterColors.Danger
+                        canSend -> NineRouterColors.BrandOrange
+                        else -> NineRouterColors.Surface3
+                    },
+                    animationSpec = tween(200),
+                    label = "sendColor",
+                )
                 Box(
                     Modifier
                         .size(40.dp)
-                        .background(
-                            when {
-                                busy -> NineRouterColors.Danger
-                                canSend -> NineRouterColors.BrandOrange
-                                else -> NineRouterColors.Surface3
-                            },
-                            CircleShape,
-                        )
+                        .background(sendColor, CircleShape)
                         .clickable(enabled = busy || canSend) { if (busy) stop() else send() },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -970,6 +1038,46 @@ fun ChatScreen() {
 private data class ChatIdea(val title: String, val prompt: String)
 
 @Composable
+private fun ChatEmptyState(shown: Boolean, onPick: (String) -> Unit) {
+    AnimatedVisibility(
+        visible = shown,
+        enter = fadeIn(tween(320)) +
+            slideInVertically(tween(360)) { it / 6 } +
+            scaleIn(tween(360), initialScale = 0.96f),
+    ) {
+        Column(
+            Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Image(
+                painter = painterResource(R.drawable.brand_mark),
+                contentDescription = null,
+                modifier = Modifier.size(56.dp),
+            )
+            Spacer(Modifier.height(14.dp))
+            Text(
+                "How can I help?",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = NineRouterColors.TextMain,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Chat streams through your local 9Router gateway. Pick a model above, then send a prompt.",
+                style = MaterialTheme.typography.bodySmall,
+                color = NineRouterColors.TextMuted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.widthIn(max = 340.dp),
+            )
+            Spacer(Modifier.height(18.dp))
+            ChatIdeas(onPick = onPick)
+        }
+    }
+}
+
+@Composable
 private fun ChatIdeas(onPick: (String) -> Unit) {
     val ideas = remember {
         listOf(
@@ -979,38 +1087,64 @@ private fun ChatIdeas(onPick: (String) -> Unit) {
             ChatIdea("Debug an error", "Help me find the root cause of this error:\n\n"),
         )
     }
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
     Column(
         Modifier.widthIn(max = 420.dp).fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        ideas.chunked(2).forEach { row ->
+        ideas.chunked(2).forEachIndexed { rowIndex, row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                row.forEach { idea ->
-                    Surface(
-                        onClick = { onPick(idea.prompt) },
-                        color = NineRouterColors.Surface,
-                        shape = RoundedCornerShape(14.dp),
-                        border = BorderStroke(1.dp, NineRouterColors.Border),
+                row.forEachIndexed { colIndex, idea ->
+                    IdeaCard(
+                        idea = idea,
+                        shown = shown,
+                        delay = 120 + (rowIndex * 2 + colIndex) * 70,
                         modifier = Modifier.weight(1f),
-                    ) {
-                        Column(Modifier.padding(horizontal = 12.dp, vertical = 11.dp)) {
-                            Text(
-                                idea.title,
-                                style = MaterialTheme.typography.titleSmall,
-                                color = NineRouterColors.TextMain,
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                idea.prompt.lineSequence().first(),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = NineRouterColors.TextMuted,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
+                        onClick = { onPick(idea.prompt) },
+                    )
                 }
                 if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun IdeaCard(
+    idea: ChatIdea,
+    shown: Boolean,
+    delay: Int,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    AnimatedVisibility(
+        visible = shown,
+        enter = fadeIn(tween(280, delayMillis = delay)) +
+            slideInVertically(tween(320, delayMillis = delay)) { it / 3 },
+        modifier = modifier,
+    ) {
+        Surface(
+            onClick = onClick,
+            color = NineRouterColors.Surface,
+            shape = RoundedCornerShape(14.dp),
+            border = BorderStroke(1.dp, NineRouterColors.Border),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 11.dp)) {
+                Text(
+                    idea.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = NineRouterColors.TextMain,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    idea.prompt.lineSequence().first(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.TextMuted,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
@@ -1020,12 +1154,21 @@ private fun ChatIdeas(onPick: (String) -> Unit) {
 private fun MessageBubble(
     message: UiMessage,
     thinking: Boolean,
-    dotFrame: Int,
+    streaming: Boolean,
+    liveElapsedMs: Long,
     onCopy: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val isUser = message.role == "user"
     val accent = if (isUser) NineRouterColors.BrandOrange else NineRouterColors.Success
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start) {
+    var copied by remember { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(1300)
+            copied = false
+        }
+    }
+    Row(modifier.fillMaxWidth(), horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start) {
         Surface(
             color = if (isUser) NineRouterColors.BrandOrange.copy(alpha = 0.14f) else NineRouterColors.Surface,
             shape = RoundedCornerShape(
@@ -1035,33 +1178,26 @@ private fun MessageBubble(
                 bottomEnd = 16.dp,
             ),
             border = BorderStroke(1.dp, accent.copy(alpha = 0.22f)),
-            modifier = Modifier.widthIn(max = 520.dp),
+            modifier = Modifier
+                .widthIn(max = 520.dp)
+                .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessLow)),
         ) {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    StatusDot(accent, size = 6.dp)
+                    if (streaming) PulsingDot(accent, size = 6.dp) else StatusDot(accent, size = 6.dp)
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        if (isUser) "YOU" else "9ROUTER",
+                        if (isUser) "YOU" else message.model.ifBlank { "assistant" },
                         style = MaterialTheme.typography.labelSmall,
                         color = accent,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 240.dp),
                     )
                 }
                 Spacer(Modifier.height(5.dp))
                 if (thinking) {
-                    Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                        repeat(3) { i ->
-                            Box(
-                                Modifier
-                                    .size(6.dp)
-                                    .background(
-                                        NineRouterColors.TextMuted.copy(alpha = if (dotFrame == i) 1f else 0.35f),
-                                        CircleShape,
-                                    )
-                            )
-                            if (i < 2) Spacer(Modifier.width(4.dp))
-                        }
-                    }
+                    TypingDots()
                 } else {
                     Text(
                         message.content,
@@ -1069,17 +1205,52 @@ private fun MessageBubble(
                         color = NineRouterColors.TextMain,
                     )
                 }
-                if (!isUser && !thinking && message.content.isNotBlank()) {
-                    IconButton(
-                        onClick = onCopy,
-                        modifier = Modifier.align(Alignment.End).size(26.dp),
+                val hasStats = !isUser && !thinking && (message.inputTokens > 0 || message.elapsedMs > 0L)
+                AnimatedVisibility(
+                    visible = hasStats || (streaming && !thinking),
+                    enter = fadeIn(tween(220)) + expandVertically(tween(240)),
+                    exit = shrinkVertically(tween(160)) + fadeOut(tween(140)),
+                ) {
+                    Row(
+                        Modifier.padding(top = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(
-                            CopyIcon,
-                            contentDescription = "Copy message",
-                            tint = NineRouterColors.TextSubtle,
-                            modifier = Modifier.size(13.dp),
-                        )
+                        if (streaming) {
+                            val liveTokens = message.content.length / 4
+                            val liveRate = if (liveElapsedMs > 0L) liveTokens * 1000f / liveElapsedMs else 0f
+                            Text(
+                                "streaming · ~$liveTokens tok · ${rate(liveRate)} tok/s · ${seconds(liveElapsedMs)}s",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = NineRouterColors.TextSubtle,
+                            )
+                        } else {
+                            val cost = remember(message.id, message.model, message.inputTokens, message.outputTokens) {
+                                Pricing.cost(message.model, message.inputTokens, message.outputTokens)
+                            }
+                            Text(
+                                "in ~${message.inputTokens} · out ~${message.outputTokens} · " +
+                                    "${rate(message.tokensPerSecond)} tok/s · ${seconds(message.elapsedMs)}s" +
+                                    if (cost > 0.0) " · ${costText(cost)}" else "",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = NineRouterColors.TextSubtle,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            IconButton(
+                                onClick = { onCopy(); copied = true },
+                                modifier = Modifier.size(22.dp),
+                            ) {
+                                Crossfade(copied, animationSpec = tween(150), label = "messageCopy") { done ->
+                                    Icon(
+                                        if (done) Icons.Default.Check else CopyIcon,
+                                        contentDescription = if (done) "Copied" else "Copy message",
+                                        tint = if (done) NineRouterColors.Success else NineRouterColors.TextSubtle,
+                                        modifier = Modifier.size(12.dp),
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1118,6 +1289,18 @@ private fun ModelPickerDialog(
                             modifier = Modifier.size(18.dp),
                         )
                     },
+                    trailingIcon = {
+                        AnimatedVisibility(visible = query.isNotEmpty()) {
+                            IconButton(onClick = { query = "" }, modifier = Modifier.size(32.dp)) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Clear search",
+                                    tint = NineRouterColors.TextSubtle,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(10.dp))
@@ -1133,6 +1316,7 @@ private fun ModelPickerDialog(
                             Row(
                                 Modifier
                                     .fillMaxWidth()
+                                    .animateItem()
                                     .clickable { onPick(option) }
                                     .padding(vertical = 9.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -1166,6 +1350,14 @@ private fun ModelPickerDialog(
         },
     )
 }
+
+private fun seconds(ms: Long): String = String.format(java.util.Locale.US, "%.1f", ms / 1000f)
+
+private fun rate(value: Float): String = String.format(java.util.Locale.US, "%.1f", value)
+
+private fun costText(value: Double): String =
+    if (value >= 0.01) "$" + String.format(java.util.Locale.US, "%.3f", value)
+    else "$" + String.format(java.util.Locale.US, "%.4f", value)
 
 private fun contentOf(parser: Json, raw: String): String {
     val obj = try { parser.parseToJsonElement(raw) as? JsonObject } catch (_: Exception) { null }

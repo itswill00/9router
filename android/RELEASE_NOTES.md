@@ -1,10 +1,39 @@
-# 9Router Android 0.1.13
+# 9Router Android 0.1.14
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.12
+## What changed since 0.1.13
+
+This is the motion pass: the app is no longer stiff, and chat now reports the
+model that actually answered plus real usage figures.
+
+- **Chat shows the model that answered.** Each assistant bubble is labelled
+  with the resolved provider/model (the combo member that actually replied),
+  not a generic app name.
+- **Chat shows response stats.** Input and output tokens, tokens/second,
+  total latency, and an estimated cost per message. While streaming, the bubble
+  shows live tokens, live tok/s and elapsed time.
+- **Chat motion.** Bubbles fade and slide into the list, grow smoothly as text
+  streams in, the typing indicator bounces, the copy icon turns into a check,
+  and the send button colour animates between send/stop/disabled.
+- **Navigation motion.** Tabs cross-fade and slide in the direction of travel,
+  the bottom bar slides away while chat is open, the nav pill and icon tints
+  animate, and the top-bar chat/back actions scale in and out.
+- **Provider catalog.** Search now has a leading icon and an animated clear
+  button, every section header shows a count pill, list rows animate in place,
+  and catalog → detail → node navigation uses a shared slide/fade transition.
+- **Detail screens.** Connection and model cards resize smoothly; expandable
+  sections animate open and closed.
+- **Usage & Settings.** Stat values cross-fade when the period changes, usage
+  bars grow from zero, expandable model rows animate, and conditional settings
+  fields expand/collapse instead of popping.
+- **Faster builds.** The Gradle daemon is now reused with configuration cache,
+  build cache and file watching enabled. Warm incremental builds dropped from
+  roughly 1m30s to about 15s on the 2-core/8GB build machine.
+
+## What changed in 0.1.13
 
 This is a UI/UX pass: the whole app now follows one 9Router visual system and
 every primary screen was reworked for mobile comfort.
@@ -323,11 +352,11 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.13-android` (version code 15)
+- Version: `0.1.14-android` (version code 16)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
 - SHA-256 of the attached APK:
-  `16ef005f645220a2350f673927569dc3622946ec279946a3499ffa8e0e48dafd`
+  `de9438eb992cf532a78814651b7cf5ec657de4863c84d052bb650740e173aba7`
 
 See `android/README.md` for the module layout and build instructions.

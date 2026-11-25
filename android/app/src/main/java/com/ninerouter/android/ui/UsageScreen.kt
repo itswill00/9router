@@ -1,5 +1,16 @@
 package com.ninerouter.android.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -27,6 +38,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -97,19 +109,30 @@ fun UsageScreen(refresh: () -> Unit) {
             }
         }
 
-        if (tab == "Details") {
-            DetailsList(filtered) { selected = it }
-        } else {
-            Overview(
-                filtered = filtered,
-                chartMode = chartMode,
-                setChartMode = { chartMode = it },
-                payloadMode = payloadMode,
-                setPayloadMode = { payloadMode = it },
-                expanded = expanded,
-                setExpanded = { expanded = it },
-                onSelect = { selected = it },
-            )
+        AnimatedContent(
+            targetState = tab,
+            modifier = Modifier.weight(1f),
+            transitionSpec = {
+                val enter = fadeIn(tween(220)) + slideInVertically(tween(240)) { it / 14 }
+                val exit = fadeOut(tween(150)) + slideOutVertically(tween(180)) { -it / 14 }
+                enter togetherWith exit
+            },
+            label = "usageTab",
+        ) { target ->
+            if (target == "Details") {
+                DetailsList(filtered) { selected = it }
+            } else {
+                Overview(
+                    filtered = filtered,
+                    chartMode = chartMode,
+                    setChartMode = { chartMode = it },
+                    payloadMode = payloadMode,
+                    setPayloadMode = { payloadMode = it },
+                    expanded = expanded,
+                    setExpanded = { expanded = it },
+                    onSelect = { selected = it },
+                )
+            }
         }
     }
 
@@ -311,19 +334,25 @@ private fun Overview(
                                 color = NineRouterColors.Brand,
                             )
                         }
-                        if (expanded == row.model) {
-                            row.providers.forEach { (p, count) ->
-                                Row(Modifier.fillMaxWidth().padding(start = 10.dp, top = 2.dp, bottom = 2.dp)) {
-                                    Text(p, style = MaterialTheme.typography.labelSmall, color = NineRouterColors.TextMuted, modifier = Modifier.weight(1f))
-                                    Text("$count req", style = MaterialTheme.typography.labelSmall, color = NineRouterColors.TextSubtle)
+                        AnimatedVisibility(
+                            visible = expanded == row.model,
+                            enter = fadeIn(tween(180)) + expandVertically(tween(220)),
+                            exit = fadeOut(tween(120)) + shrinkVertically(tween(160)),
+                        ) {
+                            Column {
+                                row.providers.forEach { (p, count) ->
+                                    Row(Modifier.fillMaxWidth().padding(start = 10.dp, top = 2.dp, bottom = 2.dp)) {
+                                        Text(p, style = MaterialTheme.typography.labelSmall, color = NineRouterColors.TextMuted, modifier = Modifier.weight(1f))
+                                        Text("$count req", style = MaterialTheme.typography.labelSmall, color = NineRouterColors.TextSubtle)
+                                    }
                                 }
+                                Text(
+                                    "cached ${fmt(row.cached)} · est. ${money(row.cost)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = NineRouterColors.TextSubtle,
+                                    modifier = Modifier.padding(start = 10.dp, bottom = 3.dp),
+                                )
                             }
-                            Text(
-                                "cached ${fmt(row.cached)} · est. ${money(row.cost)}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = NineRouterColors.TextSubtle,
-                                modifier = Modifier.padding(start = 10.dp, bottom = 3.dp),
-                            )
                         }
                     }
                 }
@@ -356,9 +385,9 @@ private fun DetailsList(filtered: List<UsageEntry>, onSelect: (UsageEntry) -> Un
             contentType = { _, _ -> "usage-entry" },
         ) { _, entry ->
             Surface(
-                Modifier.fillMaxWidth().clickable { onSelect(entry) },
+                Modifier.fillMaxWidth().animateItem().clickable { onSelect(entry) },
                 color = NineRouterColors.Surface,
-                shape = RoundedCornerShape(10.dp),
+                shape = NineRouterShapes.large,
             ) {
                 Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(
@@ -402,7 +431,16 @@ private fun StatGrid(stats: List<Stat>) {
                         Column(Modifier.padding(10.dp)) {
                             Text(stat.label.uppercase(), style = MaterialTheme.typography.labelSmall, color = NineRouterColors.TextMuted, maxLines = 1)
                             Spacer(Modifier.height(3.dp))
-                            Text(stat.value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = stat.color, maxLines = 1)
+                            AnimatedContent(
+                                targetState = stat.value,
+                                transitionSpec = {
+                                    (fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 2 }) togetherWith
+                                        (fadeOut(tween(120)) + slideOutVertically(tween(140)) { -it / 2 })
+                                },
+                                label = "statValue",
+                            ) { value ->
+                                Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = stat.color, maxLines = 1)
+                            }
                         }
                     }
                 }
@@ -543,9 +581,16 @@ private fun BarList(rows: List<Pair<String, Float>>, unit: String, truncate: Int
                     color = NineRouterColors.TextMuted,
                     maxLines = 1,
                 )
+                var grown by remember { mutableStateOf(false) }
+                LaunchedEffect(Unit) { grown = true }
+                val fraction by animateFloatAsState(
+                    targetValue = if (grown) (value / max).coerceIn(0.02f, 1f) else 0f,
+                    animationSpec = tween(durationMillis = 620, delayMillis = i * 45),
+                    label = "bar$i",
+                )
                 Box(Modifier.weight(1f).height(7.dp).background(NineRouterColors.Surface2, RoundedCornerShape(50))) {
                     Box(
-                        Modifier.fillMaxWidth((value / max).coerceIn(0.02f, 1f))
+                        Modifier.fillMaxWidth(fraction)
                             .height(7.dp)
                             .background(colors[i % colors.size], RoundedCornerShape(50))
                     )

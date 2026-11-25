@@ -1,10 +1,22 @@
 package com.ninerouter.android.ui
 
 import android.graphics.BitmapFactory
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +25,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,10 +43,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
@@ -89,10 +104,18 @@ fun PrimaryButton(
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.96f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "primaryPress",
+    )
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.height(44.dp),
+        modifier = modifier.height(44.dp).scale(scale),
+        interactionSource = interaction,
         colors = ButtonDefaults.buttonColors(
             containerColor = NineRouterColors.BrandOrange,
             contentColor = NineRouterColors.Bg,
@@ -107,9 +130,17 @@ fun SecondaryButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.97f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "secondaryPress",
+    )
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier.height(44.dp),
+        modifier = modifier.height(44.dp).scale(scale),
+        interactionSource = interaction,
         shape = NineRouterShapes.small,
         border = BorderStroke(1.dp, NineRouterColors.BorderStrong),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = NineRouterColors.TextMain),
@@ -148,8 +179,18 @@ fun ToggleRow(
 
 @Composable
 fun ChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val background by animateColorAsState(
+        targetValue = if (selected) NineRouterColors.BrandOrange.copy(alpha = 0.16f) else NineRouterColors.Surface2,
+        animationSpec = tween(220),
+        label = "chipBackground",
+    )
+    val content by animateColorAsState(
+        targetValue = if (selected) NineRouterColors.BrandOrange else NineRouterColors.TextMuted,
+        animationSpec = tween(220),
+        label = "chipContent",
+    )
     Surface(
-        color = if (selected) NineRouterColors.BrandOrange.copy(alpha = 0.16f) else NineRouterColors.Surface2,
+        color = background,
         shape = RoundedCornerShape(999.dp),
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
@@ -158,7 +199,7 @@ fun ChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
         Text(
             label,
             style = MaterialTheme.typography.labelMedium,
-            color = if (selected) NineRouterColors.BrandOrange else NineRouterColors.TextMuted,
+            color = content,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
         )
     }
@@ -198,6 +239,63 @@ fun Pill(
 @Composable
 fun StatusDot(color: Color, size: Dp = 7.dp, modifier: Modifier = Modifier) {
     Box(modifier.size(size).background(color, CircleShape))
+}
+
+/** A dot with an outward pulsing ring — used for live/running states. */
+@Composable
+fun PulsingDot(color: Color, size: Dp = 8.dp, modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "pulse")
+    val ringScale by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 2.1f,
+        animationSpec = infiniteRepeatable(tween(1400, easing = FastOutSlowInEasing), RepeatMode.Restart),
+        label = "ringScale",
+    )
+    val ringAlpha by transition.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(tween(1400, easing = FastOutSlowInEasing), RepeatMode.Restart),
+        label = "ringAlpha",
+    )
+    Box(modifier.size(size * 2.2f), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .size(size)
+                .scale(ringScale)
+                .background(color.copy(alpha = ringAlpha), CircleShape)
+        )
+        Box(Modifier.size(size).background(color, CircleShape))
+    }
+}
+
+/** Three bouncing dots used while a response is streaming. */
+@Composable
+fun TypingDots(
+    color: Color = NineRouterColors.TextMuted,
+    dotSize: Dp = 6.dp,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        repeat(3) { index ->
+            val transition = rememberInfiniteTransition(label = "typing$index")
+            val lift by transition.animateFloat(
+                initialValue = 0f,
+                targetValue = -1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(460, delayMillis = index * 140, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse,
+                ),
+                label = "lift$index",
+            )
+            Box(
+                Modifier
+                    .padding(horizontal = 2.dp)
+                    .offset(y = (lift * 3f).dp)
+                    .size(dotSize)
+                    .background(color.copy(alpha = 0.35f + 0.65f * (1f + lift)), CircleShape)
+            )
+        }
+    }
 }
 
 @Composable

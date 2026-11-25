@@ -1,5 +1,20 @@
 package com.ninerouter.android.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -101,16 +116,22 @@ fun AppShell(refreshTrigger: () -> Unit) {
                         .padding(horizontal = 12.dp, vertical = 7.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (showChat) {
-                        IconButton(onClick = { showChat = false }, modifier = Modifier.size(32.dp)) {
-                            Icon(
-                                painter = painterResource(android.R.drawable.ic_menu_revert),
-                                contentDescription = "Back",
-                                tint = NineRouterColors.TextMuted,
-                                modifier = Modifier.size(18.dp),
-                            )
+                    AnimatedVisibility(
+                        visible = showChat,
+                        enter = fadeIn(tween(180)) + expandHorizontally(),
+                        exit = fadeOut(tween(140)) + shrinkHorizontally(),
+                    ) {
+                        Row {
+                            IconButton(onClick = { showChat = false }, modifier = Modifier.size(32.dp)) {
+                                Icon(
+                                    painter = painterResource(android.R.drawable.ic_menu_revert),
+                                    contentDescription = "Back",
+                                    tint = NineRouterColors.TextMuted,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                            Spacer(Modifier.width(4.dp))
                         }
-                        Spacer(Modifier.width(4.dp))
                     }
                     Image(
                         painter = painterResource(R.drawable.brand_mark),
@@ -126,7 +147,8 @@ fun AppShell(refreshTrigger: () -> Unit) {
                             color = NineRouterColors.TextMain,
                         )
                         Text(
-                            "${navItems[tab].title} · ${if (running) "running" else "stopped"}",
+                            if (showChat) "Basic Chat · ${if (running) "running" else "stopped"}"
+                            else "${navItems[tab].title} · ${if (running) "running" else "stopped"}",
                             style = MaterialTheme.typography.labelSmall,
                             color = if (running) NineRouterColors.Success else NineRouterColors.TextSubtle,
                         )
@@ -152,7 +174,11 @@ fun AppShell(refreshTrigger: () -> Unit) {
                         }
                         Spacer(Modifier.width(6.dp))
                     }
-                    if (!showChat) {
+                    AnimatedVisibility(
+                        visible = !showChat,
+                        enter = fadeIn(tween(200)) + scaleIn(tween(200), initialScale = 0.8f),
+                        exit = fadeOut(tween(120)) + scaleOut(tween(120), targetScale = 0.8f),
+                    ) {
                         IconButton(onClick = { showChat = true }, modifier = Modifier.size(36.dp)) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_chat),
@@ -166,45 +192,63 @@ fun AppShell(refreshTrigger: () -> Unit) {
             }
         },
         bottomBar = {
-            Surface(color = NineRouterColors.Surface) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .height(54.dp),
-                ) {
-                    navItems.forEachIndexed { index, item ->
-                        val selected = !showChat && tab == index
-                        Column(
-                            Modifier
-                                .weight(1f)
-                                .fillMaxSize()
-                                .clickable { showChat = false; tab = index },
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
-                        ) {
-                            Box(
+            AnimatedVisibility(
+                visible = !showChat,
+                enter = slideInVertically { it } + fadeIn(tween(180)),
+                exit = slideOutVertically { it } + fadeOut(tween(140)),
+            ) {
+                Surface(color = NineRouterColors.Surface) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .height(54.dp),
+                    ) {
+                        navItems.forEachIndexed { index, item ->
+                            val selected = !showChat && tab == index
+                            val pillColor by animateColorAsState(
+                                targetValue = if (selected) NineRouterColors.BrandOrange.copy(alpha = 0.15f)
+                                else androidx.compose.ui.graphics.Color.Transparent,
+                                animationSpec = tween(220),
+                                label = "navPill",
+                            )
+                            val iconTint by animateColorAsState(
+                                targetValue = if (selected) NineRouterColors.BrandOrange else NineRouterColors.TextSubtle,
+                                animationSpec = tween(220),
+                                label = "navIcon",
+                            )
+                            val labelColor by animateColorAsState(
+                                targetValue = if (selected) NineRouterColors.TextMain else NineRouterColors.TextSubtle,
+                                animationSpec = tween(220),
+                                label = "navLabel",
+                            )
+                            Column(
                                 Modifier
-                                    .background(
-                                        if (selected) NineRouterColors.BrandOrange.copy(alpha = 0.15f)
-                                        else androidx.compose.ui.graphics.Color.Transparent,
-                                        RoundedCornerShape(999.dp),
-                                    )
-                                    .padding(horizontal = 10.dp, vertical = 3.dp),
+                                    .weight(1f)
+                                    .fillMaxSize()
+                                    .clickable { showChat = false; tab = index },
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
                             ) {
-                                Icon(
-                                    painter = painterResource(item.icon),
-                                    contentDescription = item.title,
-                                    tint = if (selected) NineRouterColors.BrandOrange else NineRouterColors.TextSubtle,
-                                    modifier = Modifier.size(18.dp),
+                                Box(
+                                    Modifier
+                                        .background(pillColor, RoundedCornerShape(999.dp))
+                                        .padding(horizontal = 10.dp, vertical = 3.dp),
+                                ) {
+                                    Icon(
+                                        painter = painterResource(item.icon),
+                                        contentDescription = item.title,
+                                        tint = iconTint,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    item.title,
+                                    fontSize = 10.sp,
+                                    color = labelColor,
                                 )
                             }
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                item.title,
-                                fontSize = 10.sp,
-                                color = if (selected) NineRouterColors.TextMain else NineRouterColors.TextSubtle,
-                            )
                         }
                     }
                 }
@@ -212,10 +256,24 @@ fun AppShell(refreshTrigger: () -> Unit) {
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding).imePadding()) {
-            if (showChat) {
-                ChatScreen()
-            } else {
-                when (tab) {
+            AnimatedContent(
+                targetState = if (showChat) -1 else tab,
+                transitionSpec = {
+                    val forward = when {
+                        targetState == -1 -> true
+                        initialState == -1 -> false
+                        else -> targetState > initialState
+                    }
+                    val enter = slideInHorizontally(tween(250)) { if (forward) it / 5 else -it / 5 } +
+                        fadeIn(tween(220))
+                    val exit = slideOutHorizontally(tween(200)) { if (forward) -it / 5 else it / 5 } +
+                        fadeOut(tween(150))
+                    enter togetherWith exit
+                },
+                label = "tabContent",
+            ) { target ->
+                when (target) {
+                    -1 -> ChatScreen()
                     0 -> EndpointScreen(refreshTrigger)
                     1 -> ProvidersScreen(refreshTrigger)
                     2 -> CombosScreen(refreshTrigger)
