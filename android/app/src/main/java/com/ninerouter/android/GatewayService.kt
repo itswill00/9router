@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import com.ninerouter.android.server.Gateway
@@ -22,7 +23,23 @@ class GatewayService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIFICATION_ID, buildNotification())
+        val notification = buildNotification()
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            GatewayState.error.value = "Foreground service failed: ${e.message ?: e.javaClass.simpleName}"
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        if (gateway == null) gateway = Gateway(applicationContext)
         gateway?.start()
         return START_STICKY
     }
@@ -70,8 +87,26 @@ class GatewayService : Service() {
             .build()
     }
 
-    private companion object {
-        const val CHANNEL_ID = "ninerouter_gateway"
-        const val NOTIFICATION_ID = 20128
+    companion object {
+        private const val CHANNEL_ID = "ninerouter_gateway"
+        private const val NOTIFICATION_ID = 20128
+
+        /** Starts the loopback gateway. Safe to call repeatedly. */
+        fun start(context: Context) {
+            val intent = Intent(context, GatewayService::class.java)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: Exception) {
+                GatewayState.error.value = "Cannot start gateway: ${e.message ?: e.javaClass.simpleName}"
+            }
+        }
+
+        fun stop(context: Context) {
+            context.stopService(Intent(context, GatewayService::class.java))
+        }
     }
 }

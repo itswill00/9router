@@ -72,7 +72,11 @@ fun EndpointScreen(refresh: () -> Unit) {
     @Suppress("UNUSED_VARIABLE") val revision = Store.revision
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
     val running by GatewayState.running.collectAsState()
+    val gatewayError by GatewayState.error.collectAsState()
+    var testing by remember { mutableStateOf(false) }
+    var testResult by remember { mutableStateOf("") }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
@@ -85,15 +89,45 @@ fun EndpointScreen(refresh: () -> Unit) {
             StatusRow("Dashboard", GatewayState.BASE_URL)
             Spacer(Modifier.height(6.dp))
             StatusRow("Status", if (running) "Running" else "Stopped")
+            if (gatewayError.isNotBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text(gatewayError, style = MaterialTheme.typography.labelSmall, color = NineRouterColors.Danger)
+            }
             Spacer(Modifier.height(8.dp))
-            PrimaryButton(if (running) "Shutdown" else "Start gateway", onClick = {
-                val intent = Intent(context, GatewayService::class.java)
-                if (running) context.stopService(intent) else context.startForegroundService(intent)
-                refresh()
-            })
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                PrimaryButton(if (running) "Shutdown" else "Start gateway", onClick = {
+                    if (running) GatewayService.stop(context) else GatewayService.start(context)
+                    refresh()
+                })
+                SecondaryButton(if (testing) "Testing…" else "Test") {
+                    if (testing) return@SecondaryButton
+                    testing = true
+                    testResult = ""
+                    scope.launch {
+                        val result = withContext(Dispatchers.IO) {
+                            runCatching {
+                                val conn = java.net.URL("${GatewayState.BASE_URL}/api/health").openConnection() as java.net.HttpURLConnection
+                                conn.connectTimeout = 3000
+                                conn.readTimeout = 3000
+                                val code = conn.responseCode
+                                val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                                    ?.bufferedReader()?.use { it.readText() }.orEmpty()
+                                conn.disconnect()
+                                "$code ${body.take(120)}"
+                            }.getOrElse { it.message ?: "failed" }
+                        }
+                        testing = false
+                        testResult = result
+                    }
+                }
+            }
+            if (testResult.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text(testResult, style = MaterialTheme.typography.labelSmall, color = NineRouterColors.Info)
+            }
             Spacer(Modifier.height(10.dp))
             Text(
-                "Service is running on this device. Shutdown will stop the local gateway and disconnect all clients.",
+                "Starts automatically when the app opens. It listens on loopback only; from a computer run adb reverse tcp:20128 tcp:20128.",
                 style = MaterialTheme.typography.bodySmall,
                 color = NineRouterColors.TextMuted,
             )
@@ -217,6 +251,7 @@ fun CombosScreen(refresh: () -> Unit) {
 @Composable
 fun SettingsScreen(refresh: () -> Unit) {
     @Suppress("UNUSED_VARIABLE") val revision = Store.revision
+    val context = LocalContext.current
     val s = Store.state.settings
     var showKeyDialog by remember { mutableStateOf(false) }
     var keyName by remember { mutableStateOf("") }
@@ -229,6 +264,16 @@ fun SettingsScreen(refresh: () -> Unit) {
     ) {
         SectionHeader("Settings", "Manage your preferences")
         Panel {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(s.autoStartGateway, {
+                    Store.mutate { settings = settings.copy(autoStartGateway = it) }
+                    if (it) GatewayService.start(context) else GatewayService.stop(context)
+                    refresh()
+                })
+                Spacer(Modifier.width(10.dp))
+                Text("Start gateway when app opens", color = NineRouterColors.TextMain)
+            }
+            Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Switch(s.requireApiKey, { Store.mutate { settings = settings.copy(requireApiKey = it) }; refresh() })
                 Spacer(Modifier.width(10.dp))

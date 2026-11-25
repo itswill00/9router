@@ -1,8 +1,37 @@
-# 9Router Android 0.1.1
+# 9Router Android 0.1.2
 
-This is the first installable native Android build of the 9Router routing
-gateway. It is written in Kotlin and runs entirely on the device. **No Termux,
-no Node.js, no shell, no root, and no bundled Linux userland are required.**
+Native Android build of the 9Router routing gateway. It is written in Kotlin and
+runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
+bundled Linux userland are required.**
+
+## What changed since 0.1.1
+
+- **The gateway now starts with the app.** A new *Start gateway when app opens*
+  setting (on by default) brings the loopback service up on launch, so
+  `http://127.0.0.1:20128/v1` is live without tapping **Start** first.
+- **The provider page was rebuilt to match the upstream dashboard.** Providers
+  are grouped into OAuth, Free, Free Tier, API Key, and Web Cookie sections (plus
+  Custom OpenAI/Anthropic-compatible endpoints). Tapping a card opens a provider
+  detail page with **Connections** and the full **Models** catalog, exactly like
+  the desktop `providers/[id]` screen.
+- **OAuth is no longer hidden behind an API key prompt.** Providers that support
+  OAuth now offer *OAuth login*, *Device code*, or *Paste token* depending on the
+  flow they actually use, and OAuth-only providers no longer show an API key
+  field.
+- **More real login flows.** Browser PKCE login works for Claude, Codex, Gemini
+  CLI, Antigravity, and iFlow (iFlow uses its own `redirect` shape plus Basic
+  Auth). Device-code login works for GitHub, Grok CLI, Kimi, Muse, and MiniMax
+  Code — including GitHub's Copilot token exchange and Muse's Model API key mint.
+- **The model catalog is complete.** Model lists and names are now exported from
+  the same source the dashboard uses (`getModelsByProviderId`), so every provider
+  detail page lists its real models with a search box.
+- **`localhost` works regardless of IP version.** The gateway binds IPv4
+  `127.0.0.1` and, when available, IPv6 `::1`.
+- **A status page and a health check.** `GET /` returns a small HTML status page
+  and `/api/health` reports state, version, connections, and model count. The
+  Endpoint tab has a **Test** button to verify the loopback server.
+- **Clearer failures.** Startup errors surface in the Endpoint tab instead of
+  silently doing nothing.
 
 ## Highlights
 
@@ -28,18 +57,11 @@ no Node.js, no shell, no root, and no bundled Linux userland are required.**
   `/api/usage/stats`, `/api/usage/request-logs`, `/api/keys`,
   `/api/providers`, `/api/combos`, `/api/provider-nodes`, and
   `/api/models/alias`, in addition to the `/v1` inference surface.
-- **Provider registry**: 151 declarations exported from the repository into a
-  JSON asset at build time. A build-time script regenerates it; the device
-  never runs JavaScript.
+- **Provider registry**: 151 declarations and their model catalogs exported from
+  the repository into JSON assets at build time. A build-time script regenerates
+  them; the device never runs JavaScript.
 - **Credential management**: API keys and OAuth tokens are encrypted with
   AES-GCM using the Android Keystore before being written to disk.
-- **Login flows**: OAuth PKCE through the browser with a temporary loopback
-  callback server (the redirect shape provider client IDs expect), per-provider
-  form/JSON token exchange, Google client secrets, and device-code login.
-  Tokens can also be pasted manually.
-- **Working connection toggles** and a compact two-column provider page:
-  connected accounts are listed first, and one connect dialog offers browser
-  login, device login, API key, or token paste.
 - **Usage & Analytics**: Overview/Details tabs, Today/24h/7D/30D/60D/All
   periods, overview cards, recent requests, an area chart, provider/model
   breakdowns, and a per-model table with expandable provider detail.
@@ -56,13 +78,19 @@ Download `app-debug.apk` from this release and sideload it:
 adb install -r app-debug.apk
 ```
 
-Open the app, tap **Start gateway**, then copy the API key from the **Endpoint**
-tab. Point any OpenAI-compatible client at:
+Open the app. The gateway starts automatically; copy the API key from the
+**Endpoint** tab. Point any OpenAI-compatible client at:
 
 ```text
 Base URL: http://127.0.0.1:20128/v1
 API key:  <copied from the app>
 Model:    openai/gpt-5-mini, claude/claude-sonnet-5, or a combo name
+```
+
+From a computer connected by USB, forward the port to reach the phone gateway:
+
+```bash
+adb reverse tcp:20128 tcp:20128
 ```
 
 Android 13+ will ask for notification permission; it is used only by the
@@ -80,12 +108,15 @@ persistent foreground service notification.
 
 ## Known limitations
 
-This is a first native slice, not full parity with the Node gateway:
+This is a native slice, not full parity with the Node gateway:
 
 - No TLS/MITM interception, certificate injection, or Antigravity IDE
   impersonation.
 - Native binary/protobuf envelopes (Kiro EventStream, Cursor protobuf,
   commandcode NDJSON) are not implemented.
+- OAuth flows that need provider-specific cryptography (Xiaomi MiMo ECDH) or a
+  custom binary handshake (Cursor, Windsurf, Trae, Qoder) use the manual token
+  paste path.
 - No cloud sync, TTS, STT, image, or video endpoints. `/v1/embeddings` is
   supported for OpenAI-compatible upstreams.
 - Translator coverage focuses on OpenAI, Claude, Gemini, and Responses.
@@ -96,11 +127,11 @@ This is a first native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.1-android` (version code 3)
+- Version: `0.1.2-android` (version code 4)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15)
 - Source branch: `feat/android-native-gateway`
 - SHA-256 of the attached APK:
-  `c650070bed1a2dd30c062586f7ffa262d8dd45e3b663cdb998fad9d23dfbd825`
+  `120d2abb2c881343ca430673f62ebdbf63f9650deb92d23e0b24b1612de2cabf`
 
 See `android/README.md` for the module layout and build instructions.

@@ -35,6 +35,9 @@ class MainActivity : ComponentActivity() {
         androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
             ?.isAppearanceLightNavigationBars = false
         handleOAuthCallback()
+        if (Store.state.settings.autoStartGateway) {
+            GatewayService.start(this)
+        }
         setContent {
             NineRouterTheme {
                 AppShell(refreshTrigger = {})

@@ -14,6 +14,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { MODEL_PRICING } from "../open-sse/providers/pricing.js";
+import { getModelsByProviderId } from "../open-sse/config/providerModels.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const registryDir = path.join(root, "open-sse", "providers", "registry");
@@ -63,6 +64,13 @@ for (const file of fs.readdirSync(registryDir).filter((f) => f.endsWith(".js")).
   const oauth = lastBlock(src, "oauth");
   const display = block(src, "display");
   const modelsBlock = block(src, "models", "[", "]");
+  const authModes = [...(block(src, "authModes", "[", "]").match(/["']([^"']+)["']/g) || [])]
+    .map((v) => v.replace(/["']/g, ""));
+  const serviceKinds = [...(block(src, "serviceKinds", "[", "]").match(/["']([^"']+)["']/g) || [])]
+    .map((v) => v.replace(/["']/g, ""));
+  const category = str(src, /^\s*category:\s*["']([^"']+)["']/m);
+  const hasOAuth = /^\s*hasOAuth:\s*true/m.test(src) || category === "oauth" || oauth.length > 0;
+  const authType = str(src, /^\s*authType:\s*["']([^"']+)["']/m) || (category === "oauth" ? "oauth" : "apikey");
   // Public installed-app OAuth client shared by the Google CLI providers.
   // Kept here because the upstream constant lives in a module that also imports
   // a CommonJS MITM helper.
@@ -77,6 +85,7 @@ for (const file of fs.readdirSync(registryDir).filter((f) => f.endsWith(".js")).
   for (const m of extraBlock.matchAll(/([A-Za-z0-9_]+):\s*["']([^"']*)["']/g)) extraParams[m[1]] = m[2];
 
   const models = [];
+  const modelNames = {};
   const modelCapabilities = {};
   if (modelsBlock) {
     for (const m of modelsBlock.matchAll(/\{[\s\S]*?\}/g)) {
@@ -84,6 +93,8 @@ for (const file of fs.readdirSync(registryDir).filter((f) => f.endsWith(".js")).
       const modelId = str(chunk, /^\s*id:\s*["']([^"']+)["']/m);
       if (!modelId) continue;
       models.push(modelId);
+      const name = str(chunk, /^\s*name:\s*["']([^"']+)["']/m);
+      if (name) modelNames[modelId] = name;
       const caps = [...chunk.matchAll(/capabilities:\s*\[([^\]]*)\]/g)]
         .flatMap((c) => [...c[1].matchAll(/["']([^"']+)["']/g)].map((v) => v[1]));
       const type = str(chunk, /^\s*type:\s*["']([^"']+)["']/m);
@@ -92,19 +103,45 @@ for (const file of fs.readdirSync(registryDir).filter((f) => f.endsWith(".js")).
       if (caps.length) modelCapabilities[modelId] = [...new Set(caps)];
     }
   }
+  // The dashboard reads its model picker from getModelsByProviderId(alias),
+  // not from the registry `models` block, so mirror that source too.
+  for (const model of getModelsByProviderId(id)) {
+    const modelId = model?.id;
+    if (!modelId) continue;
+    if (!models.includes(modelId)) models.push(modelId);
+    if (model.name && !modelNames[modelId]) modelNames[modelId] = model.name;
+    const caps = [
+      ...(Array.isArray(model.capabilities) ? model.capabilities : []),
+      ...(Array.isArray(model.supportedFormats) ? model.supportedFormats : []),
+    ].filter((v) => typeof v === "string");
+    if (model.type === "image") caps.push("image");
+    if (model.type === "embedding") caps.push("embedding");
+    if (caps.length) {
+      modelCapabilities[modelId] = [...new Set([...(modelCapabilities[modelId] || []), ...caps])];
+    }
+  }
 
   entries.push({
     id,
     alias: str(src, /^\s*alias:\s*["']([^"']+)["']/m) || id,
     name: str(display, /^\s*name:\s*["']([^"']+)["']/m) || id,
-    category: str(src, /^\s*category:\s*["']([^"']+)["']/m),
-    authType: str(src, /^\s*authType:\s*["']([^"']+)["']/m) || "apikey",
+    category,
+    authType,
+    authModes,
+    hasOAuth,
+    priority: Number.parseInt(str(src, /^\s*priority:\s*(\d+)/m) || "999", 10),
+    website: str(display, /^\s*website:\s*["']([^"']+)["']/m),
+    deprecated: /^\s*deprecated:\s*true/m.test(display),
+    hidden: /^\s*hidden:\s*true/m.test(src),
+    serviceKinds,
     format: str(transport, /^\s*format:\s*["']([^"']+)["']/m) || "openai",
     baseUrl: str(transport, /^\s*baseUrl:\s*["']([^"']+)["']/m),
     tokenUrl: str(oauth, /^\s*tokenUrl:\s*["']([^"']+)["']/m),
     clientId: str(oauth, /^\s*clientId:\s*["']([^"']+)["']/m) || (googleProvider ? GOOGLE_CLIENT_ID : ""),
     authorizeUrl: str(oauth, /^\s*authorizeUrl:\s*["']([^"']+)["']/m),
-    deviceCodeUrl: str(oauth, /^\s*deviceCodeUrl:\s*["']([^"']+)["']/m),
+    deviceCodeUrl: str(oauth, /^\s*deviceCodeUrl:\s*["']([^"']+)["']/m) ||
+      str(oauth, /^\s*deviceUrl:\s*["']([^"']+)["']/m),
+    copilotTokenUrl: str(oauth, /^\s*copilotTokenUrl:\s*["']([^"']+)["']/m),
     redirectUri: str(oauth, /^\s*redirectUri:\s*["']([^"']+)["']/m),
     scope: str(oauth, /^\s*scope:\s*["']([^"']+)["']/m) ||
       str(oauth, /^\s*scopes:\s*["']([^"']+)["']/m) ||
@@ -115,6 +152,7 @@ for (const file of fs.readdirSync(registryDir).filter((f) => f.endsWith(".js")).
     fixedPort: Number.parseInt(str(oauth, /^\s*fixedPort:\s*(\d+)/m) || "0", 10) || 0,
     extraParams,
     models,
+    modelNames,
     modelCapabilities,
   });
 }

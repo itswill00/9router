@@ -26,8 +26,10 @@ http://127.0.0.1:20128/v1
   `round-robin`), cooldown fallback, token refresh (401/403), RTK tool-result
   compression, caveman/ponytail/custom prompt injectors, and usage history.
 - OAuth PKCE with a temporary loopback callback server (the same redirect shape
-  the desktop app uses) plus device-code login. Provider-specific token
-  encodings (form vs JSON) and client secrets are honored.
+  the desktop app uses) plus device-code login for GitHub, Grok CLI, Kimi, Muse,
+  and MiniMax Code, including GitHub Copilot token exchange and Muse key mint.
+  Provider-specific token encodings (form vs JSON), Basic Auth (iFlow), and
+  client secrets are honored.
 - Custom OpenAI/Anthropic-compatible nodes with per-node API key.
 - Multiple API keys with per-key model/combo allow-list, constant-time compare.
 - In-app streaming chat, so the APK is usable without any external CLI.
@@ -40,9 +42,19 @@ http://127.0.0.1:20128/v1
 - **Usage & Analytics**: Overview/Details tabs, Today/24h/7D/30D/60D/All
   periods, overview cards, recent requests, an area chart, provider/model
   breakdowns, and a per-model table with expandable provider detail.
-- **Provider page**: two-column provider tiles, a connected-connections section
-  with working enable switches, and a single connect dialog that offers
-  browser login, device login, API key, or token paste.
+- **Provider page**: grouped provider sections (OAuth, Free, Free Tier, API Key,
+  Web Cookie, Custom compatible endpoints), a provider detail screen with
+  **Connections** and the full **Models** catalog (searchable), and per-flow
+  connect actions. OAuth-only providers show *OAuth login* or *Device code*;
+  API-key providers show *API key*; providers with crypto-specific handshakes
+  fall back to *Paste token*.
+- **Model catalog**: model ids and display names are exported from the same
+  source the dashboard uses (`getModelsByProviderId`) into
+  `provider_registry.json`.
+- **Gateway lifecycle**: the loopback service auto-starts on launch
+  (*Start gateway when app opens*, default on), binds IPv4 `127.0.0.1` and, when
+  available, IPv6 `::1`, and exposes a `GET /` status page plus `/api/health`.
+  Startup errors and a **Test** button are shown on the Endpoint tab.
 - Management API parity (subset): `/api/version`, `/api/auth/status`,
   `/api/usage/stats`, `/api/usage/request-logs`, `/api/keys`,
   `/api/providers`, `/api/combos`, `/api/provider-nodes`, `/api/models/alias`.
@@ -76,7 +88,7 @@ cd android
 ./gradlew :app:assembleDebug
 ```
 
-Release notes for the first GitHub release are in `android/RELEASE_NOTES.md`.
+Release notes for the current GitHub release are in `android/RELEASE_NOTES.md`.
 
 Regenerate the provider asset after changing the upstream registry:
 

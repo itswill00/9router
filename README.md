@@ -43,7 +43,15 @@ bundles a Linux userland.
   system-prompt injectors.
 - **Credential management**: API keys and OAuth tokens encrypted with AES-GCM
   via the Android Keystore.
-- **Login flows**: OAuth PKCE and device-code login, or paste a token manually.
+- **Gateway lifecycle**: the loopback service auto-starts on app launch (toggle
+  in Settings), binds `127.0.0.1` and IPv6 `::1`, serves `GET /` and
+  `/api/health`, and reports startup errors in the app.
+- **Login flows**: browser OAuth PKCE (Claude Code, Codex, Gemini CLI,
+  Antigravity, iFlow), device-code login (GitHub, Grok CLI, Kimi, Muse, MiniMax
+  Code), or paste a token manually.
+- **Provider & model catalog**: 151 providers grouped like the dashboard (OAuth,
+  Free, Free Tier, API Key, Web Cookie, Custom), each with a detail screen and
+  its real searchable model list.
 - **Access control**: multiple API keys with per-key model/combo allow-lists.
 - **Custom nodes**: OpenAI-compatible and Anthropic-compatible endpoints.
 - **Compact mobile UI** using the upstream dark palette and original brand mark.
@@ -64,12 +72,12 @@ service notification.
 
 ## First run
 
-1. Open **9Router**.
-2. Tap **Endpoint → Start gateway**.
-3. Copy the API key from the Endpoint screen.
-4. Add a provider on the **Providers** tab (API key, OAuth, or custom node).
-5. Optionally create a **Combo** on the Combos tab.
-6. Point a client at the endpoint:
+1. Open **9Router** — the loopback gateway starts automatically.
+2. Copy the API key from the **Endpoint** screen.
+3. Add a provider on the **Providers** tab (OAuth, device code, API key, or a
+   custom compatible endpoint).
+4. Optionally create a **Combo** on the Combos tab.
+5. Point a client at the endpoint:
 
 ```text
 Base URL: http://127.0.0.1:20128/v1

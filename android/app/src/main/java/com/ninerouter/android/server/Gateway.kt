@@ -48,22 +48,34 @@ class Gateway(private val context: Context) {
     }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + handler)
     private var server: ServerSocket? = null
+    private val extraServers = mutableListOf<ServerSocket>()
 
     @Volatile
     private var started = false
 
     fun start() {
         if (started) return
+        val bound = mutableListOf<ServerSocket>()
         try {
             // Loopback only: remote access requires an explicit reverse tunnel,
-            // never a 0.0.0.0 bind from the app itself.
-            val socket = ServerSocket(GatewayState.PORT, 32, InetAddress.getByName("127.0.0.1"))
-            server = socket
+            // never a 0.0.0.0 bind from the app itself. IPv4 is primary; IPv6
+            // loopback is added when available so `localhost` works either way.
+            bound += ServerSocket(GatewayState.PORT, 32, InetAddress.getByName("127.0.0.1"))
+            runCatching {
+                bound += ServerSocket(GatewayState.PORT, 32, InetAddress.getByName("::1"))
+            }
+            server = bound.first()
+            extraServers.clear()
+            extraServers += bound.drop(1)
             started = true
-            scope.launch { acceptLoop(socket) }
+            bound.forEach { socket -> scope.launch { acceptLoop(socket) } }
             GatewayState.running.value = true
+            GatewayState.error.value = ""
             android.util.Log.i("9R-Gateway", "listening on ${GatewayState.BASE_URL}")
         } catch (e: Exception) {
+            bound.forEach { runCatching { it.close() } }
+            GatewayState.running.value = false
+            GatewayState.error.value = e.message ?: e.javaClass.simpleName
             android.util.Log.e("9R-Gateway", "start failed", e)
         }
     }
@@ -72,6 +84,8 @@ class Gateway(private val context: Context) {
         started = false
         server?.close()
         server = null
+        extraServers.forEach { runCatching { it.close() } }
+        extraServers.clear()
         scope.cancel()
         GatewayState.running.value = false
     }
@@ -104,8 +118,16 @@ class Gateway(private val context: Context) {
             val authorized = authorized(headers)
 
             when {
-                path == "/api/health" || path == "/health" ->
-                    writeJson(output, 200, "{\"ok\":true,\"android\":true}")
+                path == "/" || path == "/index.html" -> writeHtml(output, statusPage())
+
+                path == "/api/health" || path == "/health" -> writeJson(output, 200, buildJsonObject {
+                    put("ok", true)
+                    put("android", true)
+                    put("version", "0.1.2-android")
+                    put("baseUrl", GatewayState.BASE_URL)
+                    put("connections", Store.state.connections.size)
+                    put("models", Catalog.modelIds().size)
+                }.let { json.encodeToString(it) })
 
                 path == "/v1/models" || path == "/api/v1/models" -> writeJson(output, 200, modelsJson())
 
@@ -641,6 +663,45 @@ class Gateway(private val context: Context) {
         output.write("\r\n".toByteArray(Charsets.US_ASCII))
         output.write(bytes)
         output.write("\r\n".toByteArray(Charsets.US_ASCII))
+    }
+
+    private fun statusPage(): String = """
+        <!doctype html>
+        <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+        <title>9Router Android</title>
+        <style>
+          body{font-family:system-ui,sans-serif;background:#0b0b0d;color:#e8e8ea;margin:0;padding:32px}
+          .card{max-width:560px;margin:0 auto;background:#151518;border:1px solid #26262b;border-radius:16px;padding:24px}
+          h1{margin:0 0 4px;font-size:22px} .muted{color:#8b8b93;font-size:13px}
+          .ok{color:#4ade80;font-weight:600} code{background:#0b0b0d;padding:2px 6px;border-radius:6px}
+          li{margin:8px 0} a{color:#f97316}
+        </style></head>
+        <body><div class="card">
+          <h1>9Router Android</h1>
+          <p class="muted">Native gateway · <span class="ok">running</span> on ${GatewayState.BASE_URL}</p>
+          <ul>
+            <li>OpenAI base URL: <code>${GatewayState.BASE_URL}/v1</code></li>
+            <li>Health: <a href="/api/health">/api/health</a></li>
+            <li>Models: <a href="/v1/models">/v1/models</a></li>
+            <li>API key: <code>${if (Store.state.settings.requireApiKey) "required" else "not required"}</code></li>
+            <li>Connections: ${Store.state.connections.size} · Models: ${Catalog.modelIds().size}</li>
+          </ul>
+          <p class="muted">This server only listens on loopback inside the phone. From a computer use
+          <code>adb reverse tcp:${GatewayState.PORT} tcp:${GatewayState.PORT}</code>.</p>
+        </div></body></html>
+    """.trimIndent()
+
+    private fun writeHtml(output: OutputStream, body: String) {
+        val bytes = body.toByteArray(Charsets.UTF_8)
+        output.write((
+            "HTTP/1.1 200 OK\r\n" +
+                "Content-Type: text/html; charset=utf-8\r\n" +
+                "Content-Length: ${bytes.size}\r\n" +
+                "Cache-Control: no-store\r\n" +
+                "Connection: close\r\n\r\n"
+            ).toByteArray(Charsets.UTF_8))
+        output.write(bytes)
+        output.flush()
     }
 
     private fun writeJson(output: OutputStream, status: Int, body: String) {
