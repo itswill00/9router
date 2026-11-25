@@ -37,6 +37,7 @@ object Store {
                 refreshToken = Crypto.box(c.refreshToken),
             )
         }.toMutableList(),
+        nodes = state.nodes.map { n -> n.copy(apiKey = Crypto.box(n.apiKey)) }.toMutableList(),
         apiKeys = state.apiKeys.map { k -> k.copy(key = Crypto.box(k.key)) }.toMutableList(),
     )
 
@@ -49,6 +50,7 @@ object Store {
                     refreshToken = Crypto.unbox(c.refreshToken),
                 )
             }.toMutableList(),
+            nodes = loaded.nodes.map { n -> n.copy(apiKey = Crypto.unbox(n.apiKey)) }.toMutableList(),
             apiKeys = loaded.apiKeys.map { k -> k.copy(key = Crypto.unbox(k.key)) }.toMutableList(),
         )
 

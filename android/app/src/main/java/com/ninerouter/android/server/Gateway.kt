@@ -46,40 +46,57 @@ class Gateway(private val context: Context) {
     private val handler = CoroutineExceptionHandler { _, t ->
         android.util.Log.e("9R-Gateway", "connection failed", t)
     }
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + handler)
+    private var scope = newScope()
     private var server: ServerSocket? = null
     private val extraServers = mutableListOf<ServerSocket>()
 
     @Volatile
     private var started = false
 
+    private fun newScope() = CoroutineScope(SupervisorJob() + Dispatchers.IO + handler)
+
+    @Synchronized
     fun start() {
         if (started) return
+        // A previous stop() cancelled the old scope. Never reuse it, otherwise
+        // the socket binds successfully but no accept loop ever runs and every
+        // browser request hangs until it times out.
+        if (!scope.isActive) scope = newScope()
         val bound = mutableListOf<ServerSocket>()
         try {
             // Loopback only: remote access requires an explicit reverse tunnel,
             // never a 0.0.0.0 bind from the app itself. IPv4 is primary; IPv6
             // loopback is added when available so `localhost` works either way.
-            bound += ServerSocket(GatewayState.PORT, 32, InetAddress.getByName("127.0.0.1"))
-            runCatching {
-                bound += ServerSocket(GatewayState.PORT, 32, InetAddress.getByName("::1"))
-            }
+            bound += bind(InetAddress.getByName("127.0.0.1"))
+            runCatching { bound += bind(InetAddress.getByName("::1")) }
             server = bound.first()
             extraServers.clear()
             extraServers += bound.drop(1)
             started = true
-            bound.forEach { socket -> scope.launch { acceptLoop(socket) } }
+            val activeScope = scope
+            bound.forEach { socket -> activeScope.launch { acceptLoop(socket) } }
             GatewayState.running.value = true
             GatewayState.error.value = ""
             android.util.Log.i("9R-Gateway", "listening on ${GatewayState.BASE_URL}")
         } catch (e: Exception) {
             bound.forEach { runCatching { it.close() } }
             GatewayState.running.value = false
-            GatewayState.error.value = e.message ?: e.javaClass.simpleName
+            GatewayState.error.value = when (e) {
+                is java.net.BindException ->
+                    "Port ${GatewayState.PORT} is already in use. Stop the other gateway instance and try again."
+                else -> e.message ?: e.javaClass.simpleName
+            }
             android.util.Log.e("9R-Gateway", "start failed", e)
         }
     }
 
+    private fun bind(address: InetAddress): ServerSocket =
+        ServerSocket().apply {
+            reuseAddress = true
+            bind(java.net.InetSocketAddress(address, GatewayState.PORT), 64)
+        }
+
+    @Synchronized
     fun stop() {
         started = false
         server?.close()
@@ -91,9 +108,11 @@ class Gateway(private val context: Context) {
     }
 
     private suspend fun acceptLoop(socket: ServerSocket) {
-        while (started && scope.isActive) {
+        val activeScope = scope
+        while (started && activeScope.isActive) {
             val client = try { socket.accept() } catch (_: Exception) { break }
-            scope.launch { handle(client) }
+            client.soTimeout = 30_000
+            activeScope.launch { handle(client) }
         }
     }
 
@@ -123,10 +142,10 @@ class Gateway(private val context: Context) {
                 path == "/api/health" || path == "/health" -> writeJson(output, 200, buildJsonObject {
                     put("ok", true)
                     put("android", true)
-                    put("version", "0.1.9-android")
+                    put("version", com.ninerouter.android.AppInfo.VERSION_NAME)
                     put("baseUrl", GatewayState.BASE_URL)
                     put("connections", Store.state.connections.size)
-                    put("models", Catalog.modelIds().size)
+                    put("models", Catalog.modelIds().size + Store.state.nodes.sumOf { it.models.size })
                 }.let { json.encodeToString(it) })
 
                 path == "/v1/models" || path == "/api/v1/models" -> writeJson(output, 200, modelsJson())
@@ -196,6 +215,8 @@ class Gateway(private val context: Context) {
 
                 path == "/api/provider-nodes" && method == "GET" -> writeJson(output, 200, nodesJson())
                 path == "/api/provider-nodes" && method == "POST" -> createNode(body, output)
+                path.startsWith("/api/provider-nodes/") && method == "PUT" -> updateNode(path, body, output)
+                path.startsWith("/api/provider-nodes/") && method == "DELETE" -> deleteNode(path, output)
 
                 path == "/api/models/alias" && method == "GET" -> writeJson(output, 200, aliasesJson())
                 path == "/api/models/alias" && method == "POST" -> setAlias(body, output)
@@ -261,7 +282,7 @@ class Gateway(private val context: Context) {
         } ?: com.ninerouter.android.data.ProviderDef(id = target.provider, alias = target.provider)
 
         val conn = Store.state.connections.firstOrNull { it.enabled && it.provider == target.provider }
-            ?: Store.state.nodes.firstOrNull { it.id == target.provider && it.apiKey.isNotBlank() }?.let {
+            ?: Store.state.nodes.firstOrNull { it.id == target.provider }?.let {
                 Connection(id = "node:${it.id}", provider = it.id, apiKey = it.apiKey)
             }
         if (conn == null) return writeJson(output, 404, errorJson(404, "No credentials for ${target.provider}"))
@@ -499,38 +520,118 @@ class Gateway(private val context: Context) {
         writeJson(output, 200, aliasesJson())
     }
 
-    private fun nodesJson(): String = json.encodeToString(buildJsonArray {
-        Store.state.nodes.forEach { n ->
-            add(buildJsonObject {
-                put("id", n.id); put("name", n.name); put("prefix", n.prefix)
-                put("type", n.type); put("baseUrl", n.baseUrl)
-            })
-        }
+    private fun nodeJson(n: ProviderNode): JsonObject = buildJsonObject {
+        put("id", n.id)
+        put("name", n.name)
+        put("prefix", n.prefix)
+        put("type", n.type)
+        put("apiType", n.apiType)
+        put("baseUrl", n.baseUrl)
+        put("models", buildJsonArray { n.models.forEach { add(JsonPrimitive(it)) } })
+        put("hasApiKey", n.apiKey.isNotBlank())
+    }
+
+    private fun nodesJson(): String = json.encodeToString(buildJsonObject {
+        put("nodes", buildJsonArray { Store.state.nodes.forEach { add(nodeJson(it)) } })
     })
+
+    private fun sanitizedNodeBase(type: String, baseUrl: String): String {
+        var base = baseUrl.trim().trimEnd('/')
+        if (type == "anthropic-compatible" && base.endsWith("/messages")) {
+            base = base.dropLast("/messages".length)
+        }
+        if (type == "custom-embedding" && base.endsWith("/embeddings")) {
+            base = base.dropLast("/embeddings".length)
+        }
+        return base
+    }
 
     private fun createNode(raw: String, output: OutputStream) {
         val incoming = bodyObject(raw)
-        val prefix = textOf(incoming, "prefix")
-        val baseUrl = textOf(incoming, "baseUrl")
-        if (prefix.isBlank() || baseUrl.isBlank()) {
-            return writeJson(output, 400, errorJson(400, "prefix and baseUrl are required"))
+        val name = textOf(incoming, "name").trim()
+        val prefix = textOf(incoming, "prefix").trim()
+        val type = textOf(incoming, "type").ifBlank { "openai-compatible" }
+        val apiType = textOf(incoming, "apiType").ifBlank { "chat" }
+        if (name.isBlank()) return writeJson(output, 400, errorJson(400, "Name is required"))
+        if (prefix.isBlank()) return writeJson(output, 400, errorJson(400, "Prefix is required"))
+        if (type == "openai-compatible" && apiType !in setOf("chat", "responses")) {
+            return writeJson(output, 400, errorJson(400, "Invalid OpenAI compatible API type"))
+        }
+        if (type !in setOf("openai-compatible", "anthropic-compatible", "custom-embedding")) {
+            return writeJson(output, 400, errorJson(400, "Invalid provider node type"))
+        }
+        if (Store.state.nodes.any { it.prefix.equals(prefix, ignoreCase = true) }) {
+            return writeJson(output, 409, errorJson(409, "Prefix already exists"))
+        }
+        val defaultBase = when (type) {
+            "anthropic-compatible" -> "https://api.anthropic.com/v1"
+            else -> "https://api.openai.com/v1"
         }
         val node = ProviderNode(
-            id = "node-" + java.util.UUID.randomUUID().toString().take(8),
+            id = "$type-" + java.util.UUID.randomUUID().toString().take(8),
             prefix = prefix,
-            name = textOf(incoming, "name").ifBlank { prefix },
-            type = textOf(incoming, "type").ifBlank { "openai-compatible" },
-            baseUrl = baseUrl,
+            name = name,
+            type = type,
+            apiType = if (type == "openai-compatible") apiType else "chat",
+            baseUrl = sanitizedNodeBase(type, textOf(incoming, "baseUrl").ifBlank { defaultBase }),
             apiKey = textOf(incoming, "apiKey"),
+            models = stringsOf(incoming, "models").map { it.trim() }.filter { it.isNotBlank() }.distinct(),
         )
         Store.mutate { nodes.add(node) }
-        writeJson(output, 201, json.encodeToString(buildJsonObject { put("id", node.id) }))
+        writeJson(output, 201, json.encodeToString(buildJsonObject { put("node", nodeJson(node)) }))
+    }
+
+    private fun updateNode(path: String, raw: String, output: OutputStream) {
+        val id = idFrom(path)
+        val node = Store.state.nodes.firstOrNull { it.id == id }
+            ?: return writeJson(output, 404, errorJson(404, "Provider node not found"))
+        val incoming = bodyObject(raw)
+        val name = textOf(incoming, "name").trim()
+        val prefix = textOf(incoming, "prefix").trim()
+        val baseUrl = textOf(incoming, "baseUrl").trim()
+        val apiType = textOf(incoming, "apiType").ifBlank { node.apiType }
+        if (name.isBlank()) return writeJson(output, 400, errorJson(400, "Name is required"))
+        if (prefix.isBlank()) return writeJson(output, 400, errorJson(400, "Prefix is required"))
+        if (baseUrl.isBlank()) return writeJson(output, 400, errorJson(400, "Base URL is required"))
+        if (node.type == "openai-compatible" && apiType !in setOf("chat", "responses")) {
+            return writeJson(output, 400, errorJson(400, "Invalid OpenAI compatible API type"))
+        }
+        if (Store.state.nodes.any { it.id != id && it.prefix.equals(prefix, ignoreCase = true) }) {
+            return writeJson(output, 409, errorJson(409, "Prefix already exists"))
+        }
+        node.name = name
+        node.prefix = prefix
+        node.baseUrl = sanitizedNodeBase(node.type, baseUrl)
+        if (node.type == "openai-compatible") node.apiType = apiType
+        if (incoming?.containsKey("apiKey") == true) node.apiKey = textOf(incoming, "apiKey")
+        if (incoming?.containsKey("models") == true) {
+            node.models = stringsOf(incoming, "models").map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        }
+        Store.save()
+        writeJson(output, 200, json.encodeToString(buildJsonObject { put("node", nodeJson(node)) }))
+    }
+
+    private fun deleteNode(path: String, output: OutputStream) {
+        val id = idFrom(path)
+        if (Store.state.nodes.none { it.id == id }) {
+            return writeJson(output, 404, errorJson(404, "Provider node not found"))
+        }
+        Store.mutate {
+            nodes.removeAll { it.id == id }
+            connections.removeAll { it.provider == id }
+        }
+        writeJson(output, 200, "{\"success\":true}")
     }
 
     private fun embeddingsUrl(def: com.ninerouter.android.data.ProviderDef): String {
-        val base = def.baseUrl.ifBlank { "https://api.openai.com/v1/chat/completions" }
-        if (base.contains("/embeddings")) return base
-        return base.substringBeforeLast('/', base) + "/embeddings"
+        var base = def.baseUrl.ifBlank { "https://api.openai.com/v1" }.trim().trimEnd('/')
+        for (suffix in listOf("/chat/completions", "/responses", "/messages", "/embeddings")) {
+            if (base.endsWith(suffix, ignoreCase = true)) {
+                base = base.dropLast(suffix.length).trimEnd('/')
+                break
+            }
+        }
+        return "$base/embeddings"
     }
 
     private fun modelsJson(): String = json.encodeToString(buildJsonObject {
@@ -543,6 +644,16 @@ class Gateway(private val context: Context) {
                         put("object", "model")
                         put("created", 0L)
                         put("owned_by", p.id)
+                    })
+                }
+            }
+            Store.state.nodes.forEach { node ->
+                node.models.forEach { model ->
+                    add(buildJsonObject {
+                        put("id", "${node.prefix}/$model")
+                        put("object", "model")
+                        put("created", 0L)
+                        put("owned_by", node.id)
                     })
                 }
             }

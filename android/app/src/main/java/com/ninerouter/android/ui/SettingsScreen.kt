@@ -1,0 +1,448 @@
+package com.ninerouter.android.ui
+
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.dp
+import com.ninerouter.android.AppInfo
+import com.ninerouter.android.GatewayService
+import com.ninerouter.android.data.ApiKey
+import com.ninerouter.android.data.Settings
+import com.ninerouter.android.data.Store
+import com.ninerouter.android.server.GatewayState
+import com.ninerouter.android.update.UpdateManager
+import java.util.UUID
+
+@Composable
+fun SettingsScreen(refresh: () -> Unit) {
+    @Suppress("UNUSED_VARIABLE") val revision = Store.revision
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    val s = Store.state.settings
+    val updateState by UpdateManager.state.collectAsState()
+    val running by GatewayState.running.collectAsState()
+    var showKeyDialog by remember { mutableStateOf(false) }
+    var showResetDialog by remember { mutableStateOf(false) }
+    var keyName by remember { mutableStateOf("") }
+    var keyAllowed by remember { mutableStateOf("") }
+    var createdKey by remember { mutableStateOf("") }
+
+    fun save(mutator: Settings.() -> Settings) {
+        Store.mutate { settings = settings.mutator() }
+        refresh()
+    }
+
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item { SectionHeader("Settings", "Gateway, routing and app preferences") }
+
+        // ---- Gateway -------------------------------------------------------
+        item { SectionHeader("Gateway", "Local API server", modifier = Modifier.padding(top = 4.dp)) }
+        item {
+            Panel {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (running) "Running" else "Stopped",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = if (running) NineRouterColors.Success else NineRouterColors.TextMuted,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        GatewayState.BASE_URL,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NineRouterColors.TextSubtle,
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                ToggleRow(
+                    "Start gateway on launch",
+                    "Runs the loopback server in a foreground service.",
+                    s.autoStartGateway,
+                ) { value ->
+                    save { copy(autoStartGateway = value) }
+                    if (value) GatewayService.start(context) else GatewayService.stop(context)
+                }
+                DividerLine(Modifier.padding(vertical = 8.dp))
+                ToggleRow(
+                    "Require API key",
+                    "Reject /v1 requests without a valid key.",
+                    s.requireApiKey,
+                ) { value -> save { copy(requireApiKey = value) } }
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SecondaryButton("Open dashboard") {
+                        runCatching {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(GatewayState.BASE_URL)))
+                        }.onFailure {
+                            Toast.makeText(context, "No browser available", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    SecondaryButton(if (running) "Shutdown" else "Start") {
+                        if (running) GatewayService.stop(context)
+                        else GatewayService.start(context)
+                        refresh()
+                    }
+                    TextButton(onClick = {
+                        GatewayService.restart(context)
+                        Toast.makeText(context, "Restarting gateway…", Toast.LENGTH_SHORT).show()
+                        refresh()
+                    }) { Text("Restart", color = NineRouterColors.Brand) }
+                }
+            }
+        }
+
+        // ---- Routing -------------------------------------------------------
+        item { SectionHeader("Routing", "Account selection and fallback", modifier = Modifier.padding(top = 4.dp)) }
+        item {
+            Panel {
+                Text("Account strategy", style = MaterialTheme.typography.bodyMedium, color = NineRouterColors.TextMain)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ChoiceChip("Fill first", s.fallbackStrategy == "fill-first") {
+                        save { copy(fallbackStrategy = "fill-first") }
+                    }
+                    ChoiceChip("Round robin", s.fallbackStrategy == "round-robin") {
+                        save { copy(fallbackStrategy = "round-robin") }
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    if (s.fallbackStrategy == "round-robin") {
+                        "Rotates between healthy accounts. Sticky limit keeps one account for consecutive requests."
+                    } else {
+                        "Uses the first healthy account until it fails, then falls back."
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.TextMuted,
+                )
+                if (s.fallbackStrategy == "round-robin") {
+                    DividerLine(Modifier.padding(vertical = 8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Sticky limit", style = MaterialTheme.typography.bodyMedium, color = NineRouterColors.TextMain)
+                            Text(
+                                "Requests kept on one account before rotating.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = NineRouterColors.TextMuted,
+                            )
+                        }
+                        TextButton(onClick = { save { copy(stickyLimit = (stickyLimit - 1).coerceAtLeast(1)) } }) {
+                            Text("−", style = MaterialTheme.typography.titleMedium)
+                        }
+                        Text(
+                            s.stickyLimit.toString(),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = NineRouterColors.TextMain,
+                        )
+                        TextButton(onClick = { save { copy(stickyLimit = (stickyLimit + 1).coerceAtMost(50)) } }) {
+                            Text("+", style = MaterialTheme.typography.titleMedium)
+                        }
+                    }
+                }
+            }
+        }
+
+        // ---- Token savers --------------------------------------------------
+        item { SectionHeader("Token savers", "Reduce prompt size before forwarding", modifier = Modifier.padding(top = 4.dp)) }
+        item {
+            Panel {
+                ToggleRow(
+                    "RTK compression",
+                    "Compresses tool results in-place. Fails open on errors.",
+                    s.rtkEnabled,
+                ) { value -> save { copy(rtkEnabled = value) } }
+                DividerLine(Modifier.padding(vertical = 8.dp))
+                ToggleRow(
+                    "Caveman prompt",
+                    "Adds terse-output instructions to the system prompt.",
+                    s.cavemanEnabled,
+                    trailing = if (s.cavemanEnabled) {
+                        {
+                            OutlinedTextField(
+                                s.cavemanLevel,
+                                { value -> save { copy(cavemanLevel = value) } },
+                                singleLine = true,
+                                modifier = Modifier.width(72.dp),
+                            )
+                        }
+                    } else null,
+                ) { value -> save { copy(cavemanEnabled = value) } }
+                if (s.cavemanEnabled) {
+                    Text(
+                        "Level (for example 1–3). Higher means shorter answers.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NineRouterColors.TextSubtle,
+                    )
+                }
+                DividerLine(Modifier.padding(vertical = 8.dp))
+                ToggleRow(
+                    "Ponytail prompt",
+                    "Adds the Ponytail minimalism prompt.",
+                    s.ponytailEnabled,
+                    trailing = if (s.ponytailEnabled) {
+                        {
+                            OutlinedTextField(
+                                s.ponytailLevel,
+                                { value -> save { copy(ponytailLevel = value) } },
+                                singleLine = true,
+                                modifier = Modifier.width(72.dp),
+                            )
+                        }
+                    } else null,
+                ) { value -> save { copy(ponytailEnabled = value) } }
+                DividerLine(Modifier.padding(vertical = 8.dp))
+                ToggleRow(
+                    "Custom system prompt",
+                    "Prepend your own instructions to every request.",
+                    s.customPromptEnabled,
+                ) { value -> save { copy(customPromptEnabled = value) } }
+                if (s.customPromptEnabled) {
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(
+                        s.customPrompt,
+                        { value -> save { copy(customPrompt = value) } },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("System prompt") },
+                        minLines = 3,
+                    )
+                }
+            }
+        }
+
+        // ---- API keys ------------------------------------------------------
+        item {
+            SectionHeader(
+                "Access & API keys",
+                "Keys accepted by the gateway",
+                modifier = Modifier.padding(top = 4.dp),
+                action = {
+                    TextButton(onClick = { showKeyDialog = true }) {
+                        Text("Add key", color = NineRouterColors.Brand)
+                    }
+                },
+            )
+        }
+        item {
+            Panel {
+                if (Store.state.apiKeys.isEmpty()) {
+                    Text(
+                        "No extra keys. The main API key from the Endpoint page still works.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NineRouterColors.TextMuted,
+                    )
+                }
+            }
+        }
+        items(Store.state.apiKeys, key = { it.id }) { key ->
+            Panel {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            key.name.ifBlank { key.id.take(8) },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = NineRouterColors.TextMain,
+                        )
+                        Text(
+                            if (key.allowedModels.isEmpty()) "All models"
+                            else "Only ${key.allowedModels.joinToString(", ")}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NineRouterColors.TextMuted,
+                        )
+                        Text(
+                            key.key.take(12) + "…",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NineRouterColors.TextSubtle,
+                        )
+                    }
+                    Switch(key.active, { value ->
+                        key.active = value
+                        Store.save()
+                        refresh()
+                    })
+                }
+                Spacer(Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = {
+                        clipboard.setText(AnnotatedString(key.key))
+                        Toast.makeText(context, "API key copied", Toast.LENGTH_SHORT).show()
+                    }) { Text("Copy") }
+                    TextButton(onClick = {
+                        Store.mutate { apiKeys.removeAll { it.id == key.id } }
+                        refresh()
+                    }) { Text("Delete", color = NineRouterColors.Danger) }
+                }
+            }
+        }
+        if (createdKey.isNotBlank()) {
+            item {
+                Panel {
+                    Text("New API key", style = MaterialTheme.typography.titleSmall, color = NineRouterColors.Success)
+                    Spacer(Modifier.height(4.dp))
+                    Text(createdKey, style = MaterialTheme.typography.bodySmall, color = NineRouterColors.TextMain)
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(onClick = {
+                            clipboard.setText(AnnotatedString(createdKey))
+                            Toast.makeText(context, "API key copied", Toast.LENGTH_SHORT).show()
+                        }) { Text("Copy") }
+                        TextButton(onClick = { createdKey = "" }) { Text("Dismiss") }
+                    }
+                }
+            }
+        }
+
+        // ---- Updates -------------------------------------------------------
+        item { SectionHeader("App updates", "GitHub release channel", modifier = Modifier.padding(top = 4.dp)) }
+        item { UpdatePanel(updateState) }
+
+        // ---- About ---------------------------------------------------------
+        item { SectionHeader("About", "Data and build information", modifier = Modifier.padding(top = 4.dp)) }
+        item {
+            Panel {
+                StatusRow("Version", AppInfo.VERSION_NAME)
+                Spacer(Modifier.height(6.dp))
+                StatusRow("Channel", "GitHub releases")
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SecondaryButton("Project page") {
+                        runCatching {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(AppInfo.GITHUB_URL)))
+                        }.onFailure {
+                            Toast.makeText(context, "No browser available", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    SecondaryButton("Releases") {
+                        runCatching {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(AppInfo.RELEASES_URL)))
+                        }.onFailure {
+                            Toast.makeText(context, "No browser available", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Credentials and settings are encrypted with the Android Keystore before being written to disk. The gateway only listens on loopback.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.TextMuted,
+                )
+            }
+        }
+        item {
+            Panel {
+                Text("Data", style = MaterialTheme.typography.titleSmall, color = NineRouterColors.TextMain)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SecondaryButton("Clear usage") {
+                        Store.mutate { usage.clear() }
+                        refresh()
+                    }
+                    SecondaryButton("Reset preferences") { showResetDialog = true }
+                }
+            }
+        }
+        item { Spacer(Modifier.height(4.dp)) }
+    }
+
+    if (showKeyDialog) {
+        AlertDialog(
+            onDismissRequest = { showKeyDialog = false },
+            containerColor = NineRouterColors.Surface,
+            title = { Text("Create API key", color = NineRouterColors.TextMain) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        keyName,
+                        { keyName = it },
+                        label = { Text("Name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        keyAllowed,
+                        { keyAllowed = it },
+                        label = { Text("Allowed models (comma separated, blank = all)") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val value = Store.newKey()
+                    val allowed = keyAllowed.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                    Store.state.apiKeys.add(
+                        ApiKey(
+                            id = UUID.randomUUID().toString(),
+                            name = keyName.trim(),
+                            key = value,
+                            allowedModels = allowed,
+                        )
+                    )
+                    Store.save()
+                    createdKey = value
+                    keyName = ""
+                    keyAllowed = ""
+                    showKeyDialog = false
+                    refresh()
+                }) { Text("Create", color = NineRouterColors.Brand) }
+            },
+            dismissButton = { TextButton(onClick = { showKeyDialog = false }) { Text("Cancel") } },
+        )
+    }
+
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            containerColor = NineRouterColors.Surface,
+            title = { Text("Reset preferences?", color = NineRouterColors.TextMain) },
+            text = {
+                Text(
+                    "Gateway, routing and prompt settings return to defaults. Providers, connections, combos and API keys are kept.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NineRouterColors.TextMuted,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    Store.mutate {
+                        settings = Settings(apiKey = settings.apiKey)
+                    }
+                    showResetDialog = false
+                    refresh()
+                }) { Text("Reset", color = NineRouterColors.Danger) }
+            },
+            dismissButton = { TextButton(onClick = { showResetDialog = false }) { Text("Cancel") } },
+        )
+    }
+}

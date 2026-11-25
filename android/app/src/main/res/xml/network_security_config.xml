@@ -1,8 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Cleartext is only for the app's own loopback gateway. Upstreams stay HTTPS. -->
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">127.0.0.1</domain>
-        <domain includeSubdomains="false">localhost</domain>
-    </domain-config>
+    <!--
+      The gateway itself only listens on loopback. Cleartext is allowed because
+      users can add OpenAI-compatible endpoints on their own LAN (for example a
+      local Ollama or LM Studio server). Every built-in provider uses HTTPS; the
+      add/edit endpoint dialogs warn when a plain-HTTP URL is entered.
+    -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
 </network-security-config>

@@ -8,12 +8,16 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.lifecycle.lifecycleScope
 import com.ninerouter.android.core.OAuthFlow
 import com.ninerouter.android.data.Catalog
 import com.ninerouter.android.data.Connection
 import com.ninerouter.android.data.Store
 import com.ninerouter.android.ui.AppShell
 import com.ninerouter.android.ui.NineRouterTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 class MainActivity : ComponentActivity() {
@@ -51,16 +55,31 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleOAuthCallback()
+    }
+
     private fun handleOAuthCallback() {
         val uri = intent.data ?: return
         if (uri.scheme != "ninerouter" || uri.host != "oauth") return
+        // Consume the deep link so a configuration change cannot exchange the
+        // same authorization code twice.
+        intent.data = null
         val code = uri.getQueryParameter("code").orEmpty()
         val state = uri.getQueryParameter("state").orEmpty()
         val providerId = OAuthFlow.providerFor(state) ?: return
         val def = Catalog.find(providerId) ?: return
-        val tokens = OAuthFlow.exchangeCode(def, code, state)
-        if (tokens != null) {
-            val processed = OAuthFlow.postProcess(def, tokens).tokens ?: tokens
+        lifecycleScope.launch {
+            val tokens = withContext(Dispatchers.IO) { OAuthFlow.exchangeCode(def, code, state) }
+            if (tokens == null) {
+                Toast.makeText(this@MainActivity, "OAuth exchange failed for ${def.name}", Toast.LENGTH_LONG).show()
+                return@launch
+            }
+            val processed = withContext(Dispatchers.IO) {
+                OAuthFlow.postProcess(def, tokens).tokens ?: tokens
+            }
             Store.state.connections.add(
                 Connection(
                     id = UUID.randomUUID().toString(),
@@ -76,9 +95,7 @@ class MainActivity : ComponentActivity() {
                 )
             )
             Store.save()
-            Toast.makeText(this, "Connected ${def.name}", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, "OAuth exchange failed for ${def.name}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this@MainActivity, "Connected ${def.name}", Toast.LENGTH_SHORT).show()
         }
     }
 }

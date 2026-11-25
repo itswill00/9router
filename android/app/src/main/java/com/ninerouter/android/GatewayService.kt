@@ -108,5 +108,13 @@ class GatewayService : Service() {
         fun stop(context: Context) {
             context.stopService(Intent(context, GatewayService::class.java))
         }
+
+        /** Stops the service, then starts a fresh instance after the old socket closes. */
+        fun restart(context: Context) {
+            context.stopService(Intent(context, GatewayService::class.java))
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                start(context)
+            }, 400)
+        }
     }
 }

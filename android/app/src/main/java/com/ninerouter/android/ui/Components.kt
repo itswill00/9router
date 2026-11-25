@@ -3,6 +3,7 @@ package com.ninerouter.android.ui
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -19,6 +20,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -96,6 +98,56 @@ fun StatusRow(label: String, value: String) {
         Text(label, style = MaterialTheme.typography.bodySmall, color = NineRouterColors.TextMuted, modifier = Modifier.weight(1f))
         Text(value, style = MaterialTheme.typography.bodyMedium, color = NineRouterColors.TextMain)
     }
+}
+
+@Composable
+fun ToggleRow(
+    title: String,
+    description: String? = null,
+    checked: Boolean,
+    trailing: (@Composable () -> Unit)? = null,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium, color = NineRouterColors.TextMain)
+            if (description != null) {
+                Spacer(Modifier.height(1.dp))
+                Text(description, style = MaterialTheme.typography.labelSmall, color = NineRouterColors.TextMuted)
+            }
+        }
+        trailing?.invoke()
+        if (trailing != null) Spacer(Modifier.width(6.dp))
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+fun ChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        color = if (selected) NineRouterColors.BrandOrange.copy(alpha = 0.16f) else NineRouterColors.Surface2,
+        shape = RoundedCornerShape(999.dp),
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .clickable(onClick = onClick),
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) NineRouterColors.BrandOrange else NineRouterColors.TextMuted,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+        )
+    }
+}
+
+@Composable
+fun DividerLine(modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(NineRouterColors.Border),
+    )
 }
 
 @Composable

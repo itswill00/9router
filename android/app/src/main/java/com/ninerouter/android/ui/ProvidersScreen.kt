@@ -45,6 +45,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ninerouter.android.GatewayService
+import com.ninerouter.android.core.NodeProbe
 import com.ninerouter.android.core.OAuthFlow
 import com.ninerouter.android.data.Catalog
 import com.ninerouter.android.data.Connection
@@ -63,13 +64,25 @@ import java.util.concurrent.atomic.AtomicReference
 fun ProvidersScreen(refresh: () -> Unit) {
     @Suppress("UNUSED_VARIABLE") val revision = Store.revision
     var detailId by remember { mutableStateOf<String?>(null) }
+    var nodeId by remember { mutableStateOf<String?>(null) }
     val detail = detailId?.let { Catalog.find(it) }
-    // Back from a provider detail returns to the catalog instead of leaving the app.
-    BackHandler(enabled = detail != null) { detailId = null }
-    if (detail != null) {
-        ProviderDetail(def = detail, onBack = { detailId = null }, refresh = refresh)
-    } else {
-        ProviderCatalog(onOpen = { detailId = it.id }, refresh = refresh)
+    val node = nodeId?.let { id -> Store.state.nodes.firstOrNull { it.id == id } }
+    // Back returns to the catalog instead of leaving the app.
+    BackHandler(enabled = detail != null || node != null) {
+        if (node != null) nodeId = null else detailId = null
+    }
+    when {
+        detail != null -> ProviderDetail(def = detail, onBack = { detailId = null }, refresh = refresh)
+        node != null -> NodeDetail(
+            nodeId = node.id,
+            onBack = { nodeId = null },
+            refresh = refresh,
+        )
+        else -> ProviderCatalog(
+            onOpen = { detailId = it.id },
+            onOpenNode = { nodeId = it.id },
+            refresh = refresh,
+        )
     }
 }
 
@@ -96,7 +109,11 @@ private fun sectionTitle(section: String): String = when (section) {
 }
 
 @Composable
-private fun ProviderCatalog(onOpen: (ProviderDef) -> Unit, refresh: () -> Unit) {
+private fun ProviderCatalog(
+    onOpen: (ProviderDef) -> Unit,
+    onOpenNode: (ProviderNode) -> Unit,
+    refresh: () -> Unit,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
@@ -106,7 +123,6 @@ private fun ProviderCatalog(onOpen: (ProviderDef) -> Unit, refresh: () -> Unit) 
     var nodeType by remember { mutableStateOf("openai-compatible") }
     var nodePrefix by remember { mutableStateOf("") }
     var nodeName by remember { mutableStateOf("") }
-    var nodeUrl by remember { mutableStateOf("") }
     var nodeKey by remember { mutableStateOf("") }
 
     val connections = Store.state.connections
@@ -202,25 +218,7 @@ private fun ProviderCatalog(onOpen: (ProviderDef) -> Unit, refresh: () -> Unit) 
             } else {
                 items(Store.state.nodes, key = { "n-${it.id}" }) { node ->
                     Box(Modifier.padding(horizontal = 12.dp)) {
-                        Panel {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                ProviderIcon("openai", node.name, 30.dp)
-                                Spacer(Modifier.width(8.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(node.name, color = NineRouterColors.TextMain)
-                                    Text(
-                                        "${node.type} · ${node.prefix}/…",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = NineRouterColors.TextMuted,
-                                    )
-                                }
-                                TextButton(onClick = {
-                                    Store.state.nodes.removeAll { it.id == node.id }
-                                    Store.save()
-                                    refresh()
-                                }) { Text("×") }
-                            }
-                        }
+                        NodeCard(node = node, onClick = { onOpenNode(node) })
                     }
                 }
             }
@@ -283,6 +281,19 @@ private fun ProviderCatalog(onOpen: (ProviderDef) -> Unit, refresh: () -> Unit) 
 
     if (showNodeDialog) {
         var type by remember { mutableStateOf(nodeType) }
+        var apiType by remember { mutableStateOf("chat") }
+        var base by remember {
+            mutableStateOf(
+                if (nodeType.startsWith("anthropic")) "https://api.anthropic.com/v1"
+                else "https://api.openai.com/v1"
+            )
+        }
+        fun defaultBase(forType: String) =
+            if (forType.startsWith("anthropic")) "https://api.anthropic.com/v1"
+            else "https://api.openai.com/v1"
+        val conflict = Store.state.nodes.any {
+            it.prefix.equals(nodePrefix.trim(), ignoreCase = true)
+        }
         AlertDialog(
             onDismissRequest = { showNodeDialog = false },
             containerColor = NineRouterColors.Surface,
@@ -290,38 +301,477 @@ private fun ProviderCatalog(onOpen: (ProviderDef) -> Unit, refresh: () -> Unit) 
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FilterChip("OpenAI", type == "openai-compatible") { type = "openai-compatible" }
-                        FilterChip("Anthropic", type == "anthropic-compatible") { type = "anthropic-compatible" }
+                        FilterChip("OpenAI", type == "openai-compatible") {
+                            type = "openai-compatible"
+                            base = defaultBase(type)
+                        }
+                        FilterChip("Anthropic", type == "anthropic-compatible") {
+                            type = "anthropic-compatible"
+                            base = defaultBase(type)
+                        }
                     }
-                    OutlinedTextField(nodePrefix, { nodePrefix = it }, label = { Text("Prefix (e.g. local)") }, singleLine = true)
+                    if (type == "openai-compatible") {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FilterChip("Chat Completions", apiType == "chat") { apiType = "chat" }
+                            FilterChip("Responses API", apiType == "responses") { apiType = "responses" }
+                        }
+                    }
+                    OutlinedTextField(
+                        nodePrefix, { nodePrefix = it.filter { c -> !c.isWhitespace() && c != '/' } },
+                        label = { Text("Prefix (e.g. local)") },
+                        singleLine = true,
+                    )
                     OutlinedTextField(nodeName, { nodeName = it }, label = { Text("Name") }, singleLine = true)
-                    OutlinedTextField(nodeUrl, { nodeUrl = it }, label = { Text("Base URL") }, singleLine = true)
-                    OutlinedTextField(nodeKey, { nodeKey = it }, label = { Text("API key (optional)") }, singleLine = true)
+                    OutlinedTextField(base, { base = it }, label = { Text("Base URL (ending in /v1)") }, singleLine = true)
+                    if (base.trim().startsWith("http://") &&
+                        !base.contains("127.0.0.1") && !base.contains("localhost") &&
+                        !base.contains("[::1]")
+                    ) {
+                        Text(
+                            "Plain HTTP sends the API key unencrypted over the network. Prefer HTTPS unless this is a trusted LAN endpoint.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NineRouterColors.Warning,
+                        )
+                    }
+                    OutlinedTextField(
+                        nodeKey, { nodeKey = it },
+                        label = { Text("API key (optional)") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                    )
+                    val conflict = Store.state.nodes.any {
+                        it.prefix.equals(nodePrefix.trim(), ignoreCase = true)
+                    }
+                    if (conflict) {
+                        Text(
+                            "Another endpoint already uses this prefix.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NineRouterColors.Danger,
+                        )
+                    }
+                    Text(
+                        if (type.startsWith("anthropic")) {
+                            "The app appends /messages. Model ids are used verbatim."
+                        } else {
+                            "The app appends /chat/completions or /responses. Model ids are used verbatim."
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NineRouterColors.TextMuted,
+                    )
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    if (nodePrefix.isNotBlank() && nodeUrl.isNotBlank()) {
-                        Store.state.nodes.add(
-                            ProviderNode(
-                                id = "node-" + UUID.randomUUID().toString().take(8),
+                TextButton(
+                    enabled = nodePrefix.isNotBlank() && base.isNotBlank() && !conflict,
+                    onClick = {
+                        if (nodePrefix.isNotBlank() && base.isNotBlank() && !conflict) {
+                            val node = ProviderNode(
+                                id = "$type-" + UUID.randomUUID().toString().take(8),
                                 prefix = nodePrefix.trim(),
                                 name = nodeName.ifBlank { nodePrefix.trim() },
                                 type = type,
-                                baseUrl = nodeUrl.trim(),
+                                apiType = if (type.startsWith("anthropic")) "chat" else apiType,
+                                baseUrl = base.trim().trimEnd('/'),
                                 apiKey = nodeKey.trim(),
                             )
-                        )
-                        Store.save()
-                        nodePrefix = ""; nodeName = ""; nodeUrl = ""; nodeKey = ""
-                        showNodeDialog = false
-                        refresh()
-                    }
-                }) { Text("Save", color = NineRouterColors.Brand) }
+                            Store.state.nodes.add(node)
+                            Store.save()
+                            nodePrefix = ""; nodeName = ""; nodeKey = ""
+                            showNodeDialog = false
+                            refresh()
+                            onOpenNode(node)
+                        }
+                    },
+                ) { Text("Save", color = NineRouterColors.Brand) }
             },
             dismissButton = { TextButton(onClick = { showNodeDialog = false }) { Text("Cancel") } },
         )
     }
+}
+
+@Composable
+private fun NodeCard(node: ProviderNode, onClick: () -> Unit) {
+    val accent = if (NodeProbe.isAnthropic(node)) NineRouterColors.Warning else NineRouterColors.BrandOrange
+    Surface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        color = NineRouterColors.Surface,
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier.size(36.dp).background(accent.copy(alpha = 0.16f), RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    if (NodeProbe.isAnthropic(node)) "AC" else "OC",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = accent,
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    node.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = NineRouterColors.TextMain,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    NodeProbe.typeLabel(node),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.TextMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "${node.prefix}/ · ${node.models.size} models" +
+                        if (node.apiKey.isBlank()) " · no key" else "",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.TextSubtle,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text("›", style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextSubtle)
+        }
+    }
+}
+
+@Composable
+private fun NodeInfo(label: String, value: String) {
+    Column(Modifier.fillMaxWidth()) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = NineRouterColors.TextSubtle)
+        Text(
+            value,
+            style = MaterialTheme.typography.bodySmall,
+            color = NineRouterColors.TextMain,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun NodeDetail(nodeId: String, onBack: () -> Unit, refresh: () -> Unit) {
+    @Suppress("UNUSED_VARIABLE") val revision = Store.revision
+    val node = Store.state.nodes.firstOrNull { it.id == nodeId }
+    if (node == null) {
+        LaunchedEffect(Unit) { onBack() }
+        return
+    }
+    val scope = rememberCoroutineScope()
+    var showEdit by remember { mutableStateOf(false) }
+    var showDelete by remember { mutableStateOf(false) }
+    var newModel by remember { mutableStateOf("") }
+    var fetching by remember { mutableStateOf(false) }
+    var fetchMessage by remember { mutableStateOf("") }
+    var testModel by remember { mutableStateOf("") }
+    var testing by remember { mutableStateOf(false) }
+    var testResult by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+
+    fun save() {
+        Store.save()
+        refresh()
+    }
+
+    fun test(model: String) {
+        if (testing) return
+        testing = true
+        testModel = model
+        testResult = null
+        scope.launch {
+            val result = NodeProbe.testModel(node, model)
+            testing = false
+            testResult = result.ok to
+                (if (result.latencyMs > 0) "${result.message} · ${result.latencyMs} ms" else result.message)
+        }
+    }
+
+    fun fetch() {
+        if (fetching) return
+        fetching = true
+        fetchMessage = ""
+        scope.launch {
+            val result = NodeProbe.fetchModels(node)
+            fetching = false
+            when {
+                result.error != null -> fetchMessage = result.error
+                result.models.isEmpty() -> fetchMessage = "The endpoint returned no models."
+                else -> {
+                    val merged = (node.models + result.models).distinct()
+                    val added = merged.size - node.models.size
+                    node.models = merged
+                    save()
+                    fetchMessage = "Added $added model${if (added == 1) "" else "s"} (${result.models.size} returned)."
+                }
+            }
+        }
+    }
+
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 4.dp)) {
+                    Text("‹ Providers", color = NineRouterColors.Brand)
+                }
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = { showEdit = true }) {
+                    Text("Edit", color = NineRouterColors.Brand)
+                }
+            }
+        }
+        item {
+            Panel {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val accent = if (NodeProbe.isAnthropic(node)) NineRouterColors.Warning else NineRouterColors.BrandOrange
+                    Box(
+                        Modifier.size(42.dp).background(accent.copy(alpha = 0.16f), RoundedCornerShape(11.dp)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            if (NodeProbe.isAnthropic(node)) "AC" else "OC",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = accent,
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(node.name, style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain)
+                        Text(NodeProbe.typeLabel(node), style = MaterialTheme.typography.labelSmall, color = NineRouterColors.TextMuted)
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                NodeInfo("Prefix", "${node.prefix}/")
+                Spacer(Modifier.height(6.dp))
+                NodeInfo("Base URL", node.baseUrl)
+                Spacer(Modifier.height(6.dp))
+                NodeInfo("Chat endpoint", NodeProbe.chatUrl(node))
+                Spacer(Modifier.height(6.dp))
+                NodeInfo("Model list", NodeProbe.modelsUrl(node))
+                Spacer(Modifier.height(6.dp))
+                NodeInfo("API key", if (node.apiKey.isBlank()) "None" else "••••••••")
+            }
+        }
+
+        item {
+            SectionHeader("Models", "${node.models.size} configured", modifier = Modifier.padding(top = 2.dp))
+        }
+        item {
+            Panel {
+                OutlinedTextField(
+                    newModel,
+                    { newModel = it },
+                    label = { Text("Model id (e.g. gpt-4o-mini)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PrimaryButton(
+                        "Add model",
+                        enabled = newModel.isNotBlank(),
+                        onClick = {
+                            val value = newModel.trim()
+                            if (value.isNotBlank() && value !in node.models) {
+                                node.models = node.models + value
+                                newModel = ""
+                                save()
+                            }
+                        },
+                    )
+                    SecondaryButton(if (fetching) "Fetching…" else "Fetch from endpoint") { fetch() }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Models are addressed as ${node.prefix}/<model-id>. Fetching calls GET ${NodeProbe.modelsUrl(node)}.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.TextMuted,
+                )
+                if (fetchMessage.isNotBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(fetchMessage, style = MaterialTheme.typography.labelSmall, color = NineRouterColors.Info)
+                }
+            }
+        }
+
+        testResult?.let { (ok, message) ->
+            item {
+                Panel {
+                    Text(
+                        (if (ok) "✓ " else "✗ ") + message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (ok) NineRouterColors.Success else NineRouterColors.Danger,
+                    )
+                }
+            }
+        }
+
+        if (node.models.isEmpty()) {
+            item { EmptyHint("No models yet. Add one above or fetch the endpoint’s catalog.") }
+        } else {
+            items(node.models, key = { "nm-$it" }) { model ->
+                Panel {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                model,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NineRouterColors.TextMain,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (testing && testModel == model) {
+                                Text("Testing…", style = MaterialTheme.typography.labelSmall, color = NineRouterColors.Info)
+                            }
+                        }
+                        TextButton(onClick = { test(model) }, enabled = !testing) {
+                            Text("Test", color = NineRouterColors.Brand)
+                        }
+                        TextButton(onClick = {
+                            node.models = node.models.filterNot { it == model }
+                            save()
+                        }) { Text("×") }
+                    }
+                }
+            }
+        }
+
+        item {
+            SectionHeader("Danger zone", "Removes this endpoint and its model list", modifier = Modifier.padding(top = 6.dp))
+        }
+        item {
+            Panel {
+                SecondaryButton("Delete endpoint") { showDelete = true }
+            }
+        }
+    }
+
+    if (showEdit) {
+        EditNodeDialog(
+            node = node,
+            onDismiss = { showEdit = false },
+            onSaved = {
+                showEdit = false
+                save()
+            },
+        )
+    }
+
+    if (showDelete) {
+        AlertDialog(
+            onDismissRequest = { showDelete = false },
+            containerColor = NineRouterColors.Surface,
+            title = { Text("Delete ${node.name}?", color = NineRouterColors.TextMain) },
+            text = {
+                Text(
+                    "Connections and model ids under ${node.prefix}/ stop working immediately.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NineRouterColors.TextMuted,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    Store.state.nodes.removeAll { it.id == node.id }
+                    Store.save()
+                    showDelete = false
+                    refresh()
+                    onBack()
+                }) { Text("Delete", color = NineRouterColors.Danger) }
+            },
+            dismissButton = { TextButton(onClick = { showDelete = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+@Composable
+private fun EditNodeDialog(node: ProviderNode, onDismiss: () -> Unit, onSaved: () -> Unit) {
+    var name by remember { mutableStateOf(node.name) }
+    var prefix by remember { mutableStateOf(node.prefix) }
+    var type by remember { mutableStateOf(node.type) }
+    var apiType by remember { mutableStateOf(node.apiType) }
+    var base by remember { mutableStateOf(node.baseUrl) }
+    var key by remember { mutableStateOf(node.apiKey) }
+    val conflict = Store.state.nodes.any {
+        it.id != node.id && it.prefix.equals(prefix.trim(), ignoreCase = true)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = NineRouterColors.Surface,
+        title = { Text("Edit ${node.name}", color = NineRouterColors.TextMain) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip("OpenAI", type == "openai-compatible") { type = "openai-compatible" }
+                    FilterChip("Anthropic", type == "anthropic-compatible") { type = "anthropic-compatible" }
+                }
+                if (type == "openai-compatible") {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip("Chat Completions", apiType == "chat") { apiType = "chat" }
+                        FilterChip("Responses API", apiType == "responses") { apiType = "responses" }
+                    }
+                }
+                OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true)
+                OutlinedTextField(
+                    prefix,
+                    { prefix = it.filter { c -> !c.isWhitespace() && c != '/' } },
+                    label = { Text("Prefix") },
+                    singleLine = true,
+                )
+                OutlinedTextField(base, { base = it }, label = { Text("Base URL (ending in /v1)") }, singleLine = true)
+                if (base.trim().startsWith("http://") &&
+                    !base.contains("127.0.0.1") && !base.contains("localhost") &&
+                    !base.contains("[::1]")
+                ) {
+                    Text(
+                        "Plain HTTP sends the API key unencrypted. Prefer HTTPS unless this is a trusted LAN endpoint.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NineRouterColors.Warning,
+                    )
+                }
+                OutlinedTextField(
+                    key, { key = it },
+                    label = { Text("API key (optional)") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                )
+                if (conflict) {
+                    Text("Another endpoint already uses this prefix.", style = MaterialTheme.typography.labelSmall, color = NineRouterColors.Danger)
+                }
+                Text(
+                    "Changing the prefix changes the model ids clients must send.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.Warning,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = prefix.isNotBlank() && base.isNotBlank() && !conflict,
+                onClick = {
+                    node.name = name.trim().ifBlank { node.prefix }
+                    node.prefix = prefix.trim()
+                    node.type = type
+                    node.apiType = if (type.startsWith("anthropic")) "chat" else apiType
+                    node.baseUrl = base.trim().trimEnd('/')
+                    node.apiKey = key.trim()
+                    Store.save()
+                    onSaved()
+                },
+            ) { Text("Save", color = NineRouterColors.Brand) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable

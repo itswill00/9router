@@ -22,6 +22,10 @@ object ModelResolver {
 
         // Bare model: prefer a configured connection that advertises it.
         val activeProviders = Store.state.connections.filter { it.enabled }.map { it.provider }.toSet()
+        val nodeHit = Store.state.nodes.firstOrNull { node ->
+            node.models.any { it.equals(trimmed, ignoreCase = true) }
+        }
+        if (nodeHit != null) return Target(nodeHit.id, trimmed)
         val hit = Catalog.providers().firstOrNull { p ->
             p.id in activeProviders && p.models.any { it.equals(trimmed, ignoreCase = true) }
         }

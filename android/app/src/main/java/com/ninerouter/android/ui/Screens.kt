@@ -3,7 +3,9 @@ package com.ninerouter.android.ui
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,13 +13,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -37,20 +39,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.ninerouter.android.GatewayService
 import com.ninerouter.android.core.ChatEngine
 import com.ninerouter.android.core.Formats
-import com.ninerouter.android.core.OAuthFlow
 import com.ninerouter.android.core.Translator
 import com.ninerouter.android.update.UpdateManager
-import com.ninerouter.android.data.ApiKey
 import com.ninerouter.android.data.Catalog
 import com.ninerouter.android.data.Combo
-import com.ninerouter.android.data.Connection
-import com.ninerouter.android.data.ProviderDef
-import com.ninerouter.android.data.ProviderNode
 import com.ninerouter.android.data.Store
 import com.ninerouter.android.server.GatewayState
 import kotlinx.coroutines.Dispatchers
@@ -84,55 +80,128 @@ fun EndpointScreen(refresh: () -> Unit) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        SectionHeader("Endpoint", "API endpoint configuration")
+        SectionHeader("Endpoint", "Local OpenAI-compatible API")
         Panel {
-            StatusRow("Base URL", "${GatewayState.BASE_URL}/v1")
-            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(8.dp)
+                        .background(
+                            if (running) NineRouterColors.Success else NineRouterColors.TextSubtle,
+                            androidx.compose.foundation.shape.CircleShape,
+                        ),
+                )
+                Spacer(Modifier.width(7.dp))
+                Text(
+                    if (running) "Gateway running" else "Gateway stopped",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = NineRouterColors.TextMain,
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "port ${GatewayState.PORT}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.TextSubtle,
+                )
+            }
+            Spacer(Modifier.height(10.dp))
             StatusRow("Dashboard", GatewayState.BASE_URL)
             Spacer(Modifier.height(6.dp))
-            StatusRow("Status", if (running) "Running" else "Stopped")
+            StatusRow("OpenAI base URL", "${GatewayState.BASE_URL}/v1")
             if (gatewayError.isNotBlank()) {
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(6.dp))
                 Text(gatewayError, style = MaterialTheme.typography.labelSmall, color = NineRouterColors.Danger)
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 PrimaryButton(if (running) "Shutdown" else "Start gateway", onClick = {
                     if (running) GatewayService.stop(context) else GatewayService.start(context)
                     refresh()
                 })
-                SecondaryButton(if (testing) "Testing…" else "Test") {
+                SecondaryButton("Open dashboard") {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse(GatewayState.BASE_URL))
+                        )
+                    }.onFailure {
+                        Toast.makeText(context, "No browser available", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                SecondaryButton(if (testing) "Testing…" else "Test connection") {
                     if (testing) return@SecondaryButton
                     testing = true
                     testResult = ""
                     scope.launch {
                         val result = withContext(Dispatchers.IO) {
                             runCatching {
-                                val conn = java.net.URL("${GatewayState.BASE_URL}/api/health").openConnection() as java.net.HttpURLConnection
+                                val conn = java.net.URL("${GatewayState.BASE_URL}/api/health")
+                                    .openConnection() as java.net.HttpURLConnection
                                 conn.connectTimeout = 3000
                                 conn.readTimeout = 3000
                                 val code = conn.responseCode
                                 val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
                                     ?.bufferedReader()?.use { it.readText() }.orEmpty()
                                 conn.disconnect()
-                                "$code ${body.take(120)}"
-                            }.getOrElse { it.message ?: "failed" }
+                                if (code == 200) {
+                                    "OK · $body"
+                                } else {
+                                    "HTTP $code · ${body.take(160)}"
+                                }
+                            }.getOrElse { it.message ?: it.javaClass.simpleName }
                         }
                         testing = false
                         testResult = result
                     }
                 }
+                TextButton(onClick = {
+                    clipboard.setText(AnnotatedString(GatewayState.BASE_URL))
+                    Toast.makeText(context, "URL copied", Toast.LENGTH_SHORT).show()
+                }) { Text("Copy URL") }
             }
             if (testResult.isNotBlank()) {
                 Spacer(Modifier.height(6.dp))
-                Text(testResult, style = MaterialTheme.typography.labelSmall, color = NineRouterColors.Info)
+                Text(
+                    testResult,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (testResult.startsWith("OK")) NineRouterColors.Success else NineRouterColors.Warning,
+                )
             }
-            Spacer(Modifier.height(10.dp))
+        }
+        Panel {
+            Text("Browser access", style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain)
+            Spacer(Modifier.height(6.dp))
             Text(
-                "Starts automatically when the app opens. It listens on loopback only; from a computer run adb reverse tcp:20128 tcp:20128.",
+                "• On this phone open http://127.0.0.1:20128 — include http:// and the port.\n" +
+                    "• The gateway must show “running” above. Use Open dashboard if typing fails.\n" +
+                    "• From a computer run adb reverse tcp:20128 tcp:20128, then open http://localhost:20128.\n" +
+                    "• The server is loopback-only by design; it is never exposed to the local network.",
                 style = MaterialTheme.typography.bodySmall,
                 color = NineRouterColors.TextMuted,
             )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "If the page still does not load, restart the gateway and test again.",
+                style = MaterialTheme.typography.labelSmall,
+                color = NineRouterColors.TextSubtle,
+            )
+            Spacer(Modifier.height(4.dp))
+            Row {
+                TextButton(onClick = {
+                    GatewayService.restart(context)
+                    Toast.makeText(context, "Restarting gateway…", Toast.LENGTH_SHORT).show()
+                    refresh()
+                }) { Text("Restart gateway", color = NineRouterColors.Brand) }
+                TextButton(onClick = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                        )
+                    }
+                }) { Text("Battery settings") }
+            }
         }
         Panel {
             Text("API key", style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain)
@@ -251,7 +320,7 @@ fun CombosScreen(refresh: () -> Unit) {
 // ---------------------------------------------------------------------------
 
 @Composable
-private fun UpdatePanel(state: UpdateManager.State) {
+fun UpdatePanel(state: UpdateManager.State) {
     val context = LocalContext.current
     val current = remember { UpdateManager.currentVersion(context) }
 
@@ -406,170 +475,6 @@ private fun relativeAgo(timestamp: Long): String {
     }
 }
 
-@Composable
-fun SettingsScreen(refresh: () -> Unit) {
-    @Suppress("UNUSED_VARIABLE") val revision = Store.revision
-    val context = LocalContext.current
-    val s = Store.state.settings
-    val updateState by UpdateManager.state.collectAsState()
-    var showKeyDialog by remember { mutableStateOf(false) }
-    var keyName by remember { mutableStateOf("") }
-    var keyAllowed by remember { mutableStateOf("") }
-    var createdKey by remember { mutableStateOf("") }
-
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        SectionHeader("Settings", "Manage your preferences")
-        UpdatePanel(updateState)
-        Panel {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Switch(s.autoStartGateway, {
-                    Store.mutate { settings = settings.copy(autoStartGateway = it) }
-                    if (it) GatewayService.start(context) else GatewayService.stop(context)
-                    refresh()
-                })
-                Spacer(Modifier.width(10.dp))
-                Text("Start gateway when app opens", color = NineRouterColors.TextMain)
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Switch(s.requireApiKey, { Store.mutate { settings = settings.copy(requireApiKey = it) }; refresh() })
-                Spacer(Modifier.width(10.dp))
-                Text("Require API key", color = NineRouterColors.TextMain)
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Switch(s.rtkEnabled, { Store.mutate { settings = settings.copy(rtkEnabled = it) }; refresh() })
-                Spacer(Modifier.width(10.dp))
-                Text("RTK token saver", color = NineRouterColors.TextMain)
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Switch(s.cavemanEnabled, { Store.mutate { settings = settings.copy(cavemanEnabled = it) }; refresh() })
-                Spacer(Modifier.width(10.dp))
-                Text("Caveman prompt", color = NineRouterColors.TextMain, modifier = Modifier.weight(1f))
-                OutlinedTextField(
-                    s.cavemanLevel,
-                    { Store.mutate { settings = settings.copy(cavemanLevel = it) }; refresh() },
-                    singleLine = true, modifier = Modifier.width(84.dp),
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Switch(s.ponytailEnabled, { Store.mutate { settings = settings.copy(ponytailEnabled = it) }; refresh() })
-                Spacer(Modifier.width(10.dp))
-                Text("Ponytail prompt", color = NineRouterColors.TextMain, modifier = Modifier.weight(1f))
-                OutlinedTextField(
-                    s.ponytailLevel,
-                    { Store.mutate { settings = settings.copy(ponytailLevel = it) }; refresh() },
-                    singleLine = true, modifier = Modifier.width(84.dp),
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Switch(s.customPromptEnabled, { Store.mutate { settings = settings.copy(customPromptEnabled = it) }; refresh() })
-                Spacer(Modifier.width(10.dp))
-                Text("Custom system prompt", color = NineRouterColors.TextMain)
-            }
-            if (s.customPromptEnabled) {
-                OutlinedTextField(
-                    s.customPrompt,
-                    { Store.mutate { settings = settings.copy(customPrompt = it) }; refresh() },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                s.fallbackStrategy,
-                { Store.mutate { settings = settings.copy(fallbackStrategy = it) }; refresh() },
-                label = { Text("Account strategy: fill-first | round-robin") },
-                singleLine = true, modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                s.stickyLimit.toString(),
-                { v -> v.toIntOrNull()?.let { Store.mutate { settings = settings.copy(stickyLimit = it) }; refresh() } },
-                label = { Text("Sticky round-robin limit") },
-                singleLine = true, modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        Panel {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("API keys", style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain, modifier = Modifier.weight(1f))
-                TextButton(onClick = { showKeyDialog = true }) { Text("Add", color = NineRouterColors.Brand) }
-            }
-            Store.state.apiKeys.forEach { k ->
-                Spacer(Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(k.name.ifBlank { k.id }, color = NineRouterColors.TextMain)
-                        Text(
-                            if (k.allowedModels.isEmpty()) "all models" else "only: ${k.allowedModels.joinToString(", ")}",
-                            style = MaterialTheme.typography.bodySmall, color = NineRouterColors.TextMuted,
-                        )
-                    }
-                    Checkbox(k.active, {
-                        k.active = it
-                        Store.save()
-                        refresh()
-                    })
-                    TextButton(onClick = {
-                        Store.state.apiKeys.removeAll { it.id == k.id }
-                        Store.save()
-                        refresh()
-                    }) { Text("Remove") }
-                }
-            }
-            if (createdKey.isNotBlank()) {
-                Spacer(Modifier.height(8.dp))
-                Text("New key: $createdKey", style = MaterialTheme.typography.bodySmall, color = NineRouterColors.Brand)
-            }
-        }
-        Panel {
-            Text("Secrets are encrypted with the Android Keystore before being written to disk.", style = MaterialTheme.typography.bodySmall, color = NineRouterColors.TextMuted)
-            Spacer(Modifier.height(10.dp))
-            SecondaryButton("Clear usage history") {
-                Store.mutate { usage.clear() }
-                refresh()
-            }
-        }
-    }
-
-    if (showKeyDialog) {
-        AlertDialog(
-            onDismissRequest = { showKeyDialog = false },
-            containerColor = NineRouterColors.Surface,
-            title = { Text("Create API key", color = NineRouterColors.TextMain) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(keyName, { keyName = it }, label = { Text("Name") }, singleLine = true)
-                    OutlinedTextField(keyAllowed, { keyAllowed = it }, label = { Text("Allowed models (comma separated, blank = all)") })
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val value = Store.newKey()
-                    val allowed = keyAllowed.split(",").map { it.trim() }.filter { it.isNotBlank() }
-                    Store.state.apiKeys.add(
-                        ApiKey(
-                            id = UUID.randomUUID().toString(), name = keyName.trim(),
-                            key = value, allowedModels = allowed,
-                        )
-                    )
-                    Store.save()
-                    createdKey = value
-                    keyName = ""; keyAllowed = ""
-                    showKeyDialog = false
-                    refresh()
-                }) { Text("Create", color = NineRouterColors.Brand) }
-            },
-            dismissButton = { TextButton(onClick = { showKeyDialog = false }) { Text("Cancel") } },
-        )
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Chat
 // ---------------------------------------------------------------------------
@@ -585,6 +490,10 @@ fun ChatScreen() {
     var input by remember { mutableStateOf("") }
     var messages by remember { mutableStateOf(listOf<UiMessage>()) }
     var busy by remember { mutableStateOf(false) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
+    }
 
     LaunchedEffect(Unit) {
         model = Store.state.combos.firstOrNull()?.name
@@ -598,7 +507,7 @@ fun ChatScreen() {
         Spacer(Modifier.height(10.dp))
         OutlinedTextField(model, { model = it }, label = { Text("Model / combo") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(10.dp))
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(messages) { m ->
                 Panel {
                     Text(m.role.uppercase(), style = MaterialTheme.typography.labelSmall, color = NineRouterColors.Brand)
@@ -639,7 +548,6 @@ fun ChatScreen() {
                                 val answer = StringBuilder()
                                 withContext(Dispatchers.Main) {
                                     messages = messages + UiMessage("assistant", "")
-                                    busy = false
                                 }
                                 try {
                                     out.response.body?.source()?.use { src ->
@@ -657,8 +565,14 @@ fun ChatScreen() {
                                             }
                                         }
                                     }
+                                } catch (e: Exception) {
+                                    withContext(Dispatchers.Main) {
+                                        messages = messages.dropLast(1) +
+                                            UiMessage("assistant", "[error] ${e.message ?: "stream failed"}")
+                                    }
                                 } finally {
                                     out.response.close()
+                                    withContext(Dispatchers.Main) { busy = false }
                                 }
                             }
                             is ChatEngine.Outcome.Error -> withContext(Dispatchers.Main) {

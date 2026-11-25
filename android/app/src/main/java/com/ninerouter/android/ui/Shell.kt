@@ -32,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,8 +60,8 @@ private val navItems = listOf(
 @Composable
 fun AppShell(refreshTrigger: () -> Unit) {
     @Suppress("UNUSED_VARIABLE") val revision = Store.revision
-    var tab by remember { mutableIntStateOf(0) }
-    var showChat by remember { mutableStateOf(false) }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var showChat by rememberSaveable { mutableStateOf(false) }
     val running by GatewayState.running.collectAsState()
     val updateState by UpdateManager.state.collectAsState()
     val context = LocalContext.current
@@ -117,7 +118,7 @@ fun AppShell(refreshTrigger: () -> Unit) {
                             color = NineRouterColors.TextMain,
                         )
                         Text(
-                            "v0.1.9 · ${if (running) "running" else "stopped"}",
+                            "${navItems[tab].title} · ${if (running) "running" else "stopped"}",
                             style = MaterialTheme.typography.labelSmall,
                             color = if (running) NineRouterColors.Success else NineRouterColors.TextSubtle,
                         )
@@ -174,12 +175,22 @@ fun AppShell(refreshTrigger: () -> Unit) {
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
                         ) {
-                            Icon(
-                                painter = painterResource(item.icon),
-                                contentDescription = item.title,
-                                tint = if (selected) NineRouterColors.BrandOrange else NineRouterColors.TextSubtle,
-                                modifier = Modifier.size(19.dp),
-                            )
+                            Box(
+                                Modifier
+                                    .background(
+                                        if (selected) NineRouterColors.BrandOrange.copy(alpha = 0.15f)
+                                        else androidx.compose.ui.graphics.Color.Transparent,
+                                        RoundedCornerShape(999.dp),
+                                    )
+                                    .padding(horizontal = 10.dp, vertical = 3.dp),
+                            ) {
+                                Icon(
+                                    painter = painterResource(item.icon),
+                                    contentDescription = item.title,
+                                    tint = if (selected) NineRouterColors.BrandOrange else NineRouterColors.TextSubtle,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
                             Spacer(Modifier.height(2.dp))
                             Text(
                                 item.title,

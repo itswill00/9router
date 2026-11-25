@@ -73,11 +73,13 @@ data class ApiKey(
 @Serializable
 data class ProviderNode(
     val id: String,
-    val prefix: String,
-    val name: String = prefix,
-    val type: String = "openai-compatible",
-    val baseUrl: String,
-    val apiKey: String = "",
+    var prefix: String,
+    var name: String = prefix,
+    var type: String = "openai-compatible",
+    var apiType: String = "chat",
+    var baseUrl: String,
+    var apiKey: String = "",
+    var models: List<String> = emptyList(),
 )
 
 @Serializable

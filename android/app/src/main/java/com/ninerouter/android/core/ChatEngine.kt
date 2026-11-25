@@ -219,12 +219,17 @@ class ChatEngine(
 
     private fun nodeDef(id: String): com.ninerouter.android.data.ProviderDef? {
         val node = Store.state.nodes.firstOrNull { it.id == id } ?: return null
+        val format = when {
+            node.type.startsWith("anthropic") -> Formats.CLAUDE
+            node.apiType.equals("responses", true) -> Formats.OPENAI_RESPONSES
+            else -> Formats.OPENAI
+        }
         return com.ninerouter.android.data.ProviderDef(
             id = node.id,
-            alias = node.id,
+            alias = node.prefix,
             name = node.name,
-            format = if (node.type.startsWith("anthropic")) Formats.CLAUDE else Formats.OPENAI,
-            baseUrl = node.baseUrl,
+            format = format,
+            baseUrl = NodeProbe.chatUrl(node),
         )
     }
 
@@ -234,8 +239,8 @@ class ChatEngine(
             it.enabled && it.provider == provider && it.id !in excluded && it.unavailableUntil <= now
         }
         if (available.isEmpty()) {
-            val node = Store.state.nodes.firstOrNull { it.id == provider && it.apiKey.isNotBlank() }
-            if (node != null && provider !in excluded) {
+            val node = Store.state.nodes.firstOrNull { it.id == provider && provider !in excluded }
+            if (node != null) {
                 return Connection(
                     id = "node:${node.id}",
                     provider = provider,
