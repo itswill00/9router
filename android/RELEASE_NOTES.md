@@ -1,10 +1,18 @@
-# 9Router Android 0.1.4
+# 9Router Android 0.1.5
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.3
+## What changed since 0.1.4
+
+- **Claude streaming now works.** Claude SSE (`content_block_delta` /
+  `content_block_start`) is translated to OpenAI chunks, so streaming chat with
+  Claude API keys or Claude OAuth produces text instead of an empty stream.
+- **Claude OAuth sends the Claude Code identity prompt**, which Anthropic
+  requires for OAuth access tokens.
+
+## What changed in 0.1.4
 
 - Edge-to-edge fixes for Android 15: the display-cutout mode is now applied in
   code for API 28+, and the API-27-only theme attributes moved out of the base
@@ -151,11 +159,11 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.4-android` (version code 6)
+- Version: `0.1.5-android` (version code 7)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15)
 - Source branch: `feat/android-native-gateway`
 - SHA-256 of the attached APK:
-  `d1601be1b589cab7d21e61768093b93bece0c3968946ceefc555604947b5ff2e`
+  `d914c30afa9d61e1a69979df6fa21aad5ed0b8833f2b463d6260bb6f9595a258`
 
 See `android/README.md` for the module layout and build instructions.

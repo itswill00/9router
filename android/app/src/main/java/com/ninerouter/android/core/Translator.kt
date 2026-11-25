@@ -475,6 +475,12 @@ object Translator {
                     "response.refusal.delta" -> text(obj["delta"], "")
                     else -> ""
                 }
+                Formats.CLAUDE -> when (text(obj["type"], "")) {
+                    "content_block_delta" -> text((obj["delta"] as? JsonObject)?.get("text"), "")
+                    "content_block_start" ->
+                        text(((obj["content_block"] as? JsonObject)?.get("text")), "")
+                    else -> ""
+                }
                 else -> {
                     val choices = obj["choices"] as? JsonArray
                     val first = choices?.firstOrNull() as? JsonObject

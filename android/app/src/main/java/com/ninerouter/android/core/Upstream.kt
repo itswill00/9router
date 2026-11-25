@@ -3,8 +3,10 @@ package com.ninerouter.android.core
 import com.ninerouter.android.data.Connection
 import com.ninerouter.android.data.ProviderDef
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import okhttp3.FormBody
@@ -25,7 +27,9 @@ class Upstream {
     private val mediaJson = "application/json; charset=utf-8".toMediaType()
 
     fun execute(def: ProviderDef, conn: Connection, body: JsonObject, wantsStream: Boolean): Response {
-        val payload = JsonObject(body.toMap().filterKeys { it != "_stream" })
+        var payload = JsonObject(body.toMap().filterKeys { it != "_stream" })
+        // Claude OAuth tokens must carry the Claude Code identity prompt.
+        if (def.id == "claude" && conn.accessToken.isNotBlank()) payload = withClaudeCodeIdentity(payload)
         val wire = if (isCliEnvelope(def)) wrapCliEnvelope(def, conn, payload) else payload
         val url = resolveUrl(def, payload, wantsStream)
         var request = requestFor(url, def, conn, wire.toString(), wantsStream)
@@ -53,6 +57,25 @@ class Upstream {
 
     private fun isCliEnvelope(def: ProviderDef): Boolean =
         def.format == "gemini-cli" || def.format == "antigravity"
+
+    /** Anthropic accepts Claude OAuth tokens only with the Claude Code identity prompt. */
+    private fun withClaudeCodeIdentity(payload: JsonObject): JsonObject {
+        val identity = buildJsonObject {
+            put("type", "text")
+            put("text", "You are Claude Code, Anthropic's official CLI for Claude.")
+        }
+        val systems = buildJsonArray {
+            add(identity)
+            when (val existing = payload["system"]) {
+                is JsonArray -> existing.forEach { add(it) }
+                is JsonPrimitive -> if (existing.content.isNotBlank()) {
+                    add(buildJsonObject { put("type", "text"); put("text", existing.content) })
+                }
+                else -> {}
+            }
+        }
+        return JsonObject(payload.toMap() + ("system" to systems))
+    }
 
     /** Cloud Code Assist (Gemini CLI / Antigravity) wraps the Gemini body. */
     private fun wrapCliEnvelope(def: ProviderDef, conn: Connection, payload: JsonObject): JsonObject {

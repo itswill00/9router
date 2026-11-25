@@ -13,8 +13,8 @@ android {
         applicationId = "com.ninerouter.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.1.4-android"
+        versionCode = 7
+        versionName = "0.1.5-android"
     }
 
     buildTypes {
