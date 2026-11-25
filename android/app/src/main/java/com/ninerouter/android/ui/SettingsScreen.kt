@@ -265,7 +265,7 @@ fun SettingsScreen(refresh: () -> Unit) {
                 }
             }
         }
-        items(Store.state.apiKeys, key = { it.id }) { key ->
+        items(Store.state.apiKeys, key = { it.id }, contentType = { "api-key" }) { key ->
             Panel {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {

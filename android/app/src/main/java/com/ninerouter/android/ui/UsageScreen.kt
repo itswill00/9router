@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -341,7 +342,11 @@ private fun DetailsList(filtered: List<UsageEntry>, onSelect: (UsageEntry) -> Un
         contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        items(filtered.takeLast(200).asReversed()) { entry ->
+        itemsIndexed(
+            items = filtered.takeLast(200).asReversed(),
+            key = { index, entry -> "${entry.ts}-$index" },
+            contentType = { _, _ -> "usage-entry" },
+        ) { _, entry ->
             Surface(
                 Modifier.fillMaxWidth().clickable { onSelect(entry) },
                 color = NineRouterColors.Surface,

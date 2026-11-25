@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
 import com.ninerouter.android.core.OAuthFlow
 import com.ninerouter.android.data.Catalog
@@ -28,16 +29,15 @@ class MainActivity : ComponentActivity() {
         ) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 7)
         }
-        // targetSdk 35 enforces edge-to-edge on Android 15; opt in everywhere
-        // and let Compose apply the status/navigation bar insets.
-        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        // The app is always dark, so force light system-bar icons regardless of
+        // the device theme; transparent scrims let content draw edge-to-edge.
+        enableEdgeToEdge(
+            statusBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
         }
-        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
-            ?.isAppearanceLightStatusBars = false
-        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
-            ?.isAppearanceLightNavigationBars = false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.attributes = window.attributes.apply {
                 layoutInDisplayCutoutMode =

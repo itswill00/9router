@@ -3,6 +3,7 @@ package com.ninerouter.android.ui
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,7 +42,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.activity.compose.BackHandler
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import com.ninerouter.android.R
 import com.ninerouter.android.data.Store
 import com.ninerouter.android.server.GatewayState
@@ -75,11 +78,16 @@ fun AppShell(refreshTrigger: () -> Unit) {
         }
     }
 
-    // System back: close chat first, then return to the Endpoint tab. Only the
-    // home tab with no chat open lets Android finish the activity.
-    BackHandler(enabled = showChat || tab != 0) {
-        if (showChat) showChat = false else tab = 0
-    }
+    // Predictive Back: close chat, then return to Endpoint. Only the home tab
+    // with no chat open lets Android finish the activity.
+    val backState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = backState,
+        isBackEnabled = showChat || tab != 0,
+        onBackCompleted = {
+            if (showChat) showChat = false else tab = 0
+        },
+    )
 
     Scaffold(
         containerColor = NineRouterColors.Bg,
@@ -203,7 +211,7 @@ fun AppShell(refreshTrigger: () -> Unit) {
             }
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
+        Box(Modifier.fillMaxSize().padding(padding).imePadding()) {
             if (showChat) {
                 ChatScreen()
             } else {

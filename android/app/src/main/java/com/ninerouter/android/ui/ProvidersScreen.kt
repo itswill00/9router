@@ -3,7 +3,6 @@ package com.ninerouter.android.ui
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -44,6 +43,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import com.ninerouter.android.GatewayService
 import com.ninerouter.android.core.NodeProbe
 import com.ninerouter.android.core.OAuthFlow
@@ -67,10 +69,15 @@ fun ProvidersScreen(refresh: () -> Unit) {
     var nodeId by remember { mutableStateOf<String?>(null) }
     val detail = detailId?.let { Catalog.find(it) }
     val node = nodeId?.let { id -> Store.state.nodes.firstOrNull { it.id == id } }
-    // Back returns to the catalog instead of leaving the app.
-    BackHandler(enabled = detail != null || node != null) {
-        if (node != null) nodeId = null else detailId = null
-    }
+    // Predictive Back returns to the catalog instead of leaving the app.
+    val backState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = backState,
+        isBackEnabled = detail != null || node != null,
+        onBackCompleted = {
+            if (node != null) nodeId = null else detailId = null
+        },
+    )
     when {
         detail != null -> ProviderDetail(def = detail, onBack = { detailId = null }, refresh = refresh)
         node != null -> NodeDetail(
@@ -216,7 +223,7 @@ private fun ProviderCatalog(
                     EmptyHint("No custom endpoints yet — add one above.", Modifier.padding(horizontal = 12.dp))
                 }
             } else {
-                items(Store.state.nodes, key = { "n-${it.id}" }) { node ->
+                items(Store.state.nodes, key = { "n-${it.id}" }, contentType = { "node" }) { node ->
                     Box(Modifier.padding(horizontal = 12.dp)) {
                         NodeCard(node = node, onClick = { onOpenNode(node) })
                     }
@@ -238,7 +245,7 @@ private fun ProviderCatalog(
                     } else {
                         list.take(if (section == "apikey") 12 else 10)
                     }
-                    items(visible.chunked(2), key = { row -> row.joinToString("|") { it.id } }) { row ->
+                    items(visible.chunked(2), key = { row -> row.joinToString("|") { it.id } }, contentType = { "provider-row" }) { row ->
                         Row(
                             Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -619,7 +626,7 @@ private fun NodeDetail(nodeId: String, onBack: () -> Unit, refresh: () -> Unit) 
         if (node.models.isEmpty()) {
             item { EmptyHint("No models yet. Add one above or fetch the endpoint’s catalog.") }
         } else {
-            items(node.models, key = { "nm-$it" }) { model ->
+            items(node.models, key = { "nm-$it" }, contentType = { "node-model" }) { model ->
                 Panel {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -941,7 +948,7 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
         if (connections.isEmpty()) {
             item { EmptyHint("No connections yet. Use the buttons above to add one.") }
         } else {
-            items(connections, key = { "c-${it.id}" }) { conn ->
+            items(connections, key = { "c-${it.id}" }, contentType = { "connection" }) { conn ->
                 @Suppress("UNUSED_VARIABLE") val revision = Store.revision
                 Panel {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1042,7 +1049,7 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
                 )
             }
             val visible = if (showAllModels || modelQuery.isNotBlank()) filtered else filtered.take(10)
-            items(visible, key = { "m-$it" }) { model ->
+            items(visible, key = { "m-$it" }, contentType = { "catalog-model" }) { model ->
                 Panel {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {

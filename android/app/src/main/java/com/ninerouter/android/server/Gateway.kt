@@ -791,11 +791,12 @@ class Gateway(private val context: Context) {
           <h1>9Router Android</h1>
           <p class="muted">Native gateway · <span class="ok">running</span> on ${GatewayState.BASE_URL}</p>
           <ul>
+            <li>Version: <code>${com.ninerouter.android.AppInfo.VERSION_NAME}</code></li>
             <li>OpenAI base URL: <code>${GatewayState.BASE_URL}/v1</code></li>
             <li>Health: <a href="/api/health">/api/health</a></li>
             <li>Models: <a href="/v1/models">/v1/models</a></li>
             <li>API key: <code>${if (Store.state.settings.requireApiKey) "required" else "not required"}</code></li>
-            <li>Connections: ${Store.state.connections.size} · Models: ${Catalog.modelIds().size}</li>
+            <li>Connections: ${Store.state.connections.size} · Models: ${Catalog.modelIds().size + Store.state.nodes.sumOf { it.models.size }}</li>
           </ul>
           <p class="muted">This server only listens on loopback inside the phone. From a computer use
           <code>adb reverse tcp:${GatewayState.PORT} tcp:${GatewayState.PORT}</code>.</p>

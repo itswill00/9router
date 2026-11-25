@@ -175,8 +175,8 @@ isolated under `android/` so upstream changes remain mergeable.
 Requirements:
 
 - JDK 17 or newer
-- Android SDK 35
-- Android Gradle Plugin 8.9 / Gradle 8.11
+- Android SDK 36
+- Android Gradle Plugin 8.9.1 / Gradle 8.11
 
 ```bash
 cd android

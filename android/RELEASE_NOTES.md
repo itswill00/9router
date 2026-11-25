@@ -1,10 +1,39 @@
-# 9Router Android 0.1.10
+# 9Router Android 0.1.11
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.9
+## What changed since 0.1.10
+
+- **Edge-to-edge is now first-class.** `MainActivity` uses
+  `enableEdgeToEdge` with explicit dark system-bar styling (the app is always
+  dark), the navigation-bar contrast scrim is disabled, and the content area
+  consumes IME insets so text fields stay visible above the keyboard.
+  `windowSoftInputMode="adjustResize"` was already set and is retained.
+- **Predictive Back.** System back is handled with
+  `androidx.navigationevent:navigationevent-compose` 1.0.0 instead of the legacy
+  `BackHandler`: the provider detail and the tab shell each register a
+  predictive-back handler, and the system Back callback is explicitly enabled.
+  This required `compileSdk = 36` and AGP 8.9.1.
+- **Compose performance pass.** Every lazy list now has stable keys and
+  `contentType`s (providers, models, connections, API keys, combos, usage rows),
+  chat messages carry a stable id, and the usage list uses `itemsIndexed` to
+  avoid index lookups. The chat transcript auto-scrolls and keeps "sending"
+  disabled until the stream finishes.
+- **R8 is enabled for release builds.** `isMinifyEnabled` + `isShrinkResources`
+  with `proguard-android-optimize.txt`, full mode on, and the standard
+  kotlinx.serialization keep rules. `android analyze` reports R8 full mode and
+  an obfuscation ratio of 0.97; the release DEX is about 2.5 MB.
+- **Unit tests.** Five JVM tests cover custom-endpoint URL building (chat,
+  Responses, Claude, `/models`, trailing slashes and case-insensitive types).
+- **Smaller fixes.** The gateway status page shows the app version and the
+  correct model count including custom nodes; the unused `WAKE_LOCK` permission
+  was removed.
+- **Build environment.** Gradle is capped at `-Xmx3g` with no idle daemon,
+  `org.gradle.parallel=false` and two workers for this 2-core / 8 GB machine.
+
+## What changed in 0.1.10
 
 - **Custom endpoint pages are now real detail pages.** Tapping an OpenAI- or
   Anthropic-compatible node opens a page with its connection info, base URL and
@@ -240,11 +269,11 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.10-android` (version code 12)
+- Version: `0.1.11-android` (version code 13)
 - Minimum SDK: 26 (Android 8.0)
-- Target SDK: 35 (Android 15)
+- Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
 - SHA-256 of the attached APK:
-  `bc46c4b0e00a394385c95eeb45adc4e7fdf745d09ed9a31055aa61af2e6120d6`
+  `7584c8af000a759887eeee626d99dcb702f31cd8592218f4feb31ada682a8ead`
 
 See `android/README.md` for the module layout and build instructions.

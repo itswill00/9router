@@ -259,7 +259,7 @@ fun CombosScreen(refresh: () -> Unit) {
             contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            items(Store.state.combos, key = { it.name }) { combo ->
+            items(Store.state.combos, key = { it.name }, contentType = { "combo" }) { combo ->
                 androidx.compose.foundation.layout.Box(Modifier.padding(horizontal = 12.dp)) {
                     Panel {
                         Text(combo.name, style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain)
@@ -479,7 +479,7 @@ private fun relativeAgo(timestamp: Long): String {
 // Chat
 // ---------------------------------------------------------------------------
 
-private data class UiMessage(val role: String, val content: String)
+private data class UiMessage(val role: String, val content: String, val id: Long = System.nanoTime())
 
 @Composable
 fun ChatScreen() {
@@ -508,7 +508,7 @@ fun ChatScreen() {
         OutlinedTextField(model, { model = it }, label = { Text("Model / combo") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(10.dp))
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(messages) { m ->
+            items(messages, key = { it.id }, contentType = { it.role }) { m ->
                 Panel {
                     Text(m.role.uppercase(), style = MaterialTheme.typography.labelSmall, color = NineRouterColors.Brand)
                     Spacer(Modifier.height(4.dp))
