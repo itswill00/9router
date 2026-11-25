@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Original 9Router brand mark: orange gradient tile + white "hub" glyph. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="32dp"
+    android:height="32dp"
+    android:viewportWidth="32"
+    android:viewportHeight="32">
+
+    <path android:pathData="M0,6A6,6 0 0,1 6,0H26A6,6 0 0,1 32,6V26A6,6 0 0,1 26,32H6A6,6 0 0,1 0,26Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startColor="#F97815"
+                android:endColor="#C2590A"
+                android:startX="0"
+                android:startY="0"
+                android:endX="32"
+                android:endY="32" />
+        </aapt:attr>
+    </path>
+
+    <group android:translateX="4" android:translateY="4" android:scaleX="1" android:scaleY="1">
+        <path
+            android:pathData="M12,5 L12,13 M12,13 L5,18 M12,13 L19,18"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="1.6"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M12,2.6a2.4,2.4 0 1,0 0,4.8a2.4,2.4 0 1,0 0,-4.8 M5,15.6a2.4,2.4 0 1,0 0,4.8a2.4,2.4 0 1,0 0,-4.8 M19,15.6a2.4,2.4 0 1,0 0,4.8a2.4,2.4 0 1,0 0,-4.8"
+            android:fillColor="#FFFFFF" />
+        <path
+            android:pathData="M12,11.4a1.7,1.7 0 1,0 0,3.4a1.7,1.7 0 1,0 0,-3.4"
+            android:fillColor="#FFFFFF" />
+    </group>
+</vector>

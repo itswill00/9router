@@ -12,6 +12,12 @@ no Node.js, no shell, no root, and no bundled Linux userland are required.**
   `/v1/chat/completions` (JSON and SSE), `/v1/messages`, `/v1/responses`,
   `/v1/embeddings`, and `/api/settings`.
 - **In-app streaming chat**, so the APK is useful without any external CLI.
+- **Mobile-first UI built from the upstream design system**: the exact dark
+  palette from `src/app/globals.css`, brand orange, grouped provider cards,
+  bottom navigation, and an overflow menu for secondary sections.
+- **Original brand assets**: the orange `hub` brand mark from the dashboard
+  sidebar is used as the launcher icon and in the app header; the upstream
+  provider icon set is bundled for provider cards.
 - **Routing core ported from the upstream project**: model/combo resolution,
   account selection (`fill-first` and sticky `round-robin`), cooldown-based
   fallback, 401/403 token refresh, RTK tool-result compression, and usage
@@ -82,6 +88,6 @@ This is a first native slice, not full parity with the Node gateway:
 - Target SDK: 35 (Android 15)
 - Source branch: `feat/android-native-gateway`
 - SHA-256 of the attached APK:
-  `5279b3252998a7c6479e664195c051f7a6aa851711f7b2c0949869bc4477cf18`
+  `81faae3d92314d6cad4271cc952ea44a4da1c296ee72fc3f8c3085a3e4d3c161`
 
 See `android/README.md` for the module layout and build instructions.

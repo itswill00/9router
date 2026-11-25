@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Brand tile sits inside the adaptive-icon safe zone. -->
+    <path android:pathData="M31,21H77A10,10 0 0,1 87,31V77A10,10 0 0,1 77,87H31A10,10 0 0,1 21,77V31A10,10 0 0,1 31,21Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startColor="#F97815"
+                android:endColor="#C2590A"
+                android:startX="21"
+                android:startY="21"
+                android:endX="87"
+                android:endY="87" />
+        </aapt:attr>
+    </path>
+
+    <group android:translateX="32" android:translateY="32" android:scaleX="1.833" android:scaleY="1.833">
+        <path
+            android:pathData="M12,5 L12,13 M12,13 L5,18 M12,13 L19,18"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="1.6"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M12,2.6a2.4,2.4 0 1,0 0,4.8a2.4,2.4 0 1,0 0,-4.8 M5,15.6a2.4,2.4 0 1,0 0,4.8a2.4,2.4 0 1,0 0,-4.8 M19,15.6a2.4,2.4 0 1,0 0,4.8a2.4,2.4 0 1,0 0,-4.8"
+            android:fillColor="#FFFFFF" />
+        <path
+            android:pathData="M12,11.4a1.7,1.7 0 1,0 0,3.4a1.7,1.7 0 1,0 0,-3.4"
+            android:fillColor="#FFFFFF" />
+    </group>
+</vector>

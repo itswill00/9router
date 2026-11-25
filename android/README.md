@@ -27,9 +27,15 @@ http://127.0.0.1:20128/v1
 - OAuth PKCE (browser + `ninerouter://oauth/callback`) and device-code login.
 - Custom OpenAI/Anthropic-compatible nodes with per-node API key.
 - Multiple API keys with per-key model/combo allow-list, constant-time compare.
-- In-app streaming chat tab, so the APK is usable without any external CLI.
-- Dashboard UI: start/stop gateway, keys, connections, combos, usage, settings.
-  Secrets are AES-GCM boxed with the Android Keystore before disk write.
+- In-app streaming chat, so the APK is usable without any external CLI.
+- **Mobile-first dashboard** using the upstream visual language: exact dark
+  palette from `src/app/globals.css`, brand orange, the original `hub` brand
+  mark, provider icon set bundled from `public/providers`, grouped provider
+  cards, and bottom navigation with an overflow menu for secondary sections.
+- Dashboard screens: Endpoint, Providers, Combos, Usage, Settings, Basic Chat,
+  plus informational views for Console Log, Quota Tracker, MITM, CLI Tools,
+  Proxy Pools, Token Saver, Translator, and Skills.
+- Secrets are AES-GCM boxed with the Android Keystore before disk write.
 
 ## Not in this slice yet
 
