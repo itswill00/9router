@@ -73,19 +73,17 @@ fun SettingsScreen(refresh: () -> Unit) {
         item {
             Panel {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    StatusDot(if (running) NineRouterColors.Success else NineRouterColors.TextSubtle)
+                    Spacer(Modifier.width(8.dp))
                     Text(
-                        if (running) "Running" else "Stopped",
+                        if (running) "Gateway running" else "Gateway stopped",
                         style = MaterialTheme.typography.titleSmall,
                         color = if (running) NineRouterColors.Success else NineRouterColors.TextMuted,
+                        modifier = Modifier.weight(1f),
                     )
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        GatewayState.BASE_URL,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = NineRouterColors.TextSubtle,
-                    )
+                    Pill(":${GatewayState.PORT}")
                 }
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(NineRouterSpacing.md))
                 ToggleRow(
                     "Start gateway on launch",
                     "Runs the loopback server in a foreground service.",
@@ -100,25 +98,26 @@ fun SettingsScreen(refresh: () -> Unit) {
                     "Reject /v1 requests without a valid key.",
                     s.requireApiKey,
                 ) { value -> save { copy(requireApiKey = value) } }
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SecondaryButton("Open dashboard") {
+                Spacer(Modifier.height(NineRouterSpacing.sm))
+                Row(horizontalArrangement = Arrangement.spacedBy(NineRouterSpacing.sm)) {
+                    SecondaryButton("Open dashboard", modifier = Modifier.weight(1f)) {
                         runCatching {
                             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(GatewayState.BASE_URL)))
                         }.onFailure {
                             Toast.makeText(context, "No browser available", Toast.LENGTH_SHORT).show()
                         }
                     }
-                    SecondaryButton(if (running) "Shutdown" else "Start") {
+                    SecondaryButton(if (running) "Shutdown" else "Start", modifier = Modifier.weight(1f)) {
                         if (running) GatewayService.stop(context)
                         else GatewayService.start(context)
                         refresh()
                     }
-                    TextButton(onClick = {
-                        GatewayService.restart(context)
-                        Toast.makeText(context, "Restarting gateway…", Toast.LENGTH_SHORT).show()
-                        refresh()
-                    }) { Text("Restart", color = NineRouterColors.Brand) }
+                }
+                Spacer(Modifier.height(NineRouterSpacing.sm))
+                SecondaryButton("Restart gateway", modifier = Modifier.fillMaxWidth()) {
+                    GatewayService.restart(context)
+                    Toast.makeText(context, "Restarting gateway…", Toast.LENGTH_SHORT).show()
+                    refresh()
                 }
             }
         }
@@ -254,13 +253,12 @@ fun SettingsScreen(refresh: () -> Unit) {
                 },
             )
         }
-        item {
-            Panel {
-                if (Store.state.apiKeys.isEmpty()) {
-                    Text(
-                        "No extra keys. The main API key from the Endpoint page still works.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NineRouterColors.TextMuted,
+        if (Store.state.apiKeys.isEmpty()) {
+            item {
+                Panel {
+                    EmptyState(
+                        title = "No extra keys",
+                        body = "The main API key from the Endpoint page still works. Add scoped keys for clients here.",
                     )
                 }
             }

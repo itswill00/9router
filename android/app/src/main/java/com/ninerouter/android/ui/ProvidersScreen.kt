@@ -3,6 +3,7 @@ package com.ninerouter.android.ui
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,9 +20,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -466,6 +476,8 @@ private fun NodeInfo(label: String, value: String) {
 @Composable
 private fun NodeDetail(nodeId: String, onBack: () -> Unit, refresh: () -> Unit) {
     @Suppress("UNUSED_VARIABLE") val revision = Store.revision
+    val context = LocalContext.current
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val node = Store.state.nodes.firstOrNull { it.id == nodeId }
     if (node == null) {
         LaunchedEffect(Unit) { onBack() }
@@ -522,70 +534,136 @@ private fun NodeDetail(nodeId: String, onBack: () -> Unit, refresh: () -> Unit) 
 
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(horizontal = NineRouterSpacing.md, vertical = NineRouterSpacing.sm),
+        verticalArrangement = Arrangement.spacedBy(NineRouterSpacing.md),
     ) {
         item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 4.dp)) {
-                    Text("‹ Providers", color = NineRouterColors.Brand)
-                }
-                Spacer(Modifier.weight(1f))
-                TextButton(onClick = { showEdit = true }) {
-                    Text("Edit", color = NineRouterColors.Brand)
-                }
+            TextButton(
+                onClick = onBack,
+                contentPadding = PaddingValues(horizontal = NineRouterSpacing.xs, vertical = NineRouterSpacing.xs),
+            ) {
+                Icon(Icons.Default.ArrowBack, contentDescription = null, tint = NineRouterColors.TextMuted, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Providers", color = NineRouterColors.TextMuted)
             }
         }
         item {
-            Panel {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    val accent = if (NodeProbe.isAnthropic(node)) NineRouterColors.Warning else NineRouterColors.BrandOrange
-                    Box(
-                        Modifier.size(42.dp).background(accent.copy(alpha = 0.16f), RoundedCornerShape(11.dp)),
-                        contentAlignment = Alignment.Center,
-                    ) {
+            Row(verticalAlignment = Alignment.Top) {
+                val accent = if (NodeProbe.isAnthropic(node)) NineRouterColors.Warning else NineRouterColors.BrandOrange
+                Surface(
+                    color = accent.copy(alpha = 0.14f),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, accent.copy(alpha = 0.22f)),
+                ) {
+                    Box(Modifier.size(54.dp), contentAlignment = Alignment.Center) {
                         Text(
                             if (NodeProbe.isAnthropic(node)) "AC" else "OC",
-                            style = MaterialTheme.typography.labelSmall,
+                            style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = accent,
                         )
                     }
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(node.name, style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain)
-                        Text(NodeProbe.typeLabel(node), style = MaterialTheme.typography.labelSmall, color = NineRouterColors.TextMuted)
-                    }
                 }
-                Spacer(Modifier.height(10.dp))
-                NodeInfo("Prefix", "${node.prefix}/")
-                Spacer(Modifier.height(6.dp))
-                NodeInfo("Base URL", node.baseUrl)
-                Spacer(Modifier.height(6.dp))
-                NodeInfo("Chat endpoint", NodeProbe.chatUrl(node))
-                Spacer(Modifier.height(6.dp))
-                NodeInfo("Model list", NodeProbe.modelsUrl(node))
-                Spacer(Modifier.height(6.dp))
-                NodeInfo("API key", if (node.apiKey.isBlank()) "None" else "••••••••")
+                Spacer(Modifier.width(NineRouterSpacing.md))
+                Column(Modifier.weight(1f)) {
+                    Text(node.name, style = MaterialTheme.typography.headlineSmall, color = NineRouterColors.TextMain)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        "${NodeProbe.typeLabel(node)} · ${node.prefix}/",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NineRouterColors.TextMuted,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "${node.models.size} model${if (node.models.size == 1) "" else "s"} configured",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = NineRouterColors.TextSubtle,
+                    )
+                }
+                TextButton(onClick = { showEdit = true }) { Text("Edit", color = NineRouterColors.BrandOrange) }
             }
         }
 
         item {
-            SectionHeader("Models", "${node.models.size} configured", modifier = Modifier.padding(top = 2.dp))
+            Panel {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Endpoint", style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain)
+                    Spacer(Modifier.weight(1f))
+                    Pill(if (node.apiKey.isBlank()) "no key" else "key saved")
+                }
+                Spacer(Modifier.height(NineRouterSpacing.sm))
+                Surface(
+                    color = NineRouterColors.SurfaceSunken,
+                    shape = NineRouterShapes.small,
+                    border = BorderStroke(1.dp, NineRouterColors.BorderSubtle),
+                ) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                        MonoText(NodeProbe.chatUrl(node), modifier = Modifier.weight(1f), maxLines = 2)
+                        IconButton(
+                            onClick = {
+                                clipboard.setText(androidx.compose.ui.text.AnnotatedString(NodeProbe.chatUrl(node)))
+                                Toast.makeText(context, "Endpoint copied", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.size(34.dp),
+                        ) {
+                            Icon(
+                                CopyIcon,
+                                contentDescription = "Copy endpoint",
+                                tint = NineRouterColors.TextSubtle,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(NineRouterSpacing.sm))
+                NodeInfo("Base URL", node.baseUrl)
+                Spacer(Modifier.height(6.dp))
+                NodeInfo("Model list", NodeProbe.modelsUrl(node))
+                Spacer(Modifier.height(6.dp))
+                NodeInfo("API key", if (node.apiKey.isBlank()) "Not set" else "••••••••••••")
+                Spacer(Modifier.height(NineRouterSpacing.md))
+                Row(horizontalArrangement = Arrangement.spacedBy(NineRouterSpacing.sm)) {
+                    SecondaryButton(if (fetching) "Fetching…" else "Fetch models", onClick = { fetch() }, modifier = Modifier.weight(1f))
+                    SecondaryButton("Check key", onClick = { test(node.models.firstOrNull().orEmpty()) }, modifier = Modifier.weight(1f))
+                }
+                if (fetchMessage.isNotBlank()) {
+                    Spacer(Modifier.height(NineRouterSpacing.sm))
+                    Text(fetchMessage, style = MaterialTheme.typography.labelSmall, color = NineRouterColors.Info)
+                }
+            }
         }
+
+        testResult?.let { (ok, message) ->
+            item {
+                NoticeBanner(
+                    (if (ok) "Model responded: " else "Test failed: ") + message,
+                    if (ok) NineRouterColors.Success else NineRouterColors.Danger,
+                )
+            }
+        }
+
         item {
             Panel {
-                OutlinedTextField(
-                    newModel,
-                    { newModel = it },
-                    label = { Text("Model id (e.g. gpt-4o-mini)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Models", style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain)
+                    Spacer(Modifier.width(NineRouterSpacing.sm))
+                    Pill(node.models.size.toString())
+                }
+                Spacer(Modifier.height(2.dp))
+                MonoText("Send ${node.prefix}/<model-id> from any client", color = NineRouterColors.TextMuted, maxLines = 2)
+                Spacer(Modifier.height(NineRouterSpacing.sm))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = newModel,
+                        onValueChange = { newModel = it },
+                        placeholder = { Text("Add a model id") },
+                        singleLine = true,
+                        shape = NineRouterShapes.small,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(NineRouterSpacing.sm))
                     PrimaryButton(
-                        "Add model",
+                        "Add",
                         enabled = newModel.isNotBlank(),
                         onClick = {
                             val value = newModel.trim()
@@ -596,69 +674,50 @@ private fun NodeDetail(nodeId: String, onBack: () -> Unit, refresh: () -> Unit) 
                             }
                         },
                     )
-                    SecondaryButton(if (fetching) "Fetching…" else "Fetch from endpoint") { fetch() }
                 }
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "Models are addressed as ${node.prefix}/<model-id>. Fetching calls GET ${NodeProbe.modelsUrl(node)}.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = NineRouterColors.TextMuted,
-                )
-                if (fetchMessage.isNotBlank()) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(fetchMessage, style = MaterialTheme.typography.labelSmall, color = NineRouterColors.Info)
-                }
-            }
-        }
-
-        testResult?.let { (ok, message) ->
-            item {
-                Panel {
-                    Text(
-                        (if (ok) "✓ " else "✗ ") + message,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (ok) NineRouterColors.Success else NineRouterColors.Danger,
+                Spacer(Modifier.height(NineRouterSpacing.sm))
+                if (node.models.isEmpty()) {
+                    EmptyState(
+                        title = "No models yet",
+                        body = "Add a model id above or fetch the endpoint catalog.",
                     )
-                }
-            }
-        }
-
-        if (node.models.isEmpty()) {
-            item { EmptyHint("No models yet. Add one above or fetch the endpoint’s catalog.") }
-        } else {
-            items(node.models, key = { "nm-$it" }, contentType = { "node-model" }) { model ->
-                Panel {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                model,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = NineRouterColors.TextMain,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            if (testing && testModel == model) {
-                                Text("Testing…", style = MaterialTheme.typography.labelSmall, color = NineRouterColors.Info)
+                } else {
+                    node.models.forEachIndexed { index, model ->
+                        if (index > 0) DividerLine(Modifier.padding(vertical = 2.dp))
+                        Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                MonoText(model, maxLines = 1)
+                                if (testing && testModel == model) {
+                                    Text("Testing…", style = MaterialTheme.typography.labelSmall, color = NineRouterColors.Info)
+                                }
+                            }
+                            TextButton(onClick = { test(model) }, enabled = !testing) {
+                                Text("Test", color = NineRouterColors.BrandOrange)
+                            }
+                            IconButton(
+                                onClick = {
+                                    node.models = node.models.filterNot { it == model }
+                                    save()
+                                },
+                                modifier = Modifier.size(36.dp),
+                            ) {
+                                Icon(Icons.Default.Delete, "Remove model", tint = NineRouterColors.TextSubtle, modifier = Modifier.size(16.dp))
                             }
                         }
-                        TextButton(onClick = { test(model) }, enabled = !testing) {
-                            Text("Test", color = NineRouterColors.Brand)
-                        }
-                        TextButton(onClick = {
-                            node.models = node.models.filterNot { it == model }
-                            save()
-                        }) { Text("×") }
                     }
                 }
             }
         }
 
         item {
-            SectionHeader("Danger zone", "Removes this endpoint and its model list", modifier = Modifier.padding(top = 6.dp))
-        }
-        item {
             Panel {
-                SecondaryButton("Delete endpoint") { showDelete = true }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Remove endpoint", style = MaterialTheme.typography.titleSmall, color = NineRouterColors.TextMain)
+                        Text("Its model ids stop resolving immediately.", style = MaterialTheme.typography.labelSmall, color = NineRouterColors.TextMuted)
+                    }
+                    TextButton(onClick = { showDelete = true }) { Text("Delete", color = NineRouterColors.Danger) }
+                }
             }
         }
     }
@@ -857,238 +916,210 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
     var showCookie by remember { mutableStateOf(false) }
     var showOAuth by remember { mutableStateOf(false) }
     var showDevice by remember { mutableStateOf(false) }
-    var showAllModels by remember { mutableStateOf(false) }
     var modelQuery by remember { mutableStateOf("") }
+    var visibleModels by remember { mutableStateOf(10) }
 
     val connections = Store.state.connections.filter { it.provider == def.id }
+    val authLabel = when {
+        ProviderAuth.browserOAuth(def) && ProviderAuth.apiKey(def) -> "OAuth or API key"
+        ProviderAuth.browserOAuth(def) -> "OAuth"
+        ProviderAuth.deviceOAuth(def) -> "Device code"
+        ProviderAuth.cookie(def) -> "Cookie"
+        ProviderAuth.customOAuth(def) -> "Access token"
+        else -> "API key"
+    }
+
+    fun openWebsite() {
+        if (def.website.isBlank()) return
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(def.website))) }
+    }
 
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(horizontal = NineRouterSpacing.md, vertical = NineRouterSpacing.sm),
+        verticalArrangement = Arrangement.spacedBy(NineRouterSpacing.md),
     ) {
         item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 4.dp)) {
-                    Text("‹ Back", color = NineRouterColors.Brand)
-                }
-                Spacer(Modifier.weight(1f))
-                if (def.deprecated) BadgeText("Deprecated", NineRouterColors.Warning)
+            TextButton(
+                onClick = onBack,
+                contentPadding = PaddingValues(horizontal = NineRouterSpacing.xs, vertical = NineRouterSpacing.xs),
+            ) {
+                Icon(
+                    Icons.Default.ArrowBack,
+                    contentDescription = null,
+                    tint = NineRouterColors.TextMuted,
+                    modifier = Modifier.size(17.dp),
+                )
+                Spacer(Modifier.width(4.dp))
+                Text("Providers", color = NineRouterColors.TextMuted)
             }
         }
+
+        item {
+            Row(verticalAlignment = Alignment.Top) {
+                ProviderIcon(def.id, def.name, 54.dp)
+                Spacer(Modifier.width(NineRouterSpacing.md))
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            def.name,
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = NineRouterColors.TextMain,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (def.deprecated) {
+                            Spacer(Modifier.width(NineRouterSpacing.sm))
+                            Pill("Deprecated", NineRouterColors.Warning, NineRouterColors.Warning.copy(alpha = 0.12f))
+                        }
+                    }
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        "${connections.size} connection${if (connections.size == 1) "" else "s"} · $authLabel",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NineRouterColors.TextMuted,
+                    )
+                    if (def.website.isNotBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Open provider website ↗",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = NineRouterColors.BrandOrange,
+                            modifier = Modifier.clickable(onClick = { openWebsite() }),
+                        )
+                    }
+                }
+            }
+        }
+
+        if (ProviderAuth.customOAuth(def)) {
+            item {
+                NoticeBanner(
+                    text = "${ProviderAuth.customOAuthHint(def)} Paste a token to use it.",
+                    color = NineRouterColors.Warning,
+                )
+            }
+        } else if (ProviderAuth.cookie(def)) {
+            item {
+                NoticeBanner(
+                    text = "Web-session providers use the Cookie header. Some require browser-only attestation that this app does not reproduce.",
+                    color = NineRouterColors.Warning,
+                )
+            }
+        }
+
         item {
             Panel {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    ProviderIcon(def.id, def.name, 48.dp)
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(def.name, style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain)
-                        Text(
-                            "${def.category.ifBlank { "provider" }} · ${def.id}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = NineRouterColors.TextMuted,
-                        )
-                        if (def.website.isNotBlank()) {
-                            Text(
-                                def.website,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = NineRouterColors.Info,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.clickable {
-                                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(def.website))) }
-                                },
-                            )
-                        }
-                    }
+                    Text("Connections", style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain)
+                    Spacer(Modifier.width(NineRouterSpacing.sm))
+                    Pill(connections.size.toString())
                 }
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (ProviderAuth.browserOAuth(def)) {
-                        PrimaryButton("OAuth login", onClick = { showOAuth = true })
-                    }
-                    if (ProviderAuth.deviceOAuth(def)) {
-                        SecondaryButton("Device code") { showDevice = true }
-                    }
-                    if (ProviderAuth.apiKey(def)) {
-                        SecondaryButton("API key") { showApiKey = true }
-                    }
-                }
-                if (ProviderAuth.customOAuth(def)) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "${ProviderAuth.customOAuthHint(def)} Paste an access token instead.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = NineRouterColors.Warning,
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "Accounts are tried in priority order, then fallback.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NineRouterColors.TextMuted,
+                )
+                Spacer(Modifier.height(NineRouterSpacing.md))
+                if (connections.isEmpty()) {
+                    EmptyState(
+                        title = "No connections yet",
+                        body = "Add an account or key to start routing requests through ${def.name}.",
                     )
-                    Spacer(Modifier.height(4.dp))
-                    SecondaryButton("Paste token") { showToken = true }
-                } else if (ProviderAuth.browserOAuth(def) || ProviderAuth.deviceOAuth(def)) {
-                    Spacer(Modifier.height(4.dp))
-                    TextButton(onClick = { showToken = true }) { Text("Paste token manually", color = NineRouterColors.TextMuted) }
-                }
-                if (ProviderAuth.cookie(def)) {
-                    Spacer(Modifier.height(4.dp))
-                    SecondaryButton("Paste cookie") { showCookie = true }
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Web-session providers use the Cookie header. Some need browser-only " +
-                            "attestation the Android build does not reproduce, so a cookie may not " +
-                            "work for every web provider.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = NineRouterColors.Warning,
-                    )
-                }
-            }
-        }
-
-        item {
-            SectionHeader("Connections", "${connections.size} saved", modifier = Modifier.padding(top = 2.dp))
-        }
-        if (connections.isEmpty()) {
-            item { EmptyHint("No connections yet. Use the buttons above to add one.") }
-        } else {
-            items(connections, key = { "c-${it.id}" }, contentType = { "connection" }) { conn ->
-                @Suppress("UNUSED_VARIABLE") val revision = Store.revision
-                Panel {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            Modifier.size(30.dp).background(NineRouterColors.Surface2, RoundedCornerShape(8.dp)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                when (conn.authType.lowercase()) {
-                                    "oauth" -> "🔒"
-                                    "cookie" -> "🍪"
-                                    else -> "🔑"
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                conn.name.ifBlank { conn.provider },
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = NineRouterColors.TextMain,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                "${conn.authType} · priority ${conn.priority}" +
-                                    (if (conn.email.isNotBlank()) " · ${conn.email}" else "") +
-                                    if (conn.lastError.isNotBlank()) " · ${conn.lastError.take(40)}" else "",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (conn.lastError.isNotBlank()) NineRouterColors.Danger else NineRouterColors.TextMuted,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        Switch(conn.enabled, {
-                            conn.enabled = it
-                            Store.save()
-                            refresh()
-                        })
-                        TextButton(onClick = {
-                            Store.state.connections.removeAll { it.id == conn.id }
-                            Store.save()
-                            refresh()
-                        }) { Text("×") }
-                    }
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            "Priority ${conn.priority}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = NineRouterColors.TextSubtle,
-                        )
-                        TextButton(
-                            onClick = {
-                                conn.priority = (conn.priority - 1).coerceAtLeast(0)
+                } else {
+                    connections.forEachIndexed { index, conn ->
+                        if (index > 0) DividerLine(Modifier.padding(vertical = NineRouterSpacing.sm))
+                        ConnectionListItem(
+                            conn = conn,
+                            onChange = {
                                 Store.save()
                                 refresh()
                             },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                        ) { Text("▲", color = NineRouterColors.TextMuted) }
-                        TextButton(
-                            onClick = {
-                                conn.priority += 1
+                            onDelete = {
+                                Store.state.connections.removeAll { it.id == conn.id }
                                 Store.save()
                                 refresh()
                             },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                        ) { Text("▼", color = NineRouterColors.TextMuted) }
+                        )
                     }
                 }
-            }
-        }
-
-        item {
-            SectionHeader("Models", "${def.models.size} available", modifier = Modifier.padding(top = 6.dp))
-        }
-        if (def.models.isEmpty()) {
-            item { EmptyHint("This provider has no model catalog on device.") }
-        } else {
-            val filtered = if (modelQuery.isBlank()) {
-                def.models
-            } else {
-                def.models.filter { model ->
-                    model.contains(modelQuery, true) ||
-                        def.modelNames[model].orEmpty().contains(modelQuery, true)
-                }
-            }
-            item {
-                OutlinedTextField(
-                    modelQuery, { modelQuery = it },
-                    label = { Text("Search ${def.models.size} models") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                Spacer(Modifier.height(NineRouterSpacing.md))
+                ConnectionActions(
+                    def = def,
+                    onOAuth = { showOAuth = true },
+                    onDevice = { showDevice = true },
+                    onApiKey = { showApiKey = true },
+                    onToken = { showToken = true },
+                    onCookie = { showCookie = true },
                 )
             }
-            val visible = if (showAllModels || modelQuery.isNotBlank()) filtered else filtered.take(10)
-            items(visible, key = { "m-$it" }, contentType = { "catalog-model" }) { model ->
-                Panel {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                def.modelNames[model] ?: model,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = NineRouterColors.TextMain,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            if (def.modelNames[model] != null) {
-                                Text(
-                                    model,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = NineRouterColors.TextSubtle,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                        }
-                        val caps = def.modelCapabilities[model].orEmpty()
-                        if (caps.isNotEmpty()) {
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                caps.take(3).joinToString(" · "),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = NineRouterColors.TextSubtle,
-                            )
-                        }
+        }
+
+        item {
+            Panel {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Models", style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain)
+                    Spacer(Modifier.width(NineRouterSpacing.sm))
+                    Pill(def.models.size.toString())
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        "addressed as ${def.alias}/…",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NineRouterColors.TextSubtle,
+                    )
+                }
+                if (def.models.isNotEmpty()) {
+                    Spacer(Modifier.height(NineRouterSpacing.sm))
+                    OutlinedTextField(
+                        value = modelQuery,
+                        onValueChange = {
+                            modelQuery = it
+                            visibleModels = 10
+                        },
+                        placeholder = { Text("Search ${def.models.size} models") },
+                        leadingIcon = {
+                            Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                        },
+                        singleLine = true,
+                        shape = NineRouterShapes.small,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                Spacer(Modifier.height(NineRouterSpacing.sm))
+
+                val filtered = if (modelQuery.isBlank()) {
+                    def.models
+                } else {
+                    def.models.filter { model ->
+                        model.contains(modelQuery, true) ||
+                            def.modelNames[model].orEmpty().contains(modelQuery, true)
                     }
                 }
-            }
-            if (visible.isEmpty()) {
-                item { EmptyHint("No models match \u201c$modelQuery\u201d.") }
-            }
-            if (!showAllModels && modelQuery.isBlank() && filtered.size > 10) {
-                item {
-                    TextButton(onClick = { showAllModels = true }) {
-                        Text("Show all ${filtered.size} models")
+                if (def.models.isEmpty()) {
+                    EmptyState(
+                        title = "No model catalog",
+                        body = "This provider has no exported model list. You can still use a custom model id from a combo.",
+                    )
+                } else if (filtered.isEmpty()) {
+                    EmptyState(
+                        title = "No matches",
+                        body = "No model matches “$modelQuery”.",
+                    )
+                } else {
+                    filtered.take(visibleModels).forEachIndexed { index, model ->
+                        if (index > 0) DividerLine(Modifier.padding(vertical = 2.dp))
+                        ModelCatalogRow(
+                            model = model,
+                            name = def.modelNames[model],
+                            caps = def.modelCapabilities[model].orEmpty(),
+                        )
+                    }
+                    if (filtered.size > visibleModels) {
+                        TextButton(onClick = { visibleModels += 20 }) {
+                            Text("Show ${minOf(20, filtered.size - visibleModels)} more of ${filtered.size}", color = NineRouterColors.BrandOrange)
+                        }
                     }
                 }
             }
@@ -1129,6 +1160,171 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
             refresh()
             Toast.makeText(context, "Connected ${def.name}", Toast.LENGTH_SHORT).show()
         })
+    }
+}
+
+@Composable
+private fun ConnectionActions(
+    def: ProviderDef,
+    onOAuth: () -> Unit,
+    onDevice: () -> Unit,
+    onApiKey: () -> Unit,
+    onToken: () -> Unit,
+    onCookie: () -> Unit,
+) {
+    val browser = ProviderAuth.browserOAuth(def)
+    val device = ProviderAuth.deviceOAuth(def)
+    val apiKey = ProviderAuth.apiKey(def)
+    val custom = ProviderAuth.customOAuth(def)
+    val cookie = ProviderAuth.cookie(def)
+
+    Column(verticalArrangement = Arrangement.spacedBy(NineRouterSpacing.sm)) {
+        when {
+            browser -> PrimaryButton("Connect with OAuth", onClick = onOAuth, modifier = Modifier.fillMaxWidth())
+            device -> PrimaryButton("Connect with device code", onClick = onDevice, modifier = Modifier.fillMaxWidth())
+            custom -> PrimaryButton("Paste access token", onClick = onToken, modifier = Modifier.fillMaxWidth())
+        }
+        if (apiKey) {
+            if (browser || device) {
+                SecondaryButton("Add API key", onClick = onApiKey, modifier = Modifier.fillMaxWidth())
+            } else if (!custom) {
+                PrimaryButton("Add API key", onClick = onApiKey, modifier = Modifier.fillMaxWidth())
+            }
+        }
+        if (cookie) {
+            SecondaryButton("Paste cookie", onClick = onCookie, modifier = Modifier.fillMaxWidth())
+        }
+        if (browser || device) {
+            TextButton(onClick = onToken, modifier = Modifier.fillMaxWidth()) {
+                Text("Paste token manually", color = NineRouterColors.TextMuted)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConnectionListItem(conn: Connection, onChange: () -> Unit, onDelete: () -> Unit) {
+    val typeLabel = when (conn.authType.lowercase()) {
+        "oauth" -> "OAuth"
+        "cookie" -> "Cookie"
+        else -> "API key"
+    }
+    Row(verticalAlignment = Alignment.Top) {
+        Surface(
+            color = if (conn.enabled) NineRouterColors.Success.copy(alpha = 0.10f) else NineRouterColors.Surface2,
+            shape = RoundedCornerShape(10.dp),
+            border = BorderStroke(1.dp, if (conn.enabled) NineRouterColors.Success.copy(alpha = 0.25f) else NineRouterColors.Border),
+        ) {
+            Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+                Text(
+                    when (conn.authType.lowercase()) {
+                        "oauth" -> "OA"
+                        "cookie" -> "CK"
+                        else -> "KEY"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (conn.enabled) NineRouterColors.Success else NineRouterColors.TextMuted,
+                )
+            }
+        }
+        Spacer(Modifier.width(NineRouterSpacing.sm))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    conn.name.ifBlank { conn.provider },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = NineRouterColors.TextMain,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (!conn.enabled) {
+                    Spacer(Modifier.width(6.dp))
+                    Pill("off", NineRouterColors.TextMuted, NineRouterColors.Surface2)
+                }
+            }
+            Text(
+                listOfNotNull(
+                    typeLabel,
+                    conn.email.takeIf { it.isNotBlank() },
+                    conn.projectId.takeIf { it.isNotBlank() }?.let { "project ${it.take(12)}" },
+                    conn.lastError.takeIf { it.isNotBlank() }?.let { "error: ${it.take(36)}" },
+                ).joinToString(" · "),
+                style = MaterialTheme.typography.labelSmall,
+                color = if (conn.lastError.isNotBlank()) NineRouterColors.Danger else NineRouterColors.TextMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Priority ${conn.priority}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.TextSubtle,
+                )
+                IconButton(
+                    onClick = {
+                        conn.priority = (conn.priority - 1).coerceAtLeast(0)
+                        onChange()
+                    },
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(Icons.Default.KeyboardArrowUp, "Move up", tint = NineRouterColors.TextMuted, modifier = Modifier.size(17.dp))
+                }
+                IconButton(
+                    onClick = {
+                        conn.priority += 1
+                        onChange()
+                    },
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(Icons.Default.KeyboardArrowDown, "Move down", tint = NineRouterColors.TextMuted, modifier = Modifier.size(17.dp))
+                }
+            }
+        }
+        Switch(
+            checked = conn.enabled,
+            onCheckedChange = {
+                conn.enabled = it
+                onChange()
+            },
+            modifier = Modifier.size(34.dp, 20.dp),
+        )
+        IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
+            Icon(Icons.Default.Delete, "Delete connection", tint = NineRouterColors.TextSubtle, modifier = Modifier.size(17.dp))
+        }
+    }
+}
+
+@Composable
+private fun ModelCatalogRow(model: String, name: String?, caps: List<String>) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                name ?: model,
+                style = MaterialTheme.typography.bodySmall,
+                color = NineRouterColors.TextMain,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (name != null) {
+                Text(
+                    model,
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                    color = NineRouterColors.TextSubtle,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (caps.isNotEmpty()) {
+            Spacer(Modifier.width(NineRouterSpacing.sm))
+            Text(
+                caps.take(2).joinToString(" · "),
+                style = MaterialTheme.typography.labelSmall,
+                color = NineRouterColors.TextSubtle,
+                maxLines = 1,
+            )
+        }
     }
 }
 

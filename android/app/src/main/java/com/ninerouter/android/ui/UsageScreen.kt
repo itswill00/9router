@@ -1,6 +1,7 @@
 package com.ninerouter.android.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -175,7 +176,10 @@ private fun Overview(
             })
             Spacer(Modifier.height(6.dp))
             if (filtered.isEmpty()) {
-                Text("No requests yet.", color = NineRouterColors.TextMuted)
+                EmptyState(
+                    title = "No requests yet",
+                    body = "Traffic through the local gateway shows up here with tokens and cost.",
+                )
             } else {
                 filtered.takeLast(6).asReversed().forEach { r ->
                     Row(
@@ -333,7 +337,11 @@ private fun Overview(
 private fun DetailsList(filtered: List<UsageEntry>, onSelect: (UsageEntry) -> Unit) {
     if (filtered.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No request details yet.", color = NineRouterColors.TextMuted)
+            EmptyState(
+                title = "No request details yet",
+                body = "Send a request through the gateway to see it listed here.",
+                modifier = Modifier.padding(horizontal = 24.dp),
+            )
         }
         return
     }
@@ -388,7 +396,8 @@ private fun StatGrid(stats: List<Stat>) {
                     Surface(
                         modifier = Modifier.weight(1f),
                         color = NineRouterColors.Surface,
-                        shape = RoundedCornerShape(10.dp),
+                        shape = NineRouterShapes.large,
+                        border = BorderStroke(1.dp, NineRouterColors.BorderSubtle),
                     ) {
                         Column(Modifier.padding(10.dp)) {
                             Text(stat.label.uppercase(), style = MaterialTheme.typography.labelSmall, color = NineRouterColors.TextMuted, maxLines = 1)

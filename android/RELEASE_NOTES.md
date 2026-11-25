@@ -1,10 +1,38 @@
-# 9Router Android 0.1.12
+# 9Router Android 0.1.13
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.11
+## What changed since 0.1.12
+
+This is a UI/UX pass: the whole app now follows one 9Router visual system and
+every primary screen was reworked for mobile comfort.
+
+- **Provider detail pages rebuilt 9router-style.** A large header sits outside
+  the cards (icon, provider name, connection count, auth mode, website link),
+  followed by a single Connections card with divided rows, an empty state, and
+  full-width add actions. The Models card has search plus incremental rows.
+- **Custom node detail rebuilt.** Header, an Endpoint card with a copyable mono
+  URL, a Models card with add / fetch / test / remove, and a danger-zone card.
+- **Chat page redesigned end to end.** Model selector pill with a searchable
+  picker, one-tap new chat, a branded empty state with suggestion cards,
+  distinct user/assistant bubbles, per-message copy, an animated typing
+  indicator, a rounded composer, and a stop button that cancels the stream.
+- **Endpoint page rebuilt.** Gateway status hero with a port pill, copyable
+  mono URLs, a masked API key you can reveal/regenerate, and a compact client
+  configuration block.
+- **Combos reworked.** Strategy chips (fallback / round-robin / smart),
+  numbered model rows with divided lines, an empty state, and a smart-only
+  router-model field.
+- **Usage and Settings polished.** Bordered stat cards, empty states, a
+  status-dot gateway row, and aligned action buttons.
+- **One design system.** 4/8dp spacing rhythm, 16/18dp card radii, a refined
+  dark palette, custom typography, and shared Panel / Pill / EmptyState /
+  MonoText / NoticeBanner components. A local copy icon keeps the app on
+  `material-icons-core`.
+
+## What changed in 0.1.12
 
 OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
@@ -295,11 +323,11 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.12-android` (version code 14)
+- Version: `0.1.13-android` (version code 15)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
 - SHA-256 of the attached APK:
-  `2882c2a51666e74a863b569b3d03760e69557b00ca37d3f7221d02b8bff9d769`
+  `16ef005f645220a2350f673927569dc3622946ec279946a3499ffa8e0e48dafd`
 
 See `android/README.md` for the module layout and build instructions.
