@@ -12,7 +12,7 @@
 
 ## Overview
 
-This branch turns 9Router into a self-contained Android application. The routing
+This repository turns 9Router into a self-contained Android application. The routing
 gateway runs as a foreground service on the device and exposes an
 OpenAI-compatible endpoint on loopback:
 
@@ -198,11 +198,11 @@ node scripts/export-android-config.mjs
 ## Security model
 
 - The gateway binds to `127.0.0.1` only. The app never binds `0.0.0.0`.
-- Cleartext HTTP is permitted only for loopback via
-  `res/xml/network_security_config.xml`; upstream calls remain HTTPS.
+- Cleartext HTTP is allowed so user-added nodes can be local LAN servers; every
+  built-in provider uses HTTPS and the UI warns about non-loopback HTTP URLs.
 - API keys are compared in constant time.
-- Provider secrets are AES-GCM encrypted with the Android Keystore before being
-  written to `appstate.json`.
+- Provider secrets and custom-node API keys are AES-GCM encrypted with the
+  Android Keystore before being written to `appstate.json`.
 - No `X-Forwarded-For` trust path exists in this gateway.
 - The debug APK is intended for sideloading. A Play Store release requires a
   dedicated release keystore and signing configuration.

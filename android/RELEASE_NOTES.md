@@ -1,10 +1,47 @@
-# 9Router Android 0.1.9
+# 9Router Android 0.1.10
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.8
+## What changed since 0.1.9
+
+- **Custom endpoint pages are now real detail pages.** Tapping an OpenAI- or
+  Anthropic-compatible node opens a page with its connection info, base URL and
+  resolved chat/model endpoints, plus an editable prefix, name, API type and
+  base URL. You can add or remove model ids, **Fetch from endpoint** to import
+  the upstream `/models` catalog, and **Test** any model with a short inference
+  request that reports the reply and latency.
+- **Localhost troubleshooting built into the Endpoint tab.** An **Open dashboard**
+  button launches `http://127.0.0.1:20128` in the browser, **Test connection**
+  calls `/api/health` and shows the result, and the page explains that a
+  computer needs `adb reverse tcp:20128 tcp:20128`. **Restart gateway** and
+  **Battery settings** shortcuts were added for stuck or killed services.
+- **A gateway restart bug was fixed.** After a Shutdown/Start cycle the socket
+  could bind while the old, cancelled coroutine scope meant no request was ever
+  accepted. Each start now gets a fresh scope, so the browser immediately loads
+  the dashboard again. Startup errors now spell out when port 20128 is busy.
+- **Settings was rebuilt as sections**: Gateway, Routing, Token savers, Access &
+  API keys, App updates, and About. The account strategy is now a two-choice
+  selector with a sticky-limit stepper, token-saver levels appear only when
+  enabled, API keys can be copied individually, and preferences can be reset
+  without touching providers or connections.
+- **Navigation polish**: the current tab and chat state survive rotation, the
+  selected tab has a highlighted icon, and the top bar shows the active section
+  and gateway status.
+- **More parity on the management API**: `/api/provider-nodes` now uses the
+  upstream `{ "nodes": [...] }` shape and supports `PUT`/`DELETE` on
+  `/api/provider-nodes/{id}`. Node model ids appear in `/v1/models`, custom
+  nodes resolve bare model ids, and embeddings URLs are built correctly for
+  nodes that store a full chat endpoint.
+- **OAuth callbacks are handled on new intents as well as app creation**, and
+  the code exchange/post-processing now runs off the main thread.
+- **Node API keys are encrypted at rest** with the Android Keystore like every
+  other secret.
+- **Local HTTP endpoints are supported** for LAN inference servers; the add/edit
+  dialog warns when a plain-HTTP URL would send an API key unencrypted.
+
+## What changed in 0.1.9
 
 - **Update prompt on launch.** When a newer release is found, a dialog shows the
   version and release notes with **Update** / **Later**. "Later" is remembered
@@ -172,9 +209,11 @@ persistent foreground service notification.
 
 ## Security notes
 
-- Cleartext traffic is restricted by `network_security_config.xml` to
-  `127.0.0.1` and `localhost`. Upstream provider calls remain HTTPS.
-- Secrets are never stored as plaintext in `appstate.json`.
+- Cleartext traffic is allowed because user-added nodes may be local HTTP
+  servers (Ollama, LM Studio, etc.). All built-in providers are HTTPS and the
+  app warns when a non-loopback HTTP endpoint is entered.
+- Secrets are never stored as plaintext in `appstate.json`, including custom
+  node API keys.
 - Forwarded-header spoofing is avoided: there is no `X-Forwarded-For` trust
   path in this gateway.
 - This is a **debug-signed** APK intended for sideloading. A Play Store build
@@ -201,11 +240,11 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.9-android` (version code 11)
+- Version: `0.1.10-android` (version code 12)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15)
-- Source branch: `feat/android-native-gateway`
+- Source branch: `master`
 - SHA-256 of the attached APK:
-  `814a99dd1c399fef2e0e133fe43632edad90e03b6dd9f732c154e1bdcc7a7d29`
+  `bc46c4b0e00a394385c95eeb45adc4e7fdf745d09ed9a31055aa61af2e6120d6`
 
 See `android/README.md` for the module layout and build instructions.
