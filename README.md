@@ -48,7 +48,8 @@ bundles a Linux userland.
   `/api/health`, and reports startup errors in the app.
 - **Login flows**: browser OAuth PKCE (Claude Code, Codex, Gemini CLI,
   Antigravity, iFlow), device-code login (GitHub, Grok CLI, Kimi, Muse, MiniMax
-  Code), or paste a token manually.
+  Code), or paste a token manually. Provider transports are ported (Cloud Code
+  Assist, Responses API, Claude Code headers).
 - **Provider & model catalog**: 151 providers grouped like the dashboard (OAuth,
   Free, Free Tier, API Key, Web Cookie, Custom), each with a detail screen and
   its real searchable model list.

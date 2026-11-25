@@ -54,15 +54,19 @@ class MainActivity : ComponentActivity() {
         val def = Catalog.find(providerId) ?: return
         val tokens = OAuthFlow.exchangeCode(def, code, state)
         if (tokens != null) {
+            val processed = OAuthFlow.postProcess(def, tokens).tokens ?: tokens
             Store.state.connections.add(
                 Connection(
                     id = UUID.randomUUID().toString(),
                     provider = def.id,
                     name = def.name,
                     authType = "oauth",
-                    accessToken = tokens.access,
-                    refreshToken = tokens.refresh,
-                    expiresAt = System.currentTimeMillis() + tokens.expiresIn * 1000L,
+                    accessToken = processed.access,
+                    refreshToken = processed.refresh,
+                    expiresAt = System.currentTimeMillis() + processed.expiresIn * 1000L,
+                    projectId = processed.projectId,
+                    email = processed.email,
+                    accountId = processed.accountId,
                 )
             )
             Store.save()

@@ -61,6 +61,25 @@ for (const file of fs.readdirSync(registryDir).filter((f) => f.endsWith(".js")).
   const id = str(src, /^\s*id:\s*["']([^"']+)["']/m);
   if (!id) continue;
   const transport = block(src, "transport");
+  const baseUrlsBlock = block(src, "baseUrls", "[", "]");
+  const authBlock = block(src, "auth") || block(transport, "auth");
+  const authHeader = str(authBlock, /header:\s*["']([^"']+)["']/) ||
+    str(transport, /^\s*authHeader:\s*["']([^"']+)["']/m);
+  const authScheme = str(authBlock, /scheme:\s*["']([^"']+)["']/) || "bearer";
+  const urlSuffix = str(transport, /^\s*urlSuffix:\s*["']([^"']+)["']/m);
+  const transportHeaders = {};
+  for (const m of block(transport, "headers").matchAll(/["']?([A-Za-z0-9_-]+)["']?\s*:\s*["']([^"']*)["']/g)) {
+    transportHeaders[m[1]] = m[2];
+  }
+  // Some transports build baseUrl from a module constant / template literal.
+  const TEMPLATE_CONSTS = {
+    GROK_CLI_BASE_URL: "https://cli-chat-proxy.grok.com/v1",
+    ANTIGRAVITY_IDE_BASE_URL: "https://daily-cloudcode-pa.googleapis.com",
+  };
+  const rawBaseUrl = str(transport, /^\s*baseUrl:\s*[`"']([^`"']+)[`"']/m);
+  const baseUrl = rawBaseUrl
+    ? rawBaseUrl.replace(/\$\{([A-Z0-9_]+)\}/g, (_, key) => TEMPLATE_CONSTS[key] ?? "")
+    : (id === "antigravity" ? TEMPLATE_CONSTS.ANTIGRAVITY_IDE_BASE_URL : "");
   const oauth = lastBlock(src, "oauth");
   const display = block(src, "display");
   const modelsBlock = block(src, "models", "[", "]");
@@ -135,7 +154,11 @@ for (const file of fs.readdirSync(registryDir).filter((f) => f.endsWith(".js")).
     hidden: /^\s*hidden:\s*true/m.test(src),
     serviceKinds,
     format: str(transport, /^\s*format:\s*["']([^"']+)["']/m) || "openai",
-    baseUrl: str(transport, /^\s*baseUrl:\s*["']([^"']+)["']/m),
+    baseUrl,
+    transportHeaders,
+    authHeader,
+    authScheme,
+    urlSuffix,
     tokenUrl: str(oauth, /^\s*tokenUrl:\s*["']([^"']+)["']/m),
     clientId: str(oauth, /^\s*clientId:\s*["']([^"']+)["']/m) || (googleProvider ? GOOGLE_CLIENT_ID : ""),
     authorizeUrl: str(oauth, /^\s*authorizeUrl:\s*["']([^"']+)["']/m),

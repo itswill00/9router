@@ -508,6 +508,7 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
                             )
                             Text(
                                 "${conn.authType} · priority ${conn.priority}" +
+                                    (if (conn.email.isNotBlank()) " · ${conn.email}" else "") +
                                     if (conn.lastError.isNotBlank()) " · ${conn.lastError.take(40)}" else "",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (conn.lastError.isNotBlank()) NineRouterColors.Danger else NineRouterColors.TextMuted,
@@ -525,6 +526,33 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
                             Store.save()
                             refresh()
                         }) { Text("×") }
+                    }
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Priority ${conn.priority}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NineRouterColors.TextSubtle,
+                        )
+                        TextButton(
+                            onClick = {
+                                conn.priority = (conn.priority - 1).coerceAtLeast(0)
+                                Store.save()
+                                refresh()
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        ) { Text("▲", color = NineRouterColors.TextMuted) }
+                        TextButton(
+                            onClick = {
+                                conn.priority += 1
+                                Store.save()
+                                refresh()
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        ) { Text("▼", color = NineRouterColors.TextMuted) }
                     }
                 }
             }
@@ -838,6 +866,9 @@ private fun OAuthDialog(def: ProviderDef, onDismiss: () -> Unit, onSaved: () -> 
                             accessToken = tokens.access,
                             refreshToken = tokens.refresh,
                             expiresAt = System.currentTimeMillis() + tokens.expiresIn * 1000L,
+                            projectId = tokens.projectId,
+                            email = tokens.email,
+                            accountId = tokens.accountId,
                         )
                     )
                     Store.save()
@@ -929,6 +960,9 @@ private fun DeviceDialog(def: ProviderDef, onDismiss: () -> Unit, onSaved: () ->
                                 accessToken = processed.tokens.access,
                                 refreshToken = processed.tokens.refresh,
                                 expiresAt = System.currentTimeMillis() + processed.tokens.expiresIn * 1000L,
+                                projectId = processed.tokens.projectId,
+                                email = processed.tokens.email,
+                                accountId = processed.tokens.accountId,
                             )
                         )
                         Store.save()

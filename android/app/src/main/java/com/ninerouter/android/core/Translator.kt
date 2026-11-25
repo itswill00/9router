@@ -34,10 +34,16 @@ object Translator {
         else body
 
         return when (target) {
-            Formats.OPENAI, Formats.OPENAI_RESPONSES -> buildJsonObject {
-                put("model", upstreamModel)
-                put("stream", wantsStream)
-                normalized.forEach { (k, v) -> if (k != "model" && k != "stream") put(k, v) }
+            Formats.OPENAI, Formats.OPENAI_RESPONSES -> {
+                if (target == Formats.OPENAI_RESPONSES) {
+                    openAiToResponses(normalized, upstreamModel, wantsStream)
+                } else {
+                    buildJsonObject {
+                        put("model", upstreamModel)
+                        put("stream", wantsStream)
+                        normalized.forEach { (k, v) -> if (k != "model" && k != "stream") put(k, v) }
+                    }
+                }
             }
             Formats.CLAUDE -> openAiToClaude(normalized, upstreamModel, wantsStream)
             Formats.GEMINI -> openAiToGemini(normalized, upstreamModel, wantsStream)
@@ -213,6 +219,7 @@ object Translator {
     }
 
     private fun openAiToGemini(body: JsonObject, model: String, stream: Boolean): JsonObject = buildJsonObject {
+        put("model", model)
         val contents = mutableListOf<JsonObject>()
         (body["messages"] as? JsonArray)?.forEach { raw ->
             val m = raw as? JsonObject ?: return@forEach
@@ -258,12 +265,83 @@ object Translator {
         put("_stream", stream) // stripped by Upstream and appended to the URL
     }
 
+    /** Chat Completions → Responses API request (Codex, Grok CLI shared proxy). */
+    private fun openAiToResponses(body: JsonObject, model: String, stream: Boolean): JsonObject = buildJsonObject {
+        put("model", model)
+        put("stream", stream)
+        put("store", false)
+        val instructions = StringBuilder()
+        val input = mutableListOf<JsonObject>()
+        (body["messages"] as? JsonArray)?.forEach { raw ->
+            val m = raw as? JsonObject ?: return@forEach
+            val role = text(m["role"], "user")
+            if (role == "system" || role == "developer") {
+                val t = flattenText(m["content"])
+                if (t.isNotBlank()) instructions.appendLine(t)
+                return@forEach
+            }
+            input += buildJsonObject {
+                put("type", "message")
+                put("role", role)
+                put("content", buildJsonArray {
+                    add(buildJsonObject {
+                        put("type", if (role == "assistant") "output_text" else "input_text")
+                        put("text", flattenText(m["content"]))
+                    })
+                })
+            }
+        }
+        if (instructions.isNotBlank()) put("instructions", instructions.toString().trim())
+        put("input", JsonArray(input))
+        (body["max_completion_tokens"] ?: body["max_tokens"])?.let { put("max_output_tokens", it) }
+        body["temperature"]?.let { put("temperature", it) }
+        body["top_p"]?.let { put("top_p", it) }
+        (body["tools"] as? JsonArray)?.takeIf { it.isNotEmpty() }?.let { tools ->
+            put("tools", JsonArray(tools.mapNotNull { t ->
+                val o = t as? JsonObject ?: return@mapNotNull null
+                val fn = o["function"] as? JsonObject ?: return@mapNotNull null
+                buildJsonObject {
+                    put("type", "function")
+                    put("name", text(fn["name"], ""))
+                    put("description", text(fn["description"], ""))
+                    put("parameters", fn["parameters"] ?: JsonObject(emptyMap()))
+                }
+            }))
+        }
+    }
+
+    /** Responses API JSON → OpenAI envelope (used when the upstream target is Responses). */
+    private fun responsesApiToOpenAi(upstream: JsonObject, model: String): JsonObject {
+        val content = StringBuilder()
+        (upstream["output"] as? JsonArray)?.forEach { item ->
+            val o = item as? JsonObject ?: return@forEach
+            if (text(o["type"], "") != "message") return@forEach
+            (o["content"] as? JsonArray)?.forEach { c ->
+                val co = c as? JsonObject ?: return@forEach
+                if (text(co["type"], "") == "output_text") content.append(text(co["text"], ""))
+            }
+        }
+        val usage = upstream["usage"] as? JsonObject
+        return openAiEnvelope(
+            model,
+            content.toString(),
+            "stop",
+            number(usage?.get("input_tokens"), 0L),
+            number(usage?.get("output_tokens"), 0L),
+        )
+    }
+
+    /** gemini-cli / antigravity wrap the Gemini payload in `{ response: {...} }`. */
+    fun unwrapEnvelope(upstream: JsonObject): JsonObject =
+        (upstream["response"] as? JsonObject) ?: upstream
+
     // ---------- response ----------
 
     fun responseBody(target: String, source: String, upstream: JsonObject, requestedModel: String): JsonObject {
         val openAi = when (target) {
             Formats.CLAUDE -> claudeToOpenAiResponse(upstream, requestedModel)
             Formats.GEMINI -> geminiToOpenAiResponse(upstream, requestedModel)
+            Formats.OPENAI_RESPONSES -> responsesApiToOpenAi(upstream, requestedModel)
             else -> upstream
         }
         return when (source) {
@@ -380,16 +458,22 @@ object Translator {
 
     // ---------- streaming ----------
 
-    fun sseDelta(target: String, rawLine: String, requestedModel: String): String? {
+    fun sseDelta(target: String, rawLine: String, requestedModel: String, cliEnvelope: Boolean = false): String? {
         if (rawLine.startsWith("data:")) {
             val data = rawLine.removePrefix("data:").trim()
             if (data == "[DONE]") return "data: [DONE]"
-            val obj = try { json.parseToJsonElement(data) as? JsonObject } catch (_: Exception) { null } ?: return null
+            var obj = try { json.parseToJsonElement(data) as? JsonObject } catch (_: Exception) { null } ?: return null
+            if (cliEnvelope) obj = unwrapEnvelope(obj)
             val piece = when (target) {
                 Formats.GEMINI -> {
                     val cand = (obj["candidates"] as? JsonArray)?.firstOrNull() as? JsonObject
                     val parts = (cand?.get("content") as? JsonObject)?.get("parts") as? JsonArray
                     parts?.map { text((it as? JsonObject)?.get("text"), "") }?.joinToString("") ?: ""
+                }
+                Formats.OPENAI_RESPONSES -> when (text(obj["type"], "")) {
+                    "response.output_text.delta" -> text(obj["delta"], "")
+                    "response.refusal.delta" -> text(obj["delta"], "")
+                    else -> ""
                 }
                 else -> {
                     val choices = obj["choices"] as? JsonArray

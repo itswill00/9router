@@ -24,7 +24,13 @@ class ChatEngine(
 
     sealed class Outcome {
         data class Json(val body: String) : Outcome()
-        data class Stream(val response: Response, val targetFormat: String, val sourceFormat: String, val model: String) : Outcome()
+        data class Stream(
+            val response: Response,
+            val targetFormat: String,
+            val sourceFormat: String,
+            val model: String,
+            val cliEnvelope: Boolean = false,
+        ) : Outcome()
         data class Error(val status: Int, val message: String) : Outcome()
     }
 
@@ -93,11 +99,13 @@ class ChatEngine(
 
                 if (response.isSuccessful) {
                     markSuccess(conn)
+                    val cliEnvelope = isCliEnvelope(def ?: emptyDef(target.provider))
                     if (wantsStream) {
-                        return Outcome.Stream(response, providerFormat, responseFormat, requestedModel)
+                        return Outcome.Stream(response, providerFormat, responseFormat, requestedModel, cliEnvelope)
                     }
                     val raw = response.body?.string().orEmpty()
-                    val upstreamJson = parseObject(raw) ?: JsonObject(emptyMap())
+                    val parsed = parseObject(raw) ?: JsonObject(emptyMap())
+                    val upstreamJson = if (cliEnvelope) Translator.unwrapEnvelope(parsed) else parsed
                     val finalJson = Translator.responseBody(providerFormat, responseFormat, upstreamJson, requestedModel)
                     trackUsage(target.provider, member, upstreamJson, true, clientBody, raw)
                     return Outcome.Json(json.encodeToString(finalJson))
@@ -121,6 +129,9 @@ class ChatEngine(
     }
 
     private fun emptyDef(id: String) = com.ninerouter.android.data.ProviderDef(id = id, alias = id)
+
+    private fun isCliEnvelope(def: com.ninerouter.android.data.ProviderDef): Boolean =
+        def.format == "gemini-cli" || def.format == "antigravity"
 
     /** Smart Router: ask the configured router model to pick one combo member.
      * The router itself is resolved and translated through the same pipeline, so
@@ -157,7 +168,8 @@ class ChatEngine(
             res.body?.string().orEmpty()
         }
         val obj = parseObject(raw) ?: return null
-        val openAi = Translator.responseBody(providerFormat, Formats.OPENAI, obj, target.model)
+        val unwrapped = if (isCliEnvelope(def)) Translator.unwrapEnvelope(obj) else obj
+        val openAi = Translator.responseBody(providerFormat, Formats.OPENAI, unwrapped, target.model)
         val content = ((openAi["choices"] as? JsonArray)?.firstOrNull() as? JsonObject)
             ?.let { it["message"] as? JsonObject }
             ?.let { (it["content"] as? JsonPrimitive)?.content }

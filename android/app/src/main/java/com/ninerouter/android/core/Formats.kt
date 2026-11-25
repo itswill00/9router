@@ -12,7 +12,7 @@ object Formats {
     fun normalize(value: String?): String = when (value?.lowercase()) {
         "anthropic", "claude" -> CLAUDE
         "openai-responses", "responses" -> OPENAI_RESPONSES
-        "google", "gemini-cli", "vertex" -> GEMINI
+        "google", "gemini-cli", "antigravity", "vertex" -> GEMINI
         else -> value ?: OPENAI
     }
 

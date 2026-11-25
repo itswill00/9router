@@ -123,7 +123,7 @@ class Gateway(private val context: Context) {
                 path == "/api/health" || path == "/health" -> writeJson(output, 200, buildJsonObject {
                     put("ok", true)
                     put("android", true)
-                    put("version", "0.1.2-android")
+                    put("version", "0.1.3-android")
                     put("baseUrl", GatewayState.BASE_URL)
                     put("connections", Store.state.connections.size)
                     put("models", Catalog.modelIds().size)
@@ -643,7 +643,7 @@ class Gateway(private val context: Context) {
         try {
             while (true) {
                 val line = source?.readUtf8Line() ?: break
-                var converted = Translator.sseDelta(result.targetFormat, line, result.model)
+                var converted = Translator.sseDelta(result.targetFormat, line, result.model, result.cliEnvelope)
                 if (converted == null && line.contains("[DONE]")) converted = "data: [DONE]"
                 if (converted == null) continue
                 if (converted.contains("[DONE]")) sawDone = true

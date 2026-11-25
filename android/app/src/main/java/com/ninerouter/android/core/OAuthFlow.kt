@@ -35,7 +35,15 @@ import java.util.concurrent.TimeUnit
 object OAuthFlow {
     const val REDIRECT_URI = "ninerouter://oauth/callback"
 
-    data class Tokens(val access: String, val refresh: String, val expiresIn: Long)
+    data class Tokens(
+        val access: String,
+        val refresh: String,
+        val expiresIn: Long,
+        val projectId: String = "",
+        val email: String = "",
+        val accountId: String = "",
+        val idToken: String = "",
+    )
 
     data class LoginResult(val tokens: Tokens?, val error: String? = null)
 
@@ -334,7 +342,8 @@ object OAuthFlow {
                     ?: return LoginResult(null, "Token response had no access_token.")
                 val refresh = (obj["refresh_token"] as? JsonPrimitive)?.content ?: ""
                 val expires = (obj["expires_in"] as? JsonPrimitive)?.content?.toLongOrNull() ?: 3600L
-                LoginResult(Tokens(access, refresh, expires))
+                val idToken = (obj["id_token"] as? JsonPrimitive)?.content ?: ""
+                LoginResult(Tokens(access, refresh, expires, idToken = idToken))
             }
         } catch (e: Exception) {
             LoginResult(null, e.message ?: e.javaClass.simpleName)
@@ -344,6 +353,18 @@ object OAuthFlow {
     /** GitHub Copilot needs a short-lived Copilot token derived from the GitHub OAuth token. */
     fun postProcess(def: ProviderDef, tokens: Tokens): LoginResult {
         if (def.id == "muse") return mintMuseKey(tokens)
+        if (def.format == "gemini-cli" || def.format == "antigravity") {
+            val (project, email) = googleProject(tokens.access)
+            return LoginResult(tokens.copy(projectId = project, email = email))
+        }
+        if (def.id == "codex") {
+            val claims = decodeJwt(tokens.idToken.ifBlank { tokens.access }).orEmpty()
+            val auth = claims["https://api.openai.com/auth"] as? JsonObject
+            val accountId = (auth?.get("chatgpt_account_id") as? JsonPrimitive)?.content
+                ?: (claims["chatgpt_account_id"] as? JsonPrimitive)?.content.orEmpty()
+            val email = (claims["email"] as? JsonPrimitive)?.content.orEmpty()
+            return LoginResult(tokens.copy(accountId = accountId, email = email))
+        }
         if (def.id != "github" || def.copilotTokenUrl.isBlank()) return LoginResult(tokens)
         val req = Request.Builder()
             .url(def.copilotTokenUrl)
@@ -368,6 +389,60 @@ object OAuthFlow {
         } catch (e: Exception) {
             LoginResult(null, e.message ?: e.javaClass.simpleName)
         }
+    }
+
+    /** Decode a JWT payload without verifying the signature (identity claims only). */
+    private fun decodeJwt(token: String): JsonObject? {
+        val parts = token.split(".")
+        if (parts.size < 2) return null
+        return runCatching {
+            val payload = Base64.getUrlDecoder().decode(parts[1].padEnd((parts[1].length + 3) / 4 * 4, '='))
+            json.parseToJsonElement(String(payload, Charsets.UTF_8)) as? JsonObject
+        }.getOrNull()
+    }
+
+    /** Cloud Code Assist project id (loadCodeAssist), plus the account email. */
+    private fun googleProject(accessToken: String): Pair<String, String> {
+        var project = ""
+        var email = ""
+        runCatching {
+            val payload = buildJsonObject {
+                put("metadata", buildJsonObject {
+                    put("ideType", 9)
+                    put("platform", "PLATFORM_UNSPECIFIED")
+                    put("pluginType", 2)
+                })
+                put("mode", 1)
+            }
+            val req = Request.Builder()
+                .url("https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist")
+                .header("Authorization", "Bearer $accessToken")
+                .header("Content-Type", "application/json")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            client.newCall(req).execute().use { res ->
+                if (!res.isSuccessful) return@use
+                val obj = json.parseToJsonElement(res.body?.string().orEmpty()) as? JsonObject ?: return@use
+                val proj = obj["cloudaicompanionProject"]
+                project = when (proj) {
+                    is JsonPrimitive -> proj.content
+                    is JsonObject -> (proj["id"] as? JsonPrimitive)?.content.orEmpty()
+                    else -> ""
+                }
+            }
+        }
+        runCatching {
+            val req = Request.Builder()
+                .url("https://www.googleapis.com/oauth2/v1/userinfo?alt=json")
+                .header("Authorization", "Bearer $accessToken")
+                .build()
+            client.newCall(req).execute().use { res ->
+                if (!res.isSuccessful) return@use
+                val obj = json.parseToJsonElement(res.body?.string().orEmpty()) as? JsonObject ?: return@use
+                email = (obj["email"] as? JsonPrimitive)?.content.orEmpty()
+            }
+        }
+        return project to email
     }
 
     /**

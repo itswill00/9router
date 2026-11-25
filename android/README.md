@@ -28,8 +28,10 @@ http://127.0.0.1:20128/v1
 - OAuth PKCE with a temporary loopback callback server (the same redirect shape
   the desktop app uses) plus device-code login for GitHub, Grok CLI, Kimi, Muse,
   and MiniMax Code, including GitHub Copilot token exchange and Muse key mint.
-  Provider-specific token encodings (form vs JSON), Basic Auth (iFlow), and
-  client secrets are honored.
+  Provider-specific transports are ported too: the Cloud Code Assist envelope
+  for Gemini CLI / Antigravity, the Responses API for Codex / Grok CLI, Claude
+  Code headers, transport-declared headers, and URL suffixes. Form vs JSON token
+  encodings, Basic Auth (iFlow), and client secrets are honored.
 - Custom OpenAI/Anthropic-compatible nodes with per-node API key.
 - Multiple API keys with per-key model/combo allow-list, constant-time compare.
 - In-app streaming chat, so the APK is usable without any external CLI.

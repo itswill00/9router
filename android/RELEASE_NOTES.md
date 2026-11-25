@@ -1,37 +1,53 @@
-# 9Router Android 0.1.2
+# 9Router Android 0.1.3
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.1
+## What changed since 0.1.2
 
-- **The gateway now starts with the app.** A new *Start gateway when app opens*
+- **OAuth logins now work end to end, not just the token exchange.** The
+  upstream transports for the OAuth providers were ported:
+  - Gemini CLI and Antigravity now use the Cloud Code Assist envelope
+    (`{ project, model, request }` plus `:generateContent` /
+    `:streamGenerateContent`) and fetch the project id with `loadCodeAssist`.
+  - Codex and Grok CLI now speak the Responses API for real (OpenAI Chat →
+    `input`/`instructions`, Responses SSE → OpenAI chunks) and send the client
+    identity headers those backends require. Codex also carries the
+    `ChatGPT-Account-ID` claim from the OAuth id token.
+  - Claude API-key connections use `x-api-key`; Claude OAuth keeps the
+    Bearer + Claude Code beta headers.
+  - Provider-declared transport headers and URL suffixes (`?beta=true`, Kimi,
+    MiniMax, Grok identity) are applied from the exported registry.
+- **Models and account ids are preserved.** OAuth connections store the Google
+  project id, account email, and ChatGPT account id, and the connection card
+  shows the account.
+- **Priority is editable.** Use ▲ / ▼ on a connection to change its position in
+  the fill-first / sticky round-robin order.
+- Minor: the provider detail connection card shows the signed-in email and the
+  gateway version string is centralised.
+
+## What changed in 0.1.2
+
+- **The gateway starts with the app.** A new *Start gateway when app opens*
   setting (on by default) brings the loopback service up on launch, so
   `http://127.0.0.1:20128/v1` is live without tapping **Start** first.
-- **The provider page was rebuilt to match the upstream dashboard.** Providers
-  are grouped into OAuth, Free, Free Tier, API Key, and Web Cookie sections (plus
-  Custom OpenAI/Anthropic-compatible endpoints). Tapping a card opens a provider
-  detail page with **Connections** and the full **Models** catalog, exactly like
-  the desktop `providers/[id]` screen.
-- **OAuth is no longer hidden behind an API key prompt.** Providers that support
-  OAuth now offer *OAuth login*, *Device code*, or *Paste token* depending on the
-  flow they actually use, and OAuth-only providers no longer show an API key
-  field.
-- **More real login flows.** Browser PKCE login works for Claude, Codex, Gemini
-  CLI, Antigravity, and iFlow (iFlow uses its own `redirect` shape plus Basic
-  Auth). Device-code login works for GitHub, Grok CLI, Kimi, Muse, and MiniMax
-  Code — including GitHub's Copilot token exchange and Muse's Model API key mint.
-- **The model catalog is complete.** Model lists and names are now exported from
-  the same source the dashboard uses (`getModelsByProviderId`), so every provider
-  detail page lists its real models with a search box.
+- **The provider page matches the upstream dashboard.** Providers are grouped
+  into OAuth, Free, Free Tier, API Key, and Web Cookie sections (plus Custom
+  OpenAI/Anthropic-compatible endpoints). Tapping a card opens a provider detail
+  page with **Connections** and the full **Models** catalog.
+- **OAuth is no longer hidden behind an API key prompt.** Providers offer
+  *OAuth login*, *Device code*, or *Paste token* depending on the flow they use,
+  and OAuth-only providers no longer show an API key field.
+- **Real device-code login** for GitHub, Grok CLI, Kimi, Muse, and MiniMax Code,
+  including GitHub's Copilot token exchange and Muse's Model API key mint.
+- **The model catalog is complete**, exported from the same source the dashboard
+  uses, with a search box on each provider page.
 - **`localhost` works regardless of IP version.** The gateway binds IPv4
   `127.0.0.1` and, when available, IPv6 `::1`.
 - **A status page and a health check.** `GET /` returns a small HTML status page
   and `/api/health` reports state, version, connections, and model count. The
-  Endpoint tab has a **Test** button to verify the loopback server.
-- **Clearer failures.** Startup errors surface in the Endpoint tab instead of
-  silently doing nothing.
+  Endpoint tab has a **Test** button and surfaces startup errors.
 
 ## Highlights
 
@@ -127,11 +143,11 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.2-android` (version code 4)
+- Version: `0.1.3-android` (version code 5)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15)
 - Source branch: `feat/android-native-gateway`
 - SHA-256 of the attached APK:
-  `120d2abb2c881343ca430673f62ebdbf63f9650deb92d23e0b24b1612de2cabf`
+  `ed888f62dc0c372570b81c13cc2e3cfb8d7448f73801412e21a5a1f8c3a63163`
 
 See `android/README.md` for the module layout and build instructions.

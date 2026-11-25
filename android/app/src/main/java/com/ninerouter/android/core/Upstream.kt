@@ -26,8 +26,9 @@ class Upstream {
 
     fun execute(def: ProviderDef, conn: Connection, body: JsonObject, wantsStream: Boolean): Response {
         val payload = JsonObject(body.toMap().filterKeys { it != "_stream" })
+        val wire = if (isCliEnvelope(def)) wrapCliEnvelope(def, conn, payload) else payload
         val url = resolveUrl(def, payload, wantsStream)
-        var request = requestFor(url, def, conn, payload.toString(), wantsStream)
+        var request = requestFor(url, def, conn, wire.toString(), wantsStream)
         var response = client.newCall(request).execute()
 
         if ((response.code == 401 || response.code == 403) && refreshable(def, conn)) {
@@ -37,7 +38,7 @@ class Upstream {
                 if (fresh.second.isNotBlank()) conn.refreshToken = fresh.second
                 conn.expiresAt = System.currentTimeMillis() + 3_600_000L
                 response.close()
-                request = requestFor(url, def, conn, payload.toString(), wantsStream)
+                request = requestFor(url, def, conn, wire.toString(), wantsStream)
                 response = client.newCall(request).execute()
             }
         }
@@ -48,6 +49,32 @@ class Upstream {
     fun executeUrl(url: String, def: ProviderDef, conn: Connection, body: JsonObject): Response {
         val payload = JsonObject(body.toMap().filterKeys { it != "_stream" })
         return client.newCall(requestFor(url, def, conn, payload.toString(), false)).execute()
+    }
+
+    private fun isCliEnvelope(def: ProviderDef): Boolean =
+        def.format == "gemini-cli" || def.format == "antigravity"
+
+    /** Cloud Code Assist (Gemini CLI / Antigravity) wraps the Gemini body. */
+    private fun wrapCliEnvelope(def: ProviderDef, conn: Connection, payload: JsonObject): JsonObject {
+        val model = (payload["model"] as? JsonPrimitive)?.content ?: ""
+        val project = conn.projectId.ifBlank {
+            if (def.format == "antigravity") randomProjectId() else ""
+        }
+        return buildJsonObject {
+            put("project", project)
+            put("model", model)
+            if (def.format == "antigravity") {
+                put("userAgent", "antigravity")
+                put("requestId", "agent-" + java.util.UUID.randomUUID().toString())
+            }
+            put("request", payload)
+        }
+    }
+
+    private fun randomProjectId(): String {
+        val adj = listOf("useful", "bright", "swift", "calm", "bold", "tidy", "lively", "sunny")
+        val noun = listOf("falcon", "river", "cedar", "orbit", "tiger", "willow", "comet", "maple")
+        return adj.random() + "-" + noun.random() + "-" + (100000..999999).random()
     }
 
     private fun refreshable(def: ProviderDef, conn: Connection): Boolean =
@@ -152,26 +179,58 @@ class Upstream {
             .url(url)
             .header("Content-Type", "application/json")
             .header("Accept", if (wantsStream) "text/event-stream" else "application/json")
-        val token = conn.accessToken.ifBlank { conn.apiKey }
-        if (token.isNotBlank()) builder.header("Authorization", "Bearer $token")
-        if (def.format == Formats.CLAUDE) {
-            builder.header("anthropic-version", "2023-06-01")
-            if (conn.accessToken.isNotBlank()) {
-                builder.header(
-                    "anthropic-beta",
-                    "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,prompt-caching-scope-2026-01-05",
-                )
-                builder.header("anthropic-dangerous-direct-browser-access", "true")
-                builder.header("user-agent", "claude-cli/2.0.0 (external, cli)")
-                builder.header("x-app", "cli")
-            }
+        // Provider-declared static headers first (User-Agent, client identity...).
+        def.transportHeaders.forEach { (k, v) ->
+            if (v.isNotBlank() && !k.equals("authorization", true)) builder.header(k, v)
         }
-        if (def.format == Formats.GEMINI && conn.apiKey.isNotBlank()) builder.header("x-goog-api-key", conn.apiKey)
+        if (def.id == "grok-cli") {
+            builder.header("x-xai-token-auth", "xai-grok-cli")
+            builder.header("x-grok-client-identifier", "grok-shell")
+            builder.header("x-grok-client-version", "1.0.44")
+            builder.header("User-Agent", "grok-shell/1.0.44 (linux; x86_64)")
+        }
+        if (def.id == "codex") {
+            builder.header("session_id", java.util.UUID.randomUUID().toString())
+            if (conn.accountId.isNotBlank()) builder.header("ChatGPT-Account-ID", conn.accountId)
+        }
+        val oauth = conn.accessToken.isNotBlank()
+        val token = conn.accessToken.ifBlank { conn.apiKey }
+        when {
+            // OpenAI-compatible providers: Bearer, unless they declare x-api-key.
+            def.format == Formats.CLAUDE -> {
+                if (oauth) {
+                    builder.header("Authorization", "Bearer ${conn.accessToken}")
+                    builder.header(
+                        "anthropic-beta",
+                        "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,prompt-caching-scope-2026-01-05",
+                    )
+                    builder.header("anthropic-dangerous-direct-browser-access", "true")
+                    builder.header("user-agent", "claude-cli/2.0.0 (external, cli)")
+                    builder.header("x-app", "cli")
+                } else if (token.isNotBlank()) {
+                    builder.header("x-api-key", token)
+                }
+            }
+            def.authHeader.equals("x-api-key", true) && token.isNotBlank() ->
+                builder.header("x-api-key", token)
+            def.authHeader.equals("x-goog-api-key", true) ->
+                if (token.isNotBlank()) builder.header("x-goog-api-key", token)
+            token.isNotBlank() -> builder.header("Authorization", "Bearer $token")
+        }
+        if (def.format == Formats.CLAUDE && !oauth && conn.apiKey.isNotBlank()) {
+            builder.header("anthropic-version", "2023-06-01")
+        }
         return builder.post(payload.toRequestBody(mediaJson)).build()
     }
 
     private fun resolveUrl(def: ProviderDef, body: JsonObject, wantsStream: Boolean): String {
         val model = (body["model"] as? JsonPrimitive)?.content ?: "gemini"
+        if (isCliEnvelope(def)) {
+            val base = def.baseUrl.ifBlank { "https://cloudcode-pa.googleapis.com/v1internal" }.trimEnd('/')
+            val action = if (wantsStream) "streamGenerateContent?alt=sse" else "generateContent"
+            val root = if (base.endsWith("v1internal")) base else "$base/v1internal"
+            return "$root:$action"
+        }
         var base = def.baseUrl.ifBlank {
             when (def.format) {
                 Formats.CLAUDE -> "https://api.anthropic.com/v1/messages"
@@ -183,6 +242,7 @@ class Upstream {
             base = base.replace(":generateContent", ":streamGenerateContent")
             if (!base.contains("alt=sse")) base += (if (base.contains("?")) "&" else "?") + "alt=sse"
         }
+        if (def.urlSuffix.isNotBlank() && !base.contains("?")) base += def.urlSuffix
         return base
     }
 }

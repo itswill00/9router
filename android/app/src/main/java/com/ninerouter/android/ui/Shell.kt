@@ -94,7 +94,7 @@ fun AppShell(refreshTrigger: () -> Unit) {
                             color = NineRouterColors.TextMain,
                         )
                         Text(
-                            "v0.1.2 · ${if (running) "running" else "stopped"}",
+                            "v0.1.3 · ${if (running) "running" else "stopped"}",
                             style = MaterialTheme.typography.labelSmall,
                             color = if (running) NineRouterColors.Success else NineRouterColors.TextSubtle,
                         )
