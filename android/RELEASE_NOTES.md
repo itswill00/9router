@@ -1,10 +1,19 @@
-# 9Router Android 0.1.6
+# 9Router Android 0.1.7
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.5
+## What changed since 0.1.6
+
+- **System Back now navigates instead of closing the app.** In order:
+  1. an open provider detail returns to the provider catalog;
+  2. Basic Chat closes and returns to the previous tab;
+  3. any non-Endpoint tab returns to Endpoint;
+  4. only then does Android finish the activity.
+- Open dialogs keep their normal behaviour: Back dismisses the dialog first.
+
+## What changed in 0.1.6
 
 - **Cookie connections now send the cookie.** A Web Cookie connection is sent as
   the `Cookie` header instead of a bearer token.
@@ -168,11 +177,11 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.6-android` (version code 8)
+- Version: `0.1.7-android` (version code 9)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15)
 - Source branch: `feat/android-native-gateway`
 - SHA-256 of the attached APK:
-  `d4764a11e2025a2b149b73679862109f334d65f6f8dae15cbbb128404aa0f12b`
+  `48d44a630bf27880709d7203a7c3c9194806204ef74d7b85cb8024484e40b3eb`
 
 See `android/README.md` for the module layout and build instructions.

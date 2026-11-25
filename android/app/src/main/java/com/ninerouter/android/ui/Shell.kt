@@ -36,6 +36,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.BackHandler
 import com.ninerouter.android.R
 import com.ninerouter.android.data.Store
 import com.ninerouter.android.server.GatewayState
@@ -56,6 +57,12 @@ fun AppShell(refreshTrigger: () -> Unit) {
     var tab by remember { mutableIntStateOf(0) }
     var showChat by remember { mutableStateOf(false) }
     val running by GatewayState.running.collectAsState()
+
+    // System back: close chat first, then return to the Endpoint tab. Only the
+    // home tab with no chat open lets Android finish the activity.
+    BackHandler(enabled = showChat || tab != 0) {
+        if (showChat) showChat = false else tab = 0
+    }
 
     Scaffold(
         containerColor = NineRouterColors.Bg,
@@ -94,7 +101,7 @@ fun AppShell(refreshTrigger: () -> Unit) {
                             color = NineRouterColors.TextMain,
                         )
                         Text(
-                            "v0.1.6 · ${if (running) "running" else "stopped"}",
+                            "v0.1.7 · ${if (running) "running" else "stopped"}",
                             style = MaterialTheme.typography.labelSmall,
                             color = if (running) NineRouterColors.Success else NineRouterColors.TextSubtle,
                         )

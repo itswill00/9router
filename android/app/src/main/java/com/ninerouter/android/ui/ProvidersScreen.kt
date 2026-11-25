@@ -3,6 +3,7 @@ package com.ninerouter.android.ui
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -63,6 +64,8 @@ fun ProvidersScreen(refresh: () -> Unit) {
     @Suppress("UNUSED_VARIABLE") val revision = Store.revision
     var detailId by remember { mutableStateOf<String?>(null) }
     val detail = detailId?.let { Catalog.find(it) }
+    // Back from a provider detail returns to the catalog instead of leaving the app.
+    BackHandler(enabled = detail != null) { detailId = null }
     if (detail != null) {
         ProviderDetail(def = detail, onBack = { detailId = null }, refresh = refresh)
     } else {
