@@ -57,6 +57,9 @@ http://127.0.0.1:20128/v1
   (*Start gateway when app opens*, default on), binds IPv4 `127.0.0.1` and, when
   available, IPv6 `::1`, and exposes a `GET /` status page plus `/api/health`.
   Startup errors and a **Test** button are shown on the Endpoint tab.
+- **In-app updates**: Settings → App updates checks GitHub releases (and silently
+  on launch, at most every 6 hours), shows the changelog, downloads the APK with
+  progress, verifies it, and opens the system installer through a FileProvider.
 - Management API parity (subset): `/api/version`, `/api/auth/status`,
   `/api/usage/stats`, `/api/usage/request-logs`, `/api/keys`,
   `/api/providers`, `/api/combos`, `/api/provider-nodes`, `/api/models/alias`.

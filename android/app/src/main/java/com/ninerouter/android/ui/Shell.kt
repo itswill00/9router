@@ -24,6 +24,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -32,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -40,6 +42,7 @@ import androidx.activity.compose.BackHandler
 import com.ninerouter.android.R
 import com.ninerouter.android.data.Store
 import com.ninerouter.android.server.GatewayState
+import com.ninerouter.android.update.UpdateManager
 
 private data class NavItem(val title: String, val icon: Int)
 
@@ -57,6 +60,10 @@ fun AppShell(refreshTrigger: () -> Unit) {
     var tab by remember { mutableIntStateOf(0) }
     var showChat by remember { mutableStateOf(false) }
     val running by GatewayState.running.collectAsState()
+    val updateState by UpdateManager.state.collectAsState()
+    val context = LocalContext.current
+
+    LaunchedEffect(Unit) { UpdateManager.autoCheck(context) }
 
     // System back: close chat first, then return to the Endpoint tab. Only the
     // home tab with no chat open lets Android finish the activity.
@@ -101,10 +108,31 @@ fun AppShell(refreshTrigger: () -> Unit) {
                             color = NineRouterColors.TextMain,
                         )
                         Text(
-                            "v0.1.7 · ${if (running) "running" else "stopped"}",
+                            "v0.1.8 · ${if (running) "running" else "stopped"}",
                             style = MaterialTheme.typography.labelSmall,
                             color = if (running) NineRouterColors.Success else NineRouterColors.TextSubtle,
                         )
+                    }
+                    val updatePending = updateState is UpdateManager.State.Available ||
+                        updateState is UpdateManager.State.Downloading ||
+                        updateState is UpdateManager.State.Ready
+                    if (!showChat && updatePending) {
+                        val updateLabel = (updateState as? UpdateManager.State.Available)
+                            ?.let { "Update ${it.release.version}" }
+                            ?: "Update"
+                        Surface(
+                            color = NineRouterColors.BrandOrange.copy(alpha = 0.18f),
+                            shape = RoundedCornerShape(999.dp),
+                            modifier = Modifier.clickable { showChat = false; tab = 4 },
+                        ) {
+                            Text(
+                                updateLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = NineRouterColors.BrandOrange,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(6.dp))
                     }
                     if (!showChat) {
                         IconButton(onClick = { showChat = true }, modifier = Modifier.size(36.dp)) {

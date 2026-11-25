@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -43,6 +44,7 @@ import com.ninerouter.android.core.ChatEngine
 import com.ninerouter.android.core.Formats
 import com.ninerouter.android.core.OAuthFlow
 import com.ninerouter.android.core.Translator
+import com.ninerouter.android.update.UpdateManager
 import com.ninerouter.android.data.ApiKey
 import com.ninerouter.android.data.Catalog
 import com.ninerouter.android.data.Combo
@@ -249,10 +251,148 @@ fun CombosScreen(refresh: () -> Unit) {
 // ---------------------------------------------------------------------------
 
 @Composable
+private fun UpdatePanel(state: UpdateManager.State) {
+    val context = LocalContext.current
+    val current = remember { UpdateManager.currentVersion(context) }
+
+    fun openReleasePage() {
+        runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(UpdateManager.RELEASES_PAGE)))
+        }
+    }
+
+    Panel {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "App updates",
+                style = MaterialTheme.typography.titleMedium,
+                color = NineRouterColors.TextMain,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "v$current",
+                style = MaterialTheme.typography.labelSmall,
+                color = NineRouterColors.TextMuted,
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+
+        when (state) {
+            is UpdateManager.State.Idle -> {
+                Text(
+                    "Checks the GitHub release channel for a newer APK.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NineRouterColors.TextMuted,
+                )
+                Spacer(Modifier.height(8.dp))
+                SecondaryButton("Check for updates") { UpdateManager.check(context) }
+            }
+
+            is UpdateManager.State.Checking -> {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+                Spacer(Modifier.height(6.dp))
+                Text("Checking GitHub…", style = MaterialTheme.typography.bodySmall, color = NineRouterColors.TextMuted)
+            }
+
+            is UpdateManager.State.UpToDate -> {
+                Text(
+                    "You're on the latest build.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NineRouterColors.Success,
+                )
+                Spacer(Modifier.height(4.dp))
+                TextButton(onClick = { UpdateManager.check(context) }) {
+                    Text("Check again", color = NineRouterColors.Brand)
+                }
+            }
+
+            is UpdateManager.State.Available -> {
+                Text(
+                    "${state.release.version} is available",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = NineRouterColors.BrandOrange,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "What's new",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.TextSubtle,
+                )
+                Text(
+                    state.release.notes.trim().ifBlank { "No release notes." }.take(900),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NineRouterColors.TextMuted,
+                    maxLines = 10,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                PrimaryButton("Download & install", onClick = { UpdateManager.download(context) })
+                Spacer(Modifier.height(2.dp))
+                TextButton(onClick = { openReleasePage() }) {
+                    Text("Full release notes on GitHub", color = NineRouterColors.TextMuted)
+                }
+            }
+
+            is UpdateManager.State.Downloading -> {
+                LinearProgressIndicator(
+                    progress = { state.progress },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Downloading ${state.release.version} · ${(state.progress * 100).toInt()}%",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NineRouterColors.TextMuted,
+                )
+            }
+
+            is UpdateManager.State.Ready -> {
+                Text(
+                    "${state.release.version} downloaded",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NineRouterColors.Success,
+                )
+                Spacer(Modifier.height(6.dp))
+                PrimaryButton("Install update", onClick = {
+                    val error = UpdateManager.install(context, state.file)
+                    if (error != null) Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                })
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Android will ask you to confirm the install. The app stays signed with the " +
+                        "same debug key, so the update replaces this build in place.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.TextSubtle,
+                )
+            }
+
+            is UpdateManager.State.Failed -> {
+                Text(
+                    state.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NineRouterColors.Danger,
+                )
+                Spacer(Modifier.height(6.dp))
+                SecondaryButton("Try again") { UpdateManager.check(context) }
+            }
+        }
+
+        if (state !is UpdateManager.State.Available && state !is UpdateManager.State.Downloading) {
+            Spacer(Modifier.height(6.dp))
+            TextButton(onClick = { openReleasePage() }) {
+                Text("Open releases on GitHub", color = NineRouterColors.TextMuted)
+            }
+        }
+    }
+}
+
+@Composable
 fun SettingsScreen(refresh: () -> Unit) {
     @Suppress("UNUSED_VARIABLE") val revision = Store.revision
     val context = LocalContext.current
     val s = Store.state.settings
+    val updateState by UpdateManager.state.collectAsState()
     var showKeyDialog by remember { mutableStateOf(false) }
     var keyName by remember { mutableStateOf("") }
     var keyAllowed by remember { mutableStateOf("") }
@@ -263,6 +403,7 @@ fun SettingsScreen(refresh: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         SectionHeader("Settings", "Manage your preferences")
+        UpdatePanel(updateState)
         Panel {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Switch(s.autoStartGateway, {

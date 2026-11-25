@@ -46,6 +46,8 @@ bundles a Linux userland.
 - **Gateway lifecycle**: the loopback service auto-starts on app launch (toggle
   in Settings), binds `127.0.0.1` and IPv6 `::1`, serves `GET /` and
   `/api/health`, and reports startup errors in the app.
+- **In-app updates**: checks the GitHub release channel, shows release notes,
+  downloads the APK with progress, and opens the system installer.
 - **Login flows**: browser OAuth PKCE (Claude Code, Codex, Gemini CLI,
   Antigravity, iFlow), device-code login (GitHub, Grok CLI, Kimi, Muse, MiniMax
   Code), or paste a token manually. Provider transports are ported (Cloud Code

@@ -1,10 +1,26 @@
-# 9Router Android 0.1.7
+# 9Router Android 0.1.8
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.6
+## What changed since 0.1.7
+
+- **In-app updates.** The app now checks the GitHub release channel on launch
+  (at most every 6 hours) and from **Settings → App updates**. When a newer
+  `android-v*` release exists it shows the version and release notes, downloads
+  the APK in the app with a progress bar, verifies the package name and ZIP
+  header, and opens the system installer through a FileProvider.
+  - A compact **Update** pill appears in the top bar while an update is
+    available, downloading, or downloaded; tapping it opens Settings.
+  - Android's "install unknown apps" permission is requested the first time;
+    the app opens the correct system screen for you.
+  - The APK is signed with the same debug key as previous releases, so it
+    replaces the installed build in place.
+- New permission: `REQUEST_INSTALL_PACKAGES`; new FileProvider
+  (`${applicationId}.fileprovider`) exposing only the update cache.
+
+## What changed in 0.1.7
 
 - **System Back now navigates instead of closing the app.** In order:
   1. an open provider detail returns to the provider catalog;
@@ -177,11 +193,11 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.7-android` (version code 9)
+- Version: `0.1.8-android` (version code 10)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15)
 - Source branch: `feat/android-native-gateway`
 - SHA-256 of the attached APK:
-  `48d44a630bf27880709d7203a7c3c9194806204ef74d7b85cb8024484e40b3eb`
+  `797581978cd884640879cd78caf5d2fd3df036156aab5b45ca863fa80abf70ca`
 
 See `android/README.md` for the module layout and build instructions.
