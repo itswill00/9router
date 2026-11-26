@@ -94,7 +94,7 @@ project.
   ellipsis-safe account rows, confirmed delete, and per-model Test / Test all
   (OAuth and API key, 20 s timeout, 3 parallel) with Working/Failed filters.
 - **Usage & Analytics**: Overview/Details tabs, Today/24h/7D/30D/60D/All
-  periods, overview cards, a live provider topology, recent requests, an area
+  periods, overview cards, a vertical live provider flow, recent requests, an area
   chart, provider/model breakdowns, and a per-model table with expandable
   provider detail.
 - **Live screens.** Usage, Console Log, Quota Tracker, Providers, Settings and

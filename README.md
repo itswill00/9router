@@ -64,8 +64,8 @@ bundles a Linux userland.
 - **Access control**: multiple API keys with per-key model/combo allow-lists.
 - **Custom nodes**: OpenAI-compatible and Anthropic-compatible endpoints.
 - **Compact mobile UI** using the upstream dark palette and original brand mark.
-- **Usage & Analytics** with period filters, overview cards, a live provider
-  topology, recent requests, an area chart, provider/model breakdowns, and
+- **Usage & Analytics** with period filters, overview cards, a vertical live provider
+  flow, recent requests, an area chart, provider/model breakdowns, and
   expandable per-model details.
 
 ## Install
