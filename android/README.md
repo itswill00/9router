@@ -14,10 +14,16 @@ http://127.0.0.1:20128/v1
 
 - Foreground service + loopback HTTP/1.1 server (`Gateway.kt`).
 - `GET /api/health`, `GET /v1/models`, `GET|POST /api/settings`.
-- `POST /v1/chat/completions` — JSON **and** SSE streaming.
-- `POST /v1/messages` / `/v1/responses` — basic Claude/Gemini/Responses ↔ OpenAI
-  conversion (JSON responses; Responses streaming falls back to Chat chunk SSE).
+- API-key auth plus per-key model/combo allow-lists, with CORS preflight for browsers.
+- `GET /v1/models`, `/v1/models/{kind}`, `/v1/models/{provider}/{model}`, `/v1/models/info`
+  model discovery filtered by key access.
+- `POST /v1/chat/completions` — JSON **and** OpenAI SSE streaming.
+- `POST /v1/messages` / `/v1/responses` — native Claude / Responses streaming
+  event framing, plus JSON conversion for Claude/Gemini/Responses ↔ OpenAI.
 - `POST /v1/embeddings` — forwarded to an OpenAI-compatible embeddings URL.
+- `POST /v1/messages/count_tokens` — approximate Anthropic input token count.
+- `/v1/responses/compact` returns a structured 501 (`unsupported_operation`).
+  See `android/API_COMPATIBILITY.md` for the full route matrix.
 - Provider registry (151 entries) exported at build time from the repo into
   `app/src/main/assets/provider_registry.json` by `scripts/export-android-config.mjs`.
 - Model resolution (`provider/model`, aliases, custom node prefixes, bare-model
