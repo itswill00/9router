@@ -1,6 +1,9 @@
 package com.ninerouter.android.ui
 
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.util.Base64
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -17,6 +20,8 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
@@ -49,6 +54,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Send
@@ -64,6 +71,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -72,8 +81,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -81,14 +93,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ninerouter.android.GatewayService
 import com.ninerouter.android.R
 import com.ninerouter.android.core.ChatEngine
 import com.ninerouter.android.core.Formats
+import com.ninerouter.android.core.ModelResolver
 import com.ninerouter.android.core.Translator
 import com.ninerouter.android.update.UpdateManager
 import com.ninerouter.android.data.Catalog
+import com.ninerouter.android.data.ChatImage
+import com.ninerouter.android.data.ChatMessage
+import com.ninerouter.android.data.ChatSession
 import com.ninerouter.android.data.Combo
 import com.ninerouter.android.data.Pricing
 import com.ninerouter.android.data.Store
@@ -103,8 +120,11 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.io.File
+import java.io.FileOutputStream
 import java.util.UUID
 
 // ---------------------------------------------------------------------------
@@ -693,10 +713,33 @@ private data class UiMessage(
     val inputTokens: Int = 0,
     val outputTokens: Int = 0,
     val elapsedMs: Long = 0L,
+    val images: List<ChatImage> = emptyList(),
 ) {
     val tokensPerSecond: Float
         get() = if (elapsedMs > 0L) outputTokens * 1000f / elapsedMs else 0f
 }
+
+private fun ChatMessage.toUi(): UiMessage = UiMessage(
+    role = role,
+    content = content,
+    id = id,
+    model = model,
+    inputTokens = inputTokens,
+    outputTokens = outputTokens,
+    elapsedMs = elapsedMs,
+    images = images,
+)
+
+private fun UiMessage.toChat(): ChatMessage = ChatMessage(
+    id = id,
+    role = role,
+    content = content,
+    model = model,
+    inputTokens = inputTokens,
+    outputTokens = outputTokens,
+    elapsedMs = elapsedMs,
+    images = images,
+)
 
 @Composable
 fun ChatScreen() {
@@ -706,18 +749,6 @@ fun ChatScreen() {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val running by GatewayState.running.collectAsState()
-    var model by remember { mutableStateOf("") }
-    var input by remember { mutableStateOf("") }
-    var messages by remember { mutableStateOf(listOf<UiMessage>()) }
-    var busy by remember { mutableStateOf(false) }
-    var showPicker by remember { mutableStateOf(false) }
-    var generation by remember { mutableStateOf(0) }
-    var streamJob by remember { mutableStateOf<Job?>(null) }
-    var runStartedAt by remember { mutableStateOf(0L) }
-    var liveElapsed by remember { mutableStateOf(0L) }
-    var introShown by remember { mutableStateOf(false) }
-    val activeResponse = remember { mutableStateOf<okhttp3.Response?>(null) }
-    val listState = rememberLazyListState()
     @Suppress("UNUSED_VARIABLE") val revision = Store.revision
 
     val options = remember(revision) {
@@ -730,11 +761,128 @@ fun ChatScreen() {
         }.distinct()
     }
 
+    var sessionId by remember { mutableStateOf("") }
+    var messages by remember { mutableStateOf(listOf<UiMessage>()) }
+    var model by remember { mutableStateOf("") }
+    var input by remember { mutableStateOf("") }
+    var pendingImages by remember { mutableStateOf(listOf<ChatImage>()) }
+    var imageBusy by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var showPicker by remember { mutableStateOf(false) }
+    var showSessions by remember { mutableStateOf(false) }
+    var generation by remember { mutableStateOf(0) }
+    var streamJob by remember { mutableStateOf<Job?>(null) }
+    var runStartedAt by remember { mutableStateOf(0L) }
+    var liveElapsed by remember { mutableStateOf(0L) }
+    var introShown by remember { mutableStateOf(false) }
+    val activeResponse = remember { mutableStateOf<okhttp3.Response?>(null) }
+    val listState = rememberLazyListState()
+
+    fun defaultModel(): String = Store.state.combos.firstOrNull()?.name
+        ?: options.firstOrNull()
+        ?: "openai/gpt-5-mini"
+
+    fun currentSession(): ChatSession? =
+        Store.state.chatSessions.firstOrNull { it.id == sessionId }
+
+    fun persist(msgs: List<UiMessage>) {
+        val session = currentSession() ?: return
+        val cleaned = msgs.filterNot { it.role == "assistant" && it.content.isBlank() }
+        session.model = model
+        session.messages.clear()
+        session.messages.addAll(cleaned.map { it.toChat() })
+        session.updatedAt = System.currentTimeMillis()
+        if (session.title == "New chat") {
+            val first = cleaned.firstOrNull { it.role == "user" }
+            if (first != null) {
+                val text = first.content.lineSequence().firstOrNull().orEmpty().trim()
+                session.title = when {
+                    text.isNotBlank() -> text.take(48)
+                    first.images.isNotEmpty() -> "Image"
+                    else -> "New chat"
+                }
+            }
+        }
+        Store.state.chatSessions.sortByDescending { it.updatedAt }
+        while (Store.state.chatSessions.size > 40) {
+            val removed = Store.state.chatSessions.removeAt(Store.state.chatSessions.lastIndex)
+            removed.messages.flatMap { it.images }.forEach { runCatching { File(it.path).delete() } }
+        }
+        Store.save()
+    }
+
+    fun loadSession(id: String) {
+        val session = Store.state.chatSessions.firstOrNull { it.id == id } ?: return
+        sessionId = id
+        Store.state.activeChatSessionId = id
+        messages = session.messages.map { it.toUi() }
+        model = session.model.ifBlank { defaultModel() }
+        input = ""
+        pendingImages = emptyList()
+        Store.save()
+    }
+
+    fun stop() {
+        generation += 1
+        runCatching { activeResponse.value?.close() }
+        activeResponse.value = null
+        streamJob?.cancel()
+        streamJob = null
+        busy = false
+        messages = messages.filterNot { it.role == "assistant" && it.content.isBlank() }
+        persist(messages)
+    }
+
+    fun newChat() {
+        stop()
+        val session = ChatSession(id = UUID.randomUUID().toString(), model = model.ifBlank { defaultModel() })
+        Store.state.chatSessions.add(0, session)
+        Store.state.activeChatSessionId = session.id
+        Store.save()
+        sessionId = session.id
+        messages = emptyList()
+        input = ""
+        pendingImages = emptyList()
+    }
+
+    fun deleteSession(id: String) {
+        if (Store.state.activeChatSessionId == id) stop()
+        val removed = Store.state.chatSessions.firstOrNull { it.id == id }
+        Store.state.chatSessions.removeAll { it.id == id }
+        removed?.messages?.flatMap { it.images }?.forEach { runCatching { File(it.path).delete() } }
+        if (Store.state.activeChatSessionId == id) {
+            val next = Store.state.chatSessions.firstOrNull()
+            if (next != null) {
+                loadSession(next.id)
+            } else {
+                sessionId = ""
+                messages = emptyList()
+                newChat()
+            }
+        }
+        Store.save()
+    }
+
     LaunchedEffect(Unit) {
-        model = Store.state.combos.firstOrNull()?.name
-            ?: options.firstOrNull()
-            ?: "openai/gpt-5-mini"
+        val existing = Store.state.chatSessions.firstOrNull { it.id == Store.state.activeChatSessionId }
+            ?: Store.state.chatSessions.firstOrNull()
+        if (existing != null) {
+            loadSession(existing.id)
+        } else {
+            val session = ChatSession(id = UUID.randomUUID().toString(), model = defaultModel())
+            Store.state.chatSessions.add(0, session)
+            Store.state.activeChatSessionId = session.id
+            Store.save()
+            sessionId = session.id
+            model = session.model
+        }
         introShown = true
+    }
+
+    // Persist the latest transcript (including a partial streamed answer) when
+    // the user leaves the chat tab.
+    DisposableEffect(Unit) {
+        onDispose { persist(messages) }
     }
 
     LaunchedEffect(messages.size, messages.lastOrNull()?.content?.length) {
@@ -748,40 +896,44 @@ fun ChatScreen() {
         }
     }
 
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        imageBusy = true
+        scope.launch {
+            val room = (4 - pendingImages.size).coerceAtLeast(0)
+            val added = uris.take(room).mapNotNull { uri -> saveChatImage(context, uri) }
+            pendingImages = (pendingImages + added).take(4)
+            imageBusy = false
+            if (uris.size > room) {
+                Toast.makeText(context, "Up to 4 images per message", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     fun patch(id: Long, block: (UiMessage) -> UiMessage) {
         messages = messages.map { if (it.id == id) block(it) else it }
     }
 
-    fun stop() {
-        generation += 1
-        runCatching { activeResponse.value?.close() }
-        activeResponse.value = null
-        streamJob?.cancel()
-        streamJob = null
-        busy = false
-        messages = messages.filterNot { it.role == "assistant" && it.content.isBlank() }
-    }
-
     fun send() {
         val text = input.trim()
-        if (text.isBlank() || model.isBlank() || busy) return
+        val images = pendingImages
+        if ((text.isBlank() && images.isEmpty()) || model.isBlank() || busy) return
         input = ""
+        pendingImages = emptyList()
         busy = true
         generation += 1
         val requestId = generation
         val startedAt = System.currentTimeMillis()
         runStartedAt = startedAt
         liveElapsed = 0L
-        val history = messages + UiMessage("user", text)
-        val placeholder = UiMessage("assistant", "", model = model)
-        val inputTokens = (history.sumOf { it.content.length } / 4).coerceAtLeast(1)
+        val history = messages + UiMessage(role = "user", content = text, images = images)
+        val placeholder = UiMessage(role = "assistant", content = "", model = model)
+        val inputTokens = (history.sumOf { it.content.length + it.images.size * 256 } / 4).coerceAtLeast(1)
         messages = history + placeholder
         streamJob = scope.launch(Dispatchers.IO) {
             val request = buildJsonObject {
                 put("model", model)
-                put("messages", JsonArray(history.map { m ->
-                    buildJsonObject { put("role", m.role); put("content", m.content) }
-                }))
+                put("messages", buildJsonArray { history.forEach { add(chatMessageJson(it)) } })
                 put("stream", true)
             }
             try {
@@ -790,36 +942,48 @@ fun ChatScreen() {
                         val answer = contentOf(parser, out.body).ifBlank { "(empty response)" }
                         val elapsed = System.currentTimeMillis() - startedAt
                         withContext(Dispatchers.Main) {
-                            if (generation == requestId) patch(placeholder.id) {
-                                it.copy(
-                                    content = answer,
-                                    model = out.member.ifBlank { model },
-                                    inputTokens = inputTokens,
-                                    outputTokens = (answer.length / 4).coerceAtLeast(1),
-                                    elapsedMs = elapsed,
-                                )
+                            if (generation == requestId) {
+                                patch(placeholder.id) {
+                                    it.copy(
+                                        content = answer,
+                                        model = out.member.ifBlank { model },
+                                        inputTokens = inputTokens,
+                                        outputTokens = (answer.length / 4).coerceAtLeast(1),
+                                        elapsedMs = elapsed,
+                                    )
+                                }
+                                persist(messages)
                             }
                         }
                     }
                     is ChatEngine.Outcome.Stream -> {
                         activeResponse.value = out.response
                         val resolved = out.member.ifBlank { model }
-                        val answer = StringBuilder()
                         withContext(Dispatchers.Main) {
                             if (generation == requestId) patch(placeholder.id) { it.copy(model = resolved) }
                         }
+                        val answer = StringBuilder()
                         try {
                             out.response.body?.source()?.use { src ->
                                 while (true) {
                                     val line = src.readUtf8Line() ?: break
-                                    val delta = Translator.sseDelta(Formats.OPENAI, line, model)
+                                    // Use the provider's real format: OAuth Gemini /
+                                    // Antigravity need GEMINI + the CLI envelope.
+                                    val delta = Translator.sseDelta(
+                                        out.targetFormat,
+                                        line,
+                                        model,
+                                        out.cliEnvelope,
+                                    )
                                     if (delta == null || delta.contains("[DONE]")) continue
                                     val piece = deltaOf(parser, delta.removePrefix("data:").trim())
                                     if (piece.isNotBlank()) {
                                         answer.append(piece)
                                         val snapshot = answer.toString()
                                         withContext(Dispatchers.Main) {
-                                            if (generation == requestId) patch(placeholder.id) { it.copy(content = snapshot) }
+                                            if (generation == requestId) {
+                                                patch(placeholder.id) { it.copy(content = snapshot) }
+                                            }
                                         }
                                     }
                                 }
@@ -831,19 +995,23 @@ fun ChatScreen() {
                         val elapsed = System.currentTimeMillis() - startedAt
                         val finalText = answer.toString()
                         withContext(Dispatchers.Main) {
-                            if (generation == requestId) patch(placeholder.id) {
-                                it.copy(
-                                    content = finalText.ifBlank { "(no content returned)" },
-                                    inputTokens = inputTokens,
-                                    outputTokens = (finalText.length / 4).coerceAtLeast(1),
-                                    elapsedMs = elapsed,
-                                )
+                            if (generation == requestId) {
+                                patch(placeholder.id) {
+                                    it.copy(
+                                        content = finalText.ifBlank { "(no content returned)" },
+                                        inputTokens = inputTokens,
+                                        outputTokens = (finalText.length / 4).coerceAtLeast(1),
+                                        elapsedMs = elapsed,
+                                    )
+                                }
+                                persist(messages)
                             }
                         }
                     }
                     is ChatEngine.Outcome.Error -> withContext(Dispatchers.Main) {
-                        if (generation == requestId) patch(placeholder.id) {
-                            it.copy(content = "[error ${out.status}] ${out.message}")
+                        if (generation == requestId) {
+                            patch(placeholder.id) { it.copy(content = "[error ${out.status}] ${out.message}") }
+                            persist(messages)
                         }
                     }
                 }
@@ -851,23 +1019,25 @@ fun ChatScreen() {
                 throw e
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    if (generation == requestId) patch(placeholder.id) {
-                        it.copy(content = "[error] ${e.message ?: "request failed"}")
+                    if (generation == requestId) {
+                        patch(placeholder.id) { it.copy(content = "[error] ${e.message ?: "request failed"}") }
+                        persist(messages)
                     }
                 }
             } finally {
-                runCatching {
-                    withContext(Dispatchers.Main) {
-                        if (generation == requestId) {
-                            busy = false
-                            streamJob = null
-                            messages = messages.filterNot { it.role == "assistant" && it.content.isBlank() }
-                        }
+                withContext(Dispatchers.Main) {
+                    if (generation == requestId) {
+                        busy = false
+                        streamJob = null
+                        messages = messages.filterNot { it.role == "assistant" && it.content.isBlank() }
+                        persist(messages)
                     }
                 }
             }
         }
     }
+
+    val visionSupported = remember(model, revision) { supportsVision(model) }
 
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -889,11 +1059,7 @@ fun ChatScreen() {
                     else StatusDot(NineRouterColors.TextSubtle)
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(
-                            "MODEL",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = NineRouterColors.TextSubtle,
-                        )
+                        Text("MODEL", style = MaterialTheme.typography.labelSmall, color = NineRouterColors.TextSubtle)
                         Text(
                             model.ifBlank { "Select a model" },
                             style = MaterialTheme.typography.bodySmall,
@@ -911,12 +1077,16 @@ fun ChatScreen() {
                 }
             }
             Spacer(Modifier.width(8.dp))
+            IconButton(onClick = { showSessions = true }, modifier = Modifier.size(44.dp)) {
+                Icon(
+                    Icons.Default.List,
+                    contentDescription = "Chat sessions",
+                    tint = NineRouterColors.TextMuted,
+                    modifier = Modifier.size(19.dp),
+                )
+            }
             Surface(
-                onClick = {
-                    stop()
-                    messages = emptyList()
-                    input = ""
-                },
+                onClick = { newChat() },
                 color = NineRouterColors.Surface2,
                 shape = RoundedCornerShape(14.dp),
                 border = BorderStroke(1.dp, NineRouterColors.Border),
@@ -962,63 +1132,121 @@ fun ChatScreen() {
             }
         }
 
+        if (pendingImages.isNotEmpty() && visionSupported == false) {
+            Box(Modifier.padding(horizontal = 12.dp, vertical = 2.dp)) {
+                NoticeBanner(
+                    text = "This model is not marked as vision-capable. Pick an image model or the request may fail.",
+                    color = NineRouterColors.Warning,
+                )
+            }
+        }
+
         Surface(
             color = NineRouterColors.Surface,
             shape = RoundedCornerShape(20.dp),
             border = BorderStroke(1.dp, NineRouterColors.Border),
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 10.dp),
         ) {
-            Row(
-                Modifier.padding(start = 14.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
-                verticalAlignment = Alignment.Bottom,
-            ) {
-                BasicTextField(
-                    value = input,
-                    onValueChange = { input = it },
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = NineRouterColors.TextMain),
-                    cursorBrush = SolidColor(NineRouterColors.BrandOrange),
-                    maxLines = 5,
-                    modifier = Modifier.weight(1f).padding(vertical = 10.dp),
-                    decorationBox = { inner ->
-                        Box {
-                            if (input.isBlank()) {
-                                Text(
-                                    "Message ${model.substringAfter('/').ifBlank { "…" }}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = NineRouterColors.TextSubtle,
-                                )
+            Column {
+                if (pendingImages.isNotEmpty() || imageBusy) {
+                    Row(
+                        Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        pendingImages.forEach { image ->
+                            Box {
+                                ChatThumbnail(image, 58.dp)
+                                Box(
+                                    Modifier
+                                        .align(Alignment.TopEnd)
+                                        .size(18.dp)
+                                        .background(NineRouterColors.Bg.copy(alpha = 0.82f), CircleShape)
+                                        .clickable { pendingImages = pendingImages - image },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Remove image",
+                                        tint = NineRouterColors.TextMain,
+                                        modifier = Modifier.size(11.dp),
+                                    )
+                                }
                             }
-                            inner()
                         }
-                    },
-                )
-                Spacer(Modifier.width(8.dp))
-                val canSend = input.isNotBlank() && model.isNotBlank()
-                val sendColor by animateColorAsState(
-                    targetValue = when {
-                        busy -> NineRouterColors.Danger
-                        canSend -> NineRouterColors.BrandOrange
-                        else -> NineRouterColors.Surface3
-                    },
-                    animationSpec = tween(200),
-                    label = "sendColor",
-                )
-                Box(
-                    Modifier
-                        .size(40.dp)
-                        .background(sendColor, CircleShape)
-                        .clickable(enabled = busy || canSend) { if (busy) stop() else send() },
-                    contentAlignment = Alignment.Center,
+                        if (imageBusy) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = NineRouterColors.BrandOrange,
+                            )
+                        }
+                    }
+                }
+                Row(
+                    Modifier.padding(start = 4.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
+                    verticalAlignment = Alignment.Bottom,
                 ) {
-                    if (busy) {
-                        Box(Modifier.size(11.dp).background(NineRouterColors.Bg, RoundedCornerShape(3.dp)))
-                    } else {
+                    IconButton(
+                        onClick = { imagePicker.launch("image/*") },
+                        enabled = pendingImages.size < 4 && !imageBusy,
+                        modifier = Modifier.size(40.dp),
+                    ) {
                         Icon(
-                            Icons.Default.Send,
-                            contentDescription = "Send",
-                            tint = if (canSend) NineRouterColors.Bg else NineRouterColors.TextSubtle,
+                            painter = painterResource(R.drawable.ic_attach),
+                            contentDescription = "Attach image",
+                            tint = NineRouterColors.TextMuted,
                             modifier = Modifier.size(18.dp),
                         )
+                    }
+                    BasicTextField(
+                        value = input,
+                        onValueChange = { input = it },
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = NineRouterColors.TextMain),
+                        cursorBrush = SolidColor(NineRouterColors.BrandOrange),
+                        maxLines = 5,
+                        modifier = Modifier.weight(1f).padding(vertical = 10.dp),
+                        decorationBox = { inner ->
+                            Box {
+                                if (input.isBlank()) {
+                                    Text(
+                                        "Message ${model.substringAfter('/').ifBlank { "…" }}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = NineRouterColors.TextSubtle,
+                                    )
+                                }
+                                inner()
+                            }
+                        },
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    val canSend = (input.isNotBlank() || pendingImages.isNotEmpty()) && model.isNotBlank()
+                    val sendColor by animateColorAsState(
+                        targetValue = when {
+                            busy -> NineRouterColors.Danger
+                            canSend -> NineRouterColors.BrandOrange
+                            else -> NineRouterColors.Surface3
+                        },
+                        animationSpec = tween(200),
+                        label = "sendColor",
+                    )
+                    Box(
+                        Modifier
+                            .size(40.dp)
+                            .background(sendColor, CircleShape)
+                            .clickable(enabled = busy || canSend) { if (busy) stop() else send() },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (busy) {
+                            Box(Modifier.size(11.dp).background(NineRouterColors.Bg, RoundedCornerShape(3.dp)))
+                        } else {
+                            Icon(
+                                Icons.Default.Send,
+                                contentDescription = "Send",
+                                tint = if (canSend) NineRouterColors.Bg else NineRouterColors.TextSubtle,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -1029,11 +1257,201 @@ fun ChatScreen() {
         ModelPickerDialog(
             options = options,
             selected = model,
-            onPick = { model = it; showPicker = false },
+            onPick = {
+                model = it
+                currentSession()?.model = it
+                Store.save()
+                showPicker = false
+            },
             onDismiss = { showPicker = false },
         )
     }
+
+    if (showSessions) {
+        ChatSessionsDialog(
+            sessions = Store.state.chatSessions.toList(),
+            activeId = sessionId,
+            onPick = { id -> stop(); loadSession(id); showSessions = false },
+            onNew = { newChat(); showSessions = false },
+            onDelete = { id -> deleteSession(id) },
+            onDismiss = { showSessions = false },
+        )
+    }
 }
+
+@Composable
+private fun ChatSessionsDialog(
+    sessions: List<ChatSession>,
+    activeId: String,
+    onPick: (String) -> Unit,
+    onNew: () -> Unit,
+    onDelete: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = NineRouterColors.Surface,
+        title = { Text("Chat sessions", color = NineRouterColors.TextMain) },
+        text = {
+            if (sessions.isEmpty()) {
+                Text("No sessions yet. Start a new chat.", color = NineRouterColors.TextMuted)
+            } else {
+                LazyColumn(
+                    Modifier.heightIn(max = 360.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    items(sessions, key = { it.id }) { session ->
+                        val selected = session.id == activeId
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (selected) NineRouterColors.BrandOrange.copy(alpha = 0.12f) else NineRouterColors.Surface2.copy(alpha = 0.4f))
+                                .clickable { onPick(session.id) }
+                                .padding(start = 10.dp, top = 7.dp, bottom = 7.dp, end = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    session.title,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (selected) NineRouterColors.BrandOrange else NineRouterColors.TextMain,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    "${session.messages.size} messages · ${sessionAgo(session.updatedAt)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = NineRouterColors.TextSubtle,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            IconButton(onClick = { onDelete(session.id) }, modifier = Modifier.size(36.dp)) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Delete session",
+                                    tint = NineRouterColors.TextSubtle,
+                                    modifier = Modifier.size(15.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onNew) { Text("New chat", color = NineRouterColors.BrandOrange) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Close", color = NineRouterColors.TextMuted) }
+        },
+    )
+}
+
+@Composable
+private fun ChatThumbnail(image: ChatImage, size: Dp) {
+    val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, image.path) {
+        value = withContext(Dispatchers.IO) {
+            runCatching { BitmapFactory.decodeFile(image.path)?.asImageBitmap() }.getOrNull()
+        }
+    }
+    Box(
+        Modifier
+            .size(size)
+            .clip(RoundedCornerShape(10.dp))
+            .background(NineRouterColors.Surface2),
+        contentAlignment = Alignment.Center,
+    ) {
+        val bmp = bitmap
+        if (bmp != null) {
+            Image(
+                bitmap = bmp,
+                contentDescription = image.name.ifBlank { "Attached image" },
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Text("IMG", style = MaterialTheme.typography.labelSmall, color = NineRouterColors.TextSubtle)
+        }
+    }
+}
+
+private fun sessionAgo(timestamp: Long): String {
+    val diff = (System.currentTimeMillis() - timestamp).coerceAtLeast(0L)
+    return when {
+        diff < 60_000L -> "just now"
+        diff < 3_600_000L -> "${diff / 60_000L}m ago"
+        diff < 86_400_000L -> "${diff / 3_600_000L}h ago"
+        else -> "${diff / 86_400_000L}d ago"
+    }
+}
+
+private fun supportsVision(model: String): Boolean? {
+    val target = ModelResolver.resolve(model) ?: return null
+    val def = Catalog.find(target.provider) ?: return null
+    val caps = def.modelCapabilities[target.model]
+        ?: def.modelCapabilities[ModelResolver.upstreamModel(target.provider, target.model)]
+        ?: return null
+    return caps.any { it.equals("image", true) || it.equals("vision", true) }
+}
+
+private fun chatMessageJson(message: UiMessage): JsonObject = buildJsonObject {
+    put("role", message.role)
+    if (message.images.isEmpty()) {
+        put("content", message.content)
+    } else {
+        put("content", buildJsonArray {
+            if (message.content.isNotBlank()) {
+                add(buildJsonObject { put("type", "text"); put("text", message.content) })
+            }
+            message.images.forEach { image ->
+                val bytes = runCatching { File(image.path).readBytes() }.getOrNull() ?: return@forEach
+                val url = "data:${image.mime};base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
+                add(buildJsonObject {
+                    put("type", "image_url")
+                    put("image_url", buildJsonObject { put("url", url) })
+                })
+            }
+        })
+    }
+}
+
+private suspend fun saveChatImage(context: android.content.Context, uri: Uri): ChatImage? =
+    withContext(Dispatchers.IO) {
+        runCatching {
+            // Read the bounds first and downsample, so a full-resolution phone
+            // photo cannot allocate tens of megabytes.
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+            val longest = maxOf(bounds.outWidth, bounds.outHeight)
+            if (longest <= 0) return@withContext null
+            var sample = 1
+            while (longest / sample > 2560) sample *= 2
+            val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sample }
+            val bitmap = context.contentResolver.openInputStream(uri)
+                ?.use { BitmapFactory.decodeStream(it, null, decodeOptions) }
+                ?: return@withContext null
+            val maxSide = 1280
+            val scale = minOf(1f, maxSide.toFloat() / maxOf(bitmap.width, bitmap.height))
+            val scaled = if (scale < 0.99f) {
+                Bitmap.createScaledBitmap(
+                    bitmap,
+                    (bitmap.width * scale).toInt().coerceAtLeast(1),
+                    (bitmap.height * scale).toInt().coerceAtLeast(1),
+                    true,
+                )
+            } else {
+                bitmap
+            }
+            val dir = File(context.filesDir, "chat").apply { mkdirs() }
+            val file = File(dir, "${UUID.randomUUID()}.jpg")
+            FileOutputStream(file).use { scaled.compress(Bitmap.CompressFormat.JPEG, 82, it) }
+            if (scaled !== bitmap) bitmap.recycle()
+            scaled.recycle()
+            ChatImage(path = file.absolutePath, name = "image.jpg", mime = "image/jpeg")
+        }.getOrNull()
+    }
 
 private data class ChatIdea(val title: String, val prompt: String)
 
@@ -1196,9 +1614,17 @@ private fun MessageBubble(
                     )
                 }
                 Spacer(Modifier.height(5.dp))
-                if (thinking) {
+                if (message.images.isNotEmpty()) {
+                    Row(
+                        Modifier.padding(bottom = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        message.images.take(4).forEach { image -> ChatThumbnail(image, 68.dp) }
+                    }
+                }
+                if (thinking && message.content.isBlank()) {
                     TypingDots()
-                } else {
+                } else if (message.content.isNotBlank()) {
                     Text(
                         message.content,
                         style = MaterialTheme.typography.bodyMedium,

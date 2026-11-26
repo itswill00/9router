@@ -76,6 +76,35 @@ data class Connection(
 )
 
 @Serializable
+data class ChatImage(
+    val path: String,
+    val name: String = "",
+    val mime: String = "image/jpeg",
+)
+
+@Serializable
+data class ChatMessage(
+    val id: Long,
+    val role: String,
+    val content: String,
+    val model: String = "",
+    val inputTokens: Int = 0,
+    val outputTokens: Int = 0,
+    val elapsedMs: Long = 0L,
+    val images: List<ChatImage> = emptyList(),
+)
+
+@Serializable
+data class ChatSession(
+    val id: String,
+    var title: String = "New chat",
+    var model: String = "",
+    val messages: MutableList<ChatMessage> = mutableListOf(),
+    var createdAt: Long = System.currentTimeMillis(),
+    var updatedAt: Long = System.currentTimeMillis(),
+)
+
+@Serializable
 data class ApiKey(
     val id: String,
     val name: String = "",
@@ -147,4 +176,6 @@ data class AppState(
     val apiKeys: MutableList<ApiKey> = mutableListOf(),
     val aliases: MutableMap<String, String> = mutableMapOf(),
     val usage: MutableList<UsageEntry> = mutableListOf(),
+    val chatSessions: MutableList<ChatSession> = mutableListOf(),
+    var activeChatSessionId: String = "",
 )

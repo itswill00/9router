@@ -197,7 +197,7 @@ object Translator {
                     messages += buildJsonObject { put("role", "assistant"); put("content", JsonArray(blocks)) }
                 }
                 else -> messages += buildJsonObject {
-                    put("role", "user"); put("content", flattenText(m["content"]))
+                    put("role", "user"); put("content", openAiUserContentToClaude(m["content"]))
                 }
             }
         }
@@ -236,10 +236,14 @@ object Translator {
             }
             contents += buildJsonObject {
                 put("role", role)
-                put("parts", buildJsonArray {
-                    val t = flattenText(m["content"])
-                    if (t.isNotBlank()) add(buildJsonObject { put("text", t) })
-                })
+                put(
+                    "parts",
+                    if (role == "user") openAiUserContentToGemini(m["content"])
+                    else buildJsonArray {
+                        val t = flattenText(m["content"])
+                        if (t.isNotBlank()) add(buildJsonObject { put("text", t) })
+                    },
+                )
             }
         }
         put("contents", JsonArray(contents))
@@ -283,12 +287,7 @@ object Translator {
             input += buildJsonObject {
                 put("type", "message")
                 put("role", role)
-                put("content", buildJsonArray {
-                    add(buildJsonObject {
-                        put("type", if (role == "assistant") "output_text" else "input_text")
-                        put("text", flattenText(m["content"]))
-                    })
-                })
+                put("content", openAiMessageContentToResponses(m["content"], role))
             }
         }
         if (instructions.isNotBlank()) put("instructions", instructions.toString().trim())
@@ -623,6 +622,123 @@ object Translator {
         "tool_use", "tool-calls" -> "tool_calls"
         "refusal" -> "content_filter"
         else -> reason.ifBlank { "stop" }
+    }
+
+
+    // ---------- vision / multipart content ----------
+
+    /** OpenAI `content` may be a string or an array of text / image_url parts. */
+    private fun openAiUserContentToClaude(content: JsonElement?): JsonElement {
+        if (content !is JsonArray) return JsonPrimitive(flattenText(content))
+        return buildJsonArray {
+            content.forEach { part ->
+                val obj = part as? JsonObject
+                when (text(obj?.get("type"), "")) {
+                    "text" -> text(obj?.get("text"), "").takeIf { it.isNotBlank() }?.let {
+                        add(buildJsonObject { put("type", "text"); put("text", it) })
+                    }
+                    "image_url" -> {
+                        val url = text((obj?.get("image_url") as? JsonObject)?.get("url"), "")
+                        val parsed = parseDataUrl(url)
+                        if (parsed != null) {
+                            add(buildJsonObject {
+                                put("type", "image")
+                                put("source", buildJsonObject {
+                                    put("type", "base64")
+                                    put("media_type", parsed.first)
+                                    put("data", parsed.second)
+                                })
+                            })
+                        } else if (url.isNotBlank()) {
+                            add(buildJsonObject {
+                                put("type", "image")
+                                put("source", buildJsonObject { put("type", "url"); put("url", url) })
+                            })
+                        }
+                    }
+                    else -> flattenText(part).takeIf { it.isNotBlank() }?.let {
+                        add(buildJsonObject { put("type", "text"); put("text", it) })
+                    }
+                }
+            }
+        }
+    }
+
+    private fun openAiUserContentToGemini(content: JsonElement?): JsonArray = buildJsonArray {
+        if (content !is JsonArray) {
+            val t = flattenText(content)
+            if (t.isNotBlank()) add(buildJsonObject { put("text", t) })
+            return@buildJsonArray
+        }
+        content.forEach { part ->
+            val obj = part as? JsonObject
+            when (text(obj?.get("type"), "")) {
+                "text" -> text(obj?.get("text"), "").takeIf { it.isNotBlank() }?.let {
+                    add(buildJsonObject { put("text", it) })
+                }
+                "image_url" -> {
+                    val url = text((obj?.get("image_url") as? JsonObject)?.get("url"), "")
+                    val parsed = parseDataUrl(url)
+                    if (parsed != null) {
+                        add(buildJsonObject {
+                            put("inlineData", buildJsonObject {
+                                put("mimeType", parsed.first)
+                                put("data", parsed.second)
+                            })
+                        })
+                    }
+                }
+                else -> flattenText(part).takeIf { it.isNotBlank() }?.let {
+                    add(buildJsonObject { put("text", it) })
+                }
+            }
+        }
+    }
+
+    private fun openAiMessageContentToResponses(content: JsonElement?, role: String): JsonArray = buildJsonArray {
+        if (content !is JsonArray) {
+            add(buildJsonObject {
+                put("type", if (role == "assistant") "output_text" else "input_text")
+                put("text", flattenText(content))
+            })
+            return@buildJsonArray
+        }
+        content.forEach { part ->
+            val obj = part as? JsonObject
+            when (text(obj?.get("type"), "")) {
+                "text" -> text(obj?.get("text"), "").takeIf { it.isNotBlank() }?.let {
+                    add(buildJsonObject {
+                        put("type", if (role == "assistant") "output_text" else "input_text")
+                        put("text", it)
+                    })
+                }
+                "image_url" -> {
+                    val url = text((obj?.get("image_url") as? JsonObject)?.get("url"), "")
+                    if (url.isNotBlank()) {
+                        add(buildJsonObject { put("type", "input_image"); put("image_url", url) })
+                    }
+                }
+                else -> flattenText(part).takeIf { it.isNotBlank() }?.let {
+                    add(buildJsonObject {
+                        put("type", if (role == "assistant") "output_text" else "input_text")
+                        put("text", it)
+                    })
+                }
+            }
+        }
+    }
+
+    /** Splits `data:image/jpeg;base64,AAAA` into mime + payload. */
+    private fun parseDataUrl(url: String): Pair<String, String>? {
+        if (!url.startsWith("data:", ignoreCase = true)) return null
+        val comma = url.indexOf(',')
+        if (comma < 0) return null
+        val header = url.substring(5, comma)
+        if (!header.contains(";base64", ignoreCase = true)) return null
+        val mime = header.substringBefore(';').ifBlank { "image/jpeg" }
+        val data = url.substring(comma + 1)
+        if (data.isBlank()) return null
+        return mime to data
     }
 
     // ---------- helpers ----------
