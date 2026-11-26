@@ -9,12 +9,16 @@ APK per version.
 
 ## Current state
 
-- Branch: `master` — clean; synced with `origin/master`.
-- Version: `0.1.31-android` (version code 33).
+- Branch: `master` — clean; localization commits are local, not pushed.
+- Version: `0.1.31-android` (version code 33); no version bump yet.
+- Unreleased: runtime language switching (Settings → Language, 35 locales).
 - Latest release: https://github.com/itswill00/9router/releases/tag/android-v0.1.31
   - asset: `9Router-0.1.31-release.apk` (10,487,572 bytes)
   - SHA-256: `1c93ac42f663b802ce52f592123d74af263fa088881a933e3ea3b3644be7a05c`
 - Recent commits:
+  - `2a8c7c2d feat(i18n): add runtime language switching`
+  - `f90662c3 docs: record release 0.1.31`
+  - `1218ff01 chore(android): release 0.1.31`
   - `1218ff01 chore(android): release 0.1.31`
   - `172e1f85 docs: record the unreleased audit pass`
   - `0d5d3407 fix(gateway): harden auth, keys and stream failures`
@@ -70,6 +74,15 @@ APK per version.
   unsigned APKs and verifies SHA-256, and the UI no longer loses drafts,
   auto-scrolls while the user reads, or exposes stale test results. **Verified**
   by the fast check and new `TranslatorNativeTest` cases.
+- Runtime localization (unreleased): `ui/I18n.kt` shadows Compose `Text`, loads
+  one dictionary per locale from `assets/i18n/<tag>.json`, supports `{0}`
+  templates, and switches immediately through Settings → Language. The picker
+  follows the system language until you choose one, covers the 35 upstream
+  locales, and flips layout direction for Arabic, Hebrew, Farsi and Urdu. A
+  curated English/Indonesian dictionary and upstream literals win over machine
+  translation; single-word labels are only translated when curated. Tooling in
+  `android/tools/i18n/` extracts the strings and rebuilds the assets. **Verified**
+  by `I18nTest` and the fast check; not yet exercised on a physical phone.
 
 ## Build/test
 
@@ -83,6 +96,9 @@ for 0.1.31 also succeeded and the APK metadata was verified:
 ```text
 package: com.ninerouter.android  versionCode=33  versionName=0.1.31-android
 ```
+
+The localization pass kept the fast check green (`I18nTest`, 3 cases) and a
+local debug assembly confirmed 34 `assets/i18n/*.json` files inside the APK.
 
 ## Stuck on
 
@@ -101,7 +117,9 @@ Nothing is blocked. There is no active bug or failing test.
 4. Likely next areas: native tunnel/relay integration for one-tap public URLs,
    media-provider backends, proxy-pool transport, non-image attachments, session
    rename/search, full-screen image viewer, fusion quorum-grace, adaptive
-   tablet layouts, localization.
+   tablet layouts.
+5. Verify the language picker on a physical phone (system default, Indonesian,
+   an RTL locale, and a CJK locale) before the next release.
 5. Known audit leftovers, deliberately not forced in this pass:
    GitHub Claude models still use the Chat Completions endpoint; registry
    `upstreamModelId` rewrites are not exported; keyless/noAuth and

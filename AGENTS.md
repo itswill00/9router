@@ -140,9 +140,11 @@ This file is the durable working agreement for this repository. Read
   `ProvidersScreen.kt`, `CombosScreen.kt`, `UsageScreen.kt`,
   `ProviderTopologyCard.kt`, `SettingsScreen.kt`, `ToolScreens.kt`,
   `AboutScreen.kt`, `LogsScreen.kt`, `Components.kt`, `Theme.kt`,
-  `LiveState.kt`.
+  `LiveState.kt`, `I18n.kt` (runtime translator and Text shim).
 - `update/UpdateManager.kt`; `scripts/android-build.sh`,
   `scripts/android-release.sh`, `scripts/export-android-config.mjs`.
+- Localization: `ui/I18n.kt` (runtime), `assets/i18n/*.json` (generated),
+  `android/tools/i18n/` (string extraction, overrides, dictionary builder).
 - Docs: `README.md` (root), `android/README.md`,
   `android/RELEASE_NOTES.md`, `android/API_COMPATIBILITY.md`.
 

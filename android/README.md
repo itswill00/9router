@@ -120,6 +120,11 @@ project.
   and combo round-robin stickiness, token-saver and combo shortcuts, per-key
   copy/delete with confirmation, update channel, build information and a
   confirmed usage-history clear.
+- **Languages.** Settings → Language follows the system language until you pick
+  one, then offers English, Bahasa Indonesia and the other 33 upstream locales.
+  Copy is resolved at runtime from the bundled dictionaries, so switching is
+  immediate; untranslated strings fall back to English and RTL locales flip the
+  layout.
 - **Provider page**: grouped provider sections (OAuth, Free, Free Tier, API Key,
   Web Cookie, Custom compatible endpoints), a provider detail screen with
   **Connections** and the full **Models** catalog (searchable), and per-flow
