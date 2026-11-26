@@ -1,10 +1,29 @@
-# 9Router Android 0.1.33
+# 9Router Android 0.1.34
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.32
+## What changed since 0.1.33
+
+- **Multiple keys per custom endpoint.** OpenAI- and Anthropic-compatible nodes
+  can now store a list of API keys. Add or remove them while creating or editing
+  the node; existing single-key nodes migrate automatically.
+- **Key failover and rotation.** Fill-first uses the first key and falls through
+  to the next on auth/quota failures. Round-robin rotates across keys per
+  request, matching the account strategies used by built-in providers.
+- **Per-key probing.** Fetch models and Check key try the node's keys in order
+  and report the first success, so one dead key no longer blocks the endpoint.
+- **Management API.** `/api/provider-nodes` now accepts `apiKeys` and reports
+  `keyCount`; older clients that send a single `apiKey` keep working.
+- **Translation coverage.** The i18n extractor now understands `${...}`
+  templates, so dynamic labels such as delete confirmations, counts and
+  relative times are translated too.
+
+Built-in providers already used multiple connections and keys; this release
+brings custom compatible nodes to the same model.
+
+## What changed in 0.1.33
 
 - **Startup crash fixed.** The runtime translator built its placeholder pattern
   with an unescaped closing brace. The JVM accepts it, but Android's ICU regex
@@ -633,10 +652,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `9Router-0.1.33-release.apk` and sideload it:
+Download `9Router-0.1.34-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.1.33-release.apk
+adb install -r 9Router-0.1.34-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -702,7 +721,7 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.33-android` (version code 35)
+- Version: `0.1.34-android` (version code 36)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
