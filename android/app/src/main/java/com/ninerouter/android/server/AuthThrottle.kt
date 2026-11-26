@@ -53,7 +53,31 @@ internal object AuthThrottle {
         }
     }
 
-    private fun key(remote: InetAddress): String = remote.hostAddress ?: remote.toString()
+    /**
+     * Bucket peers by network, not by full address. An IPv6 LAN/tailnet peer
+     * normally owns a /64 and can rotate the interface identifier on every
+     * attempt, so keying the full address would let it bypass the block.
+     */
+    private fun key(remote: InetAddress): String {
+        val bytes = remote.address
+        if (bytes.size == 4) return "v4:" + v4(bytes)
+        if (bytes.size == 16) {
+            // ::ffff:a.b.c.d shares the IPv4 bucket.
+            if (bytes.take(10).all { it == 0.toByte() } &&
+                bytes[10] == 0xff.toByte() && bytes[11] == 0xff.toByte()
+            ) {
+                return "v4:" + v4(bytes.copyOfRange(12, 16))
+            }
+            val prefix = bytes.copyOfRange(0, 8).joinToString(":") {
+                (it.toInt() and 0xff).toString(16).padStart(2, '0')
+            }
+            return "v6:$prefix::/64"
+        }
+        return remote.hostAddress ?: remote.toString()
+    }
+
+    private fun v4(bytes: ByteArray): String =
+        bytes.joinToString(".") { (it.toInt() and 0xff).toString() }
 
     private fun trim(now: Long) {
         if (entries.size < 256) return

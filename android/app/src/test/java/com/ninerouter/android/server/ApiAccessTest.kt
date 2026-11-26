@@ -95,6 +95,18 @@ class ApiAccessTest {
     }
 
     @Test
+    fun directModelGrantWinsEvenWhenItIsAlsoAComboMember() {
+        val state = state().apply {
+            combos += Combo("fast", listOf("openai/gpt-4o-mini", "anthropic/claude-sonnet"))
+            apiKeys += ApiKey("restricted", key = "sk-limited", allowedModels = listOf("openai/gpt-4o-mini"))
+        }
+        val headers = mapOf("x-api-key" to "sk-limited")
+
+        assertNull(ApiAccess.deniedModel(headers, body("openai/gpt-4o-mini"), state))
+        assertEquals("Model not allowed", ApiAccess.deniedModel(headers, body("anthropic/claude-sonnet"), state))
+    }
+
+    @Test
     fun modelListedAsComboMemberIsNotGrantedAsDirectModel() {
         val state = state().apply {
             combos += Combo("fast", listOf("openai/gpt-4o-mini"))
@@ -147,6 +159,25 @@ class ApiAccessTest {
 
         assertFalse(ApiAccess.isAuthorized(emptyMap(), state))
         assertFalse(ApiAccess.isAuthorized(mapOf("x-api-key" to ""), state))
+    }
+
+    @Test
+    fun blankPrimaryKeyFailsClosedWhenAuthIsRequired() {
+        val state = AppState(settings = Settings(requireApiKey = true, apiKey = ""))
+
+        assertFalse(ApiAccess.isAuthorized(emptyMap(), state))
+        assertFalse(ApiAccess.isPrimaryKey(emptyMap(), state))
+    }
+
+    @Test
+    fun onlyThePrimaryKeyCanAdminister() {
+        val state = state().apply {
+            apiKeys += ApiKey("scoped", key = "sk-scoped", allowedModels = listOf("openai/gpt-4o-mini"))
+        }
+
+        assertTrue(ApiAccess.isPrimaryKey(mapOf("authorization" to "Bearer sk-primary"), state))
+        assertFalse(ApiAccess.isPrimaryKey(mapOf("x-api-key" to "sk-scoped"), state))
+        assertTrue(ApiAccess.isAuthorized(mapOf("x-api-key" to "sk-scoped"), state))
     }
 
     private fun state() = AppState(settings = Settings(requireApiKey = true, apiKey = "sk-primary"))

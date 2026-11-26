@@ -11,12 +11,18 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.io.FileOutputStream
 import java.util.UUID
 
 /** Private, file-backed state. Secrets are AES-GCM boxed with the Android Keystore. */
 object Store {
-    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
+    private const val TAG = "9R-Store"
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private lateinit var file: File
+    private lateinit var backup: File
+
+    /** Last successfully written payload; identical saves skip the disk entirely. */
+    private var lastSaved: String? = null
 
     var state: AppState = AppState()
         private set
@@ -33,6 +39,7 @@ object Store {
 
     fun init(context: Context) {
         file = File(context.filesDir, "appstate.json")
+        backup = File(context.filesDir, "appstate.json.bak")
         load()
     }
 
@@ -45,42 +52,111 @@ object Store {
                 refreshToken = Crypto.box(c.refreshToken),
             )
         }.toMutableList(),
+        combos = state.combos.toMutableList(),
         nodes = state.nodes.map { n -> n.copy(apiKey = Crypto.box(n.apiKey)) }.toMutableList(),
         apiKeys = state.apiKeys.map { k -> k.copy(key = Crypto.box(k.key)) }.toMutableList(),
+        aliases = state.aliases.toMutableMap(),
+        usage = state.usage.toMutableList(),
+        // Deep-copy sessions so a concurrent streaming append cannot make the
+        // encoder throw ConcurrentModificationException mid-write.
+        chatSessions = state.chatSessions.map { session ->
+            session.copy(messages = session.messages.toMutableList())
+        }.toMutableList(),
     )
 
     private fun restore(loaded: AppState): AppState = loaded.copy(
-            settings = loaded.settings.copy(apiKey = Crypto.unbox(loaded.settings.apiKey)),
-            connections = loaded.connections.map { c ->
-                c.copy(
-                    apiKey = Crypto.unbox(c.apiKey),
-                    accessToken = Crypto.unbox(c.accessToken),
-                    refreshToken = Crypto.unbox(c.refreshToken),
-                )
-            }.toMutableList(),
-            nodes = loaded.nodes.map { n -> n.copy(apiKey = Crypto.unbox(n.apiKey)) }.toMutableList(),
-            apiKeys = loaded.apiKeys.map { k -> k.copy(key = Crypto.unbox(k.key)) }.toMutableList(),
-        )
+        settings = loaded.settings.copy(apiKey = open(loaded.settings.apiKey)),
+        connections = loaded.connections.map { c ->
+            c.copy(
+                apiKey = open(c.apiKey),
+                accessToken = open(c.accessToken),
+                refreshToken = open(c.refreshToken),
+            )
+        }.toMutableList(),
+        nodes = loaded.nodes.map { n -> n.copy(apiKey = open(n.apiKey)) }.toMutableList(),
+        apiKeys = loaded.apiKeys.map { k -> k.copy(key = open(k.key)) }.toMutableList(),
+    )
+
+    /** Throws instead of blanking a secret when the Keystore can no longer open
+     * it, so a failed decrypt falls back to the backup rather than being saved
+     * back as an empty credential. */
+    private fun open(value: String): String =
+        Crypto.unboxOrNull(value) ?: throw IllegalStateException("encrypted value unavailable")
 
     private fun load() {
-        if (!::file.isInitialized || !file.exists()) {
+        if (!::file.isInitialized) return
+        if (!file.exists() && !backup.exists()) {
             state = AppState(settings = Settings(apiKey = newKey()))
             save()
             return
         }
-        state = try {
-            restore(json.decodeFromString<AppState>(file.readText()))
-        } catch (_: Exception) {
-            AppState(settings = Settings(apiKey = newKey()))
+        val fromMain = read(file)
+        if (fromMain != null) {
+            state = fromMain
+            return
         }
+        val fromBackup = read(backup)
+        if (fromBackup != null) {
+            // Keep the damaged file for recovery, then rewrite both slots from
+            // the good backup so the next launch does not depend on it.
+            quarantine(file)
+            state = fromBackup
+            save()
+            return
+        }
+        quarantine(file)
+        quarantine(backup)
+        state = AppState(settings = Settings(apiKey = newKey()))
+        save()
+    }
+
+    private fun read(source: File): AppState? {
+        if (!source.exists()) return null
+        return try {
+            restore(json.decodeFromString<AppState>(source.readText()))
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "state file unreadable: ${source.name}", e)
+            null
+        }
+    }
+
+    private fun quarantine(source: File) {
+        if (!source.exists()) return
+        val target = File(source.parentFile, source.name + ".corrupt-" + System.currentTimeMillis())
+        runCatching { source.renameTo(target) }
     }
 
     @Synchronized
     fun save() {
         if (!::file.isInitialized) return
-        file.writeText(json.encodeToString(snapshot()))
-        revision += 1
-        _version.value = revision
+        val encoded = try {
+            json.encodeToString(snapshot())
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "state encode failed", e)
+            return
+        }
+        if (encoded == lastSaved && file.exists()) return
+        try {
+            val directory = file.parentFile ?: return
+            if (!directory.exists()) directory.mkdirs()
+            val temp = File(directory, file.name + ".tmp")
+            FileOutputStream(temp).use { out ->
+                out.write(encoded.toByteArray(Charsets.UTF_8))
+                out.fd.sync()
+            }
+            if (file.exists()) runCatching { file.copyTo(backup, overwrite = true) }
+            if (!temp.renameTo(file)) {
+                temp.copyTo(file, overwrite = true)
+                temp.delete()
+            }
+            lastSaved = encoded
+            revision += 1
+            _version.value = revision
+        } catch (e: Exception) {
+            // A full disk must not crash the gateway thread. The in-memory state
+            // stays authoritative and the next save retries.
+            android.util.Log.e(TAG, "state save failed", e)
+        }
     }
 
     @Synchronized
@@ -88,6 +164,29 @@ object Store {
         block(state)
         save()
     }
+
+    fun addConnection(connection: Connection) = mutate {
+        val existing = connections.indexOfFirst {
+            it.provider == connection.provider &&
+                ((connection.email.isNotBlank() && it.email == connection.email) ||
+                    (connection.accountId.isNotBlank() && it.accountId == connection.accountId))
+        }
+        if (existing >= 0) {
+            // Re-login for the same account replaces the old row instead of
+            // creating a duplicate routing candidate.
+            connections[existing] = connection.copy(id = connections[existing].id)
+        } else {
+            connections.add(connection)
+        }
+    }
+
+    fun removeConnection(id: String) = mutate { connections.removeAll { it.id == id } }
+
+    fun addNode(node: ProviderNode) = mutate { nodes.add(node) }
+
+    fun removeNode(id: String) = mutate { nodes.removeAll { it.id == id } }
+
+    fun addApiKey(key: ApiKey) = mutate { apiKeys.add(key) }
 
     fun newKey(): String = "sk-9r-" + UUID.randomUUID().toString().replace("-", "")
 }

@@ -12,7 +12,7 @@ internal object ApiHttp {
     private const val DEFAULT_HEADERS = "Authorization, Content-Type, X-API-Key"
     private val HEADER_NAME = Regex("[!#$%&'*+.^_`|~0-9A-Za-z-]+")
 
-    fun preflight(requestHeaders: Map<String, String>, allowAnyOrigin: Boolean = true): ApiHttpResponse {
+    fun preflight(requestHeaders: Map<String, String>, allowAnyOrigin: Boolean = false): ApiHttpResponse {
         val requested = requestHeaders.entries
             .firstOrNull { it.key.equals("access-control-request-headers", ignoreCase = true) }
             ?.value
@@ -36,7 +36,7 @@ internal object ApiHttp {
         return ApiHttpResponse(204, headers)
     }
 
-    fun jsonHeaders(body: ByteArray, allowAnyOrigin: Boolean = true): Map<String, String> = linkedMapOf<String, String>().apply {
+    fun jsonHeaders(body: ByteArray, allowAnyOrigin: Boolean = false): Map<String, String> = linkedMapOf<String, String>().apply {
         put("Content-Type", "application/json; charset=utf-8")
         put("Content-Length", body.size.toString())
         if (allowAnyOrigin) put("Access-Control-Allow-Origin", "*")

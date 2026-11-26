@@ -37,17 +37,26 @@ object Crypto {
 
     fun box(plain: String): String {
         if (plain.isEmpty() || plain.startsWith(PREFIX)) return plain
+        // Saves are frequent (every request and UI edit). Reuse the ciphertext
+        // for an unchanged secret instead of re-running Keystore AES-GCM; the
+        // IV belongs to that ciphertext, so no IV is ever reused for new data.
+        synchronized(cache) { cache[plain]?.let { return it } }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
         val blob = cipher.doFinal(plain.toByteArray(Charsets.UTF_8))
         val packed = cipher.iv + blob
-        return PREFIX + Base64.encodeToString(packed, Base64.NO_WRAP)
+        val value = PREFIX + Base64.encodeToString(packed, Base64.NO_WRAP)
+        synchronized(cache) { cache[plain] = value }
+        return value
     }
 
-    fun unbox(value: String): String {
+    fun unbox(value: String): String = unboxOrNull(value).orEmpty()
+
+    /** Null means the value was boxed but cannot be opened (Keystore loss). */
+    fun unboxOrNull(value: String): String? {
         if (!value.startsWith(PREFIX)) return value
         return try {
             val packed = Base64.decode(value.removePrefix(PREFIX), Base64.NO_WRAP)
-            if (packed.size <= IV_BYTES) return ""
+            if (packed.size <= IV_BYTES) return null
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(
                 Cipher.DECRYPT_MODE,
@@ -56,7 +65,12 @@ object Crypto {
             )
             String(cipher.doFinal(packed.copyOfRange(IV_BYTES, packed.size)), Charsets.UTF_8)
         } catch (_: Exception) {
-            ""
+            null
         }
+    }
+
+    private val cache = object : LinkedHashMap<String, String>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean =
+            size > 128
     }
 }

@@ -189,6 +189,7 @@ data class UsageEntry(
 
 @Serializable
 data class AppState(
+    val schemaVersion: Int = 1,
     var settings: Settings = Settings(),
     val connections: MutableList<Connection> = mutableListOf(),
     val combos: MutableList<Combo> = mutableListOf(),

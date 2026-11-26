@@ -47,6 +47,9 @@ object Exposure {
             if (uri.userInfo != null) return null
             if (uri.query != null || uri.fragment != null) return null
             val host = uri.host?.takeIf { it.isNotBlank() } ?: return null
+            // A public base URL carries the gateway key. Allow cleartext only
+            // for literal loopback/private hosts; anything else must be HTTPS.
+            if (scheme == "http" && !isLiteralPrivateHost(host)) return null
             val hostText = if (host.contains(':') && !host.startsWith("[")) "[$host]" else host
             val path = uri.path.orEmpty()
             if (path.any { it == ' ' }) return null
@@ -67,6 +70,15 @@ object Exposure {
     /** Configured public root, or null when unset/invalid. */
     fun publicRoot(settings: Settings): String? =
         normalizePublicUrl(settings.publicBaseUrl).orEmpty().takeIf { it.isNotBlank() }
+
+    private fun isLiteralPrivateHost(host: String): Boolean {
+        if (host.equals("localhost", ignoreCase = true)) return true
+        val literal = host.removePrefix("[").removeSuffix("]")
+        val isIpv4 = literal.matches(Regex("\\d{1,3}(\\.\\d{1,3}){3}"))
+        val isIpv6 = literal.contains(':')
+        if (!isIpv4 && !isIpv6) return false
+        return runCatching { allows(InetAddress.getByName(literal)) }.getOrDefault(false)
+    }
 
     /** OpenAI-compatible base URL clients should use (public when configured). */
     fun apiRoot(settings: Settings, loopbackBase: String): String =

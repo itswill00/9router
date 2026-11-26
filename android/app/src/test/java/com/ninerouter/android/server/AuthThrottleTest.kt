@@ -28,4 +28,16 @@ class AuthThrottleTest {
         assertTrue(AuthThrottle.isBlocked(peer, start + 59_000))
         assertFalse(AuthThrottle.isBlocked(peer, start + 61_000))
     }
+
+    @Test
+    fun ipv6PeersAreThrottledBy64BitPrefix() {
+        val first = InetAddress.getByName("fd7a:115c:a1e0::1")
+        val rotated = InetAddress.getByName("fd7a:115c:a1e0::beef")
+        val other = InetAddress.getByName("fd7a:115c:a1e1::1")
+        val start = 9_000L
+
+        repeat(8) { AuthThrottle.recordFailure(first, start) }
+        assertTrue(AuthThrottle.isBlocked(rotated, start))
+        assertFalse(AuthThrottle.isBlocked(other, start))
+    }
 }

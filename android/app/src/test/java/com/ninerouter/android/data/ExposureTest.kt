@@ -36,6 +36,7 @@ class ExposureTest {
         assertNull(Exposure.normalizePublicUrl("https://user:pass@ai.example.com"))
         assertNull(Exposure.normalizePublicUrl("https://ai.example.com/?token=1"))
         assertNull(Exposure.normalizePublicUrl("https://"))
+        assertNull(Exposure.normalizePublicUrl("http://ai.example.com"))
         assertEquals("", Exposure.normalizePublicUrl("   "))
     }
 

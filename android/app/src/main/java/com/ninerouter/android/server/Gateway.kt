@@ -50,6 +50,12 @@ class Gateway(private val context: Context) {
     private var scope = newScope()
     private var server: ServerSocket? = null
     private val extraServers = mutableListOf<ServerSocket>()
+    // Bound the coroutine/thread fan-out; each streaming response holds a
+    // Dispatchers.IO worker until the upstream stream ends.
+    private val admission = java.util.concurrent.Semaphore(32)
+    private val activeSockets = java.util.Collections.newSetFromMap(
+        java.util.concurrent.ConcurrentHashMap<Socket, Boolean>(),
+    )
 
     @Volatile
     private var started = false
@@ -111,6 +117,8 @@ class Gateway(private val context: Context) {
         server = null
         extraServers.forEach { runCatching { it.close() } }
         extraServers.clear()
+        activeSockets.forEach { runCatching { it.close() } }
+        activeSockets.clear()
         scope.cancel()
         GatewayState.running.value = false
     }
@@ -125,7 +133,19 @@ class Gateway(private val context: Context) {
                 continue
             }
             client.soTimeout = 30_000
-            activeScope.launch { handle(client) }
+            if (!admission.tryAcquire()) {
+                runCatching { client.close() }
+                continue
+            }
+            activeSockets.add(client)
+            activeScope.launch {
+                try {
+                    handle(client)
+                } finally {
+                    activeSockets.remove(client)
+                    admission.release()
+                }
+            }
         }
     }
 
@@ -146,12 +166,18 @@ class Gateway(private val context: Context) {
             val body = request.body.toString(Charsets.UTF_8)
             val authorized = authorized(headers)
             val exposed = Exposure.enabled(Store.state.settings)
+            val settings = Store.state.settings
 
             if (exposed && AuthThrottle.isBlocked(socket.inetAddress)) {
                 return writeJson(output, 429, errorJson(429, "Too many failed attempts. Try again later."))
             }
-            if (exposed && !authorized && isProtectedManagementPath(path)) {
-                AuthThrottle.recordFailure(socket.inetAddress)
+            // Management routes can mint keys and reveal settings, so they need
+            // the primary key whenever auth is on, in loopback mode too. Scoped
+            // inference keys must never escalate to admin.
+            if (settings.requireApiKey && isProtectedManagementPath(path) &&
+                !ApiAccess.isPrimaryKey(headers, Store.state)
+            ) {
+                if (!authorized) AuthThrottle.recordFailure(socket.inetAddress)
                 return writeJson(output, 401, errorJson(401, "Invalid API key"))
             }
             if (exposed && !authorized && (path == "/v1" || path.startsWith("/v1/"))) {
@@ -267,7 +293,7 @@ class Gateway(private val context: Context) {
                     writeJson(output, 200, "{\"enabled\":false,\"status\":\"disabled\",\"android\":true}")
 
                 path == "/api/models/availability" && method == "GET" ->
-                    writeJson(output, 200, "{\"models\":{}}")
+                    writeJson(output, 200, "{\"models\":[],\"unavailableCount\":0}")
 
                 path in setOf("/api/version/shutdown", "/api/shutdown") && method == "POST" -> {
                     if (!authorized) return writeJson(output, 401, errorJson(401, "Invalid API key"))
@@ -341,8 +367,12 @@ class Gateway(private val context: Context) {
 
     private fun authorized(headers: Map<String, String>): Boolean = ApiAccess.isAuthorized(headers, Store.state)
 
-    /** Browser origins are only echoed while the gateway is loopback-only. */
-    private fun corsOpen(): Boolean = !Exposure.enabled(Store.state.settings)
+    /**
+     * No wildcard CORS. The bundled status page and the Android UI are
+     * same-origin/local; echoing `*` would let any web page that can reach
+     * loopback read keys and settings.
+     */
+    private fun corsOpen(): Boolean = false
 
     /**
      * Management routes mutate keys, providers, combos and settings. They are
@@ -416,7 +446,11 @@ class Gateway(private val context: Context) {
     private fun idFrom(path: String): String = path.substringAfterLast('/')
 
     private fun versionJson(): String = buildJsonObject {
-        put("version", "0.5.123")
+        val current = com.ninerouter.android.AppInfo.VERSION_NAME
+        put("version", current)
+        put("currentVersion", current)
+        put("latestVersion", current)
+        put("hasUpdate", false)
         put("android", true)
         put("edition", "native-preview")
     }.let { json.encodeToString(it) }
@@ -460,7 +494,7 @@ class Gateway(private val context: Context) {
                 put("completion_tokens", u.completion)
                 put("cached_tokens", u.cached)
                 put("cost", u.cost)
-                put("error", u.error)
+                put("error", com.ninerouter.android.data.Redact.text(u.error, 300))
             })
         }
     })
@@ -470,12 +504,20 @@ class Gateway(private val context: Context) {
             add(buildJsonObject {
                 put("id", k.id)
                 put("name", k.name)
-                put("key", k.key)
+                // Existing key material is never returned after creation.
+                put("key", maskSecret(k.key))
+                put("hasKey", k.key.isNotBlank())
                 put("isActive", k.active)
                 put("allowedModels", JsonArray(k.allowedModels.map { JsonPrimitive(it) }))
             })
         }
     })
+
+    private fun maskSecret(value: String): String = when {
+        value.isBlank() -> ""
+        value.length <= 10 -> "••••••"
+        else -> value.take(6) + "…" + value.takeLast(4)
+    }
 
     private fun createKey(raw: String, output: OutputStream) {
         val incoming = bodyObject(raw)
@@ -494,6 +536,9 @@ class Gateway(private val context: Context) {
 
     private fun deleteKey(path: String, output: OutputStream) {
         val id = idFrom(path)
+        if (Store.state.apiKeys.none { it.id == id }) {
+            return writeJson(output, 404, errorJson(404, "API key not found"))
+        }
         Store.mutate { apiKeys.removeAll { it.id == id } }
         writeJson(output, 200, "{\"ok\":true}")
     }
@@ -501,6 +546,9 @@ class Gateway(private val context: Context) {
     private fun patchKey(path: String, raw: String, output: OutputStream) {
         val incoming = bodyObject(raw) ?: return writeJson(output, 400, errorJson(400, "Invalid JSON"))
         val id = idFrom(path)
+        if (Store.state.apiKeys.none { it.id == id }) {
+            return writeJson(output, 404, errorJson(404, "API key not found"))
+        }
         Store.mutate {
             val index = apiKeys.indexOfFirst { it.id == id }
             if (index >= 0) {
@@ -525,7 +573,7 @@ class Gateway(private val context: Context) {
                 put("isActive", c.enabled)
                 put("priority", c.priority)
                 put("testStatus", if (c.unavailableUntil > System.currentTimeMillis()) "error" else "active")
-                put("lastError", c.lastError)
+                put("lastError", com.ninerouter.android.data.Redact.text(c.lastError, 160))
             })
         }
     })
@@ -552,6 +600,9 @@ class Gateway(private val context: Context) {
     private fun patchConnection(path: String, raw: String, output: OutputStream) {
         val incoming = bodyObject(raw) ?: return writeJson(output, 400, errorJson(400, "Invalid JSON"))
         val id = idFrom(path)
+        if (Store.state.connections.none { it.id == id }) {
+            return writeJson(output, 404, errorJson(404, "Connection not found"))
+        }
         Store.mutate {
             val index = connections.indexOfFirst { it.id == id }
             if (index >= 0) {
@@ -568,6 +619,9 @@ class Gateway(private val context: Context) {
 
     private fun deleteConnection(path: String, output: OutputStream) {
         val id = idFrom(path)
+        if (Store.state.connections.none { it.id == id }) {
+            return writeJson(output, 404, errorJson(404, "Connection not found"))
+        }
         Store.mutate { connections.removeAll { it.id == id } }
         writeJson(output, 200, "{\"ok\":true}")
     }
@@ -606,6 +660,9 @@ class Gateway(private val context: Context) {
 
     private fun deleteCombo(path: String, output: OutputStream) {
         val name = idFrom(path)
+        if (Store.state.combos.none { it.name == name }) {
+            return writeJson(output, 404, errorJson(404, "Combo not found"))
+        }
         Store.mutate { combos.removeAll { it.name == name } }
         writeJson(output, 200, "{\"ok\":true}")
     }
@@ -764,7 +821,8 @@ class Gateway(private val context: Context) {
     private fun settingsJson(): JsonObject = buildJsonObject {
         val s = Store.state.settings
         put("requireApiKey", s.requireApiKey)
-        put("apiKey", s.apiKey)
+        put("apiKey", maskSecret(s.apiKey))
+        put("hasApiKey", s.apiKey.isNotBlank())
         put("exposure", s.exposure)
         put("publicBaseUrl", s.publicBaseUrl)
         put("rtkEnabled", s.rtkEnabled)
@@ -824,24 +882,42 @@ class Gateway(private val context: Context) {
         val incoming = try { json.parseToJsonElement(raw) as? JsonObject } catch (_: Exception) { null } ?: return
         val previousExposure = Store.state.settings.exposure
         Store.mutate {
-            (incoming["requireApiKey"] as? JsonPrimitive)?.content?.toBoolean()?.let { settings = settings.copy(requireApiKey = it) }
+            if (incoming["requireApiKey"] != null) {
+                settings = settings.copy(requireApiKey = boolOf(incoming, "requireApiKey", settings.requireApiKey))
+            }
             (incoming["exposure"] as? JsonPrimitive)?.content?.let { value ->
                 val mode = if (value == Exposure.NETWORK) Exposure.NETWORK else Exposure.LOOPBACK
                 settings = settings.copy(
                     exposure = mode,
-                    // Network mode always needs a key; do not inherit an open toggle.
+                    // Network mode always needs a key; do not inherit an open
+                    // toggle, and never enable it with blank credentials.
                     requireApiKey = if (mode == Exposure.NETWORK) true else settings.requireApiKey,
+                    apiKey = if (mode == Exposure.NETWORK && settings.apiKey.isBlank()) {
+                        Store.newKey()
+                    } else {
+                        settings.apiKey
+                    },
                 )
             }
             (incoming["publicBaseUrl"] as? JsonPrimitive)?.content?.let { raw ->
                 Exposure.normalizePublicUrl(raw)?.let { settings = settings.copy(publicBaseUrl = it) }
             }
-            (incoming["rtkEnabled"] as? JsonPrimitive)?.content?.toBoolean()?.let { settings = settings.copy(rtkEnabled = it) }
+            if (incoming["rtkEnabled"] != null) {
+                settings = settings.copy(rtkEnabled = boolOf(incoming, "rtkEnabled", settings.rtkEnabled))
+            }
             (incoming["fallbackStrategy"] as? JsonPrimitive)?.content?.let { settings = settings.copy(fallbackStrategy = it) }
             (incoming["stickyLimit"] as? JsonPrimitive)?.content?.toIntOrNull()?.let { settings = settings.copy(stickyLimit = it) }
-            (incoming["cavemanEnabled"] as? JsonPrimitive)?.content?.toBoolean()?.let { settings = settings.copy(cavemanEnabled = it) }
-            (incoming["ponytailEnabled"] as? JsonPrimitive)?.content?.toBoolean()?.let { settings = settings.copy(ponytailEnabled = it) }
-            (incoming["customPromptEnabled"] as? JsonPrimitive)?.content?.toBoolean()?.let { settings = settings.copy(customPromptEnabled = it) }
+            if (incoming["cavemanEnabled"] != null) {
+                settings = settings.copy(cavemanEnabled = boolOf(incoming, "cavemanEnabled", settings.cavemanEnabled))
+            }
+            if (incoming["ponytailEnabled"] != null) {
+                settings = settings.copy(ponytailEnabled = boolOf(incoming, "ponytailEnabled", settings.ponytailEnabled))
+            }
+            if (incoming["customPromptEnabled"] != null) {
+                settings = settings.copy(
+                    customPromptEnabled = boolOf(incoming, "customPromptEnabled", settings.customPromptEnabled),
+                )
+            }
             (incoming["customPrompt"] as? JsonPrimitive)?.content?.let { settings = settings.copy(customPrompt = it) }
             (incoming["cavemanLevel"] as? JsonPrimitive)?.content?.let { settings = settings.copy(cavemanLevel = it) }
             (incoming["ponytailLevel"] as? JsonPrimitive)?.content?.let { settings = settings.copy(ponytailLevel = it) }
@@ -850,21 +926,41 @@ class Gateway(private val context: Context) {
             // Rebind after the response is flushed so the caller sees the new
             // settings instead of a dropped connection.
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                com.ninerouter.android.GatewayService.restart(context)
-            }, 900)
+                com.ninerouter.android.GatewayService.rebind(context)
+            }, 300)
         }
     }
 
     private fun writeSse(output: OutputStream, result: ChatEngine.Outcome.Stream) {
-        val cors = if (corsOpen()) "Access-Control-Allow-Origin: *\r\n" else ""
         val head = "HTTP/1.1 200 OK\r\n" +
             "Content-Type: text/event-stream; charset=utf-8\r\n" +
             "Cache-Control: no-cache\r\n" +
-            cors +
             "Transfer-Encoding: chunked\r\n" +
             "Connection: close\r\n\r\n"
-        output.write(head.toByteArray(Charsets.UTF_8))
-        SseWriter.writeBody(output, result)
+        try {
+            output.write(head.toByteArray(Charsets.UTF_8))
+            SseWriter.writeBody(output, result)
+        } catch (e: Exception) {
+            // Headers are already on the wire. Never let handle() try to write
+            // a second HTTP response into the chunked body.
+            android.util.Log.w("9R-Gateway", "stream ended early: ${e.javaClass.simpleName}")
+            runCatching {
+                writeFrameBytes(
+                    output,
+                    "event: error\ndata: {\"error\":{\"type\":\"server_error\",\"message\":\"Upstream stream failed\"}}",
+                )
+                output.write("0\r\n\r\n".toByteArray(Charsets.US_ASCII))
+                output.flush()
+            }
+        }
+    }
+
+    private fun writeFrameBytes(output: OutputStream, frame: String) {
+        val bytes = (frame + "\n\n").toByteArray(Charsets.UTF_8)
+        output.write(bytes.size.toString(16).toByteArray(Charsets.US_ASCII))
+        output.write("\r\n".toByteArray(Charsets.US_ASCII))
+        output.write(bytes)
+        output.write("\r\n".toByteArray(Charsets.US_ASCII))
     }
 
     private fun writeChunk(output: OutputStream, data: String) {
@@ -891,7 +987,7 @@ class Gateway(private val context: Context) {
             append("<li>Version: <code>${escapeHtml(com.ninerouter.android.AppInfo.VERSION_NAME)}</code></li>")
             append("<li>OpenAI base URL: <code>$endpoint</code></li>")
             append("<li>Health: <a href=\"/api/health\">/api/health</a></li>")
-            append("<li>API key: <code>required</code></li>")
+            append("<li>API key: <code>${if (settings.requireApiKey || exposed) "required" else "optional"}</code></li>")
             if (!exposed) {
                 append("<li>Models: <a href=\"/v1/models\">/v1/models</a></li>")
                 append("<li>Connections: ${Store.state.connections.size} · Models: ${Catalog.modelIds().size + Store.state.nodes.sumOf { it.models.size }}</li>")

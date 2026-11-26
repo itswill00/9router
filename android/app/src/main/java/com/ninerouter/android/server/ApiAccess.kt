@@ -19,10 +19,21 @@ internal object ApiAccess {
             if (constantTimeEquals(presented, settings.apiKey)) return true
             return state.apiKeys.any { it.active && constantTimeEquals(presented, it.key) }
         }
-        if (!settings.requireApiKey || settings.apiKey.isBlank()) return true
+        if (!settings.requireApiKey) return true
+        // Fail closed: a required key that is blank is a broken install, not an
+        // invitation to call the gateway anonymously.
+        if (settings.apiKey.isBlank()) return false
         val presented = presentedKey(headers)
         if (constantTimeEquals(presented, settings.apiKey)) return true
         return state.apiKeys.any { it.active && constantTimeEquals(presented, it.key) }
+    }
+
+    /** Only the primary gateway key may change keys, providers or settings. */
+    fun isPrimaryKey(headers: Map<String, String>, state: AppState): Boolean {
+        val settings = state.settings
+        if (!settings.requireApiKey && !Exposure.enabled(settings)) return true
+        if (settings.apiKey.isBlank()) return false
+        return constantTimeEquals(presentedKey(headers), settings.apiKey)
     }
 
     fun deniedModel(headers: Map<String, String>, body: JsonObject, state: AppState): String? {
@@ -51,8 +62,15 @@ internal object ApiAccess {
     }
 
     private fun isModelAllowed(model: String, apiKey: ApiKey, state: AppState): Boolean {
-        if (model in apiKey.allowedModels && state.combos.any { it.name == model }) return true
         val resolvedModel = resolve(model, state)
+        // An explicit model grant always wins, even when that model also
+        // happens to be a member of some combo.
+        val explicitlyGranted = apiKey.allowedModels.any { allowed ->
+            state.combos.none { it.name == allowed } && resolve(allowed, state) == resolvedModel
+        }
+        if (explicitlyGranted) return true
+        if (model in apiKey.allowedModels && state.combos.any { it.name == model }) return true
+        // A combo grant exposes the combo id, not its members as direct models.
         if (resolvedModel in allComboMembers(state)) return false
         return apiKey.allowedModels.any { allowed ->
             val allowedCombo = state.combos.firstOrNull { it.name == allowed }

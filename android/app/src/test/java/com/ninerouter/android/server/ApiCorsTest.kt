@@ -11,7 +11,7 @@ class ApiCorsTest {
         val response = ApiHttp.preflight(emptyMap())
 
         assertEquals(204, response.status)
-        assertEquals("*", response.headers["Access-Control-Allow-Origin"])
+        assertFalse(response.headers.containsKey("Access-Control-Allow-Origin"))
         assertTrue(response.headers["Access-Control-Allow-Methods"].orEmpty().contains("POST"))
         assertTrue(response.headers["Access-Control-Allow-Methods"].orEmpty().contains("OPTIONS"))
         assertTrue(response.headers["Access-Control-Allow-Headers"].orEmpty().contains("Authorization"))
@@ -42,7 +42,7 @@ class ApiCorsTest {
     fun jsonResponsesHaveContentLengthAndCorsMethods() {
         val headers = ApiHttp.jsonHeaders("{\"ok\":true}".toByteArray())
 
-        assertEquals("*", headers["Access-Control-Allow-Origin"])
+        assertFalse(headers.containsKey("Access-Control-Allow-Origin"))
         assertTrue(headers["Access-Control-Allow-Methods"].orEmpty().contains("OPTIONS"))
         assertEquals("11", headers["Content-Length"])
     }
