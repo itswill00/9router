@@ -17,6 +17,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -192,6 +193,19 @@ private fun Overview(
     val cached = filtered.sumOf { it.cached }
     val output = filtered.sumOf { it.completion }
     val cost = filtered.sumOf { it.cost }
+    val okCount = filtered.count { it.ok }
+    val successRate = if (totalRequests > 0) okCount * 100.0 / totalRequests else null
+    val successText = when {
+        successRate == null -> "—"
+        successRate >= 99.95 -> "100%"
+        else -> String.format(Locale.US, "%.1f%%", successRate)
+    }
+    val successColor = when {
+        successRate == null -> NineRouterColors.TextMuted
+        successRate >= 98.0 -> NineRouterColors.Success
+        successRate >= 90.0 -> NineRouterColors.Warning
+        else -> NineRouterColors.Danger
+    }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp),
@@ -204,6 +218,7 @@ private fun Overview(
                 Stat("Cached Tokens", fmt(cached), NineRouterColors.Info),
                 Stat("Output Tokens", fmt(output), NineRouterColors.Success),
                 Stat("Est. Cost", money(cost), NineRouterColors.Warning),
+                Stat("Success Rate", successText, successColor),
             )
         )
 
@@ -438,33 +453,50 @@ private fun DetailsList(filtered: List<UsageEntry>, onSelect: (UsageEntry) -> Un
 
 @Composable
 private fun StatGrid(stats: List<Stat>) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        stats.chunked(2).forEach { row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                row.forEach { stat ->
-                    Surface(
-                        modifier = Modifier.weight(1f),
-                        color = NineRouterColors.Surface,
-                        shape = NineRouterShapes.large,
-                        border = BorderStroke(1.dp, NineRouterColors.BorderSubtle),
-                    ) {
-                        Column(Modifier.padding(10.dp)) {
-                            Text(stat.label.uppercase(), style = MaterialTheme.typography.labelSmall, color = NineRouterColors.TextMuted, maxLines = 1)
-                            Spacer(Modifier.height(3.dp))
-                            AnimatedContent(
-                                targetState = stat.value,
-                                transitionSpec = {
-                                    (fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 2 }) togetherWith
-                                        (fadeOut(tween(120)) + slideOutVertically(tween(140)) { -it / 2 })
-                                },
-                                label = "statValue",
-                            ) { value ->
-                                Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = stat.color, maxLines = 1)
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val columns = if (maxWidth >= 600.dp) 3 else 2
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            stats.chunked(columns).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    row.forEach { stat ->
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            color = NineRouterColors.Surface,
+                            shape = NineRouterShapes.large,
+                            border = BorderStroke(1.dp, NineRouterColors.BorderSubtle),
+                        ) {
+                            Column(Modifier.padding(10.dp)) {
+                                Text(
+                                    stat.label.uppercase(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = NineRouterColors.TextMuted,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Spacer(Modifier.height(3.dp))
+                                AnimatedContent(
+                                    targetState = stat.value,
+                                    transitionSpec = {
+                                        (fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 2 }) togetherWith
+                                            (fadeOut(tween(120)) + slideOutVertically(tween(140)) { -it / 2 })
+                                    },
+                                    label = "statValue",
+                                ) { value ->
+                                    Text(
+                                        value,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = stat.color,
+                                        maxLines = 1,
+                                    )
+                                }
                             }
                         }
                     }
+                    repeat(columns - row.size) {
+                        Spacer(Modifier.weight(1f))
+                    }
                 }
-                if (row.size == 1) Spacer(Modifier.weight(1f))
             }
         }
     }
