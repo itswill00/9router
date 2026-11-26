@@ -51,6 +51,12 @@ import java.util.Locale
 
 private val LOG_FILTERS = listOf("All", "Success", "Failed")
 
+private fun filterLogs(all: List<UsageEntry>, filter: String): List<UsageEntry> = when (filter) {
+    "Success" -> all.filter { it.ok }
+    "Failed" -> all.filter { !it.ok }
+    else -> all
+}
+
 @Composable
 fun LogsScreen() {
     @Suppress("UNUSED_VARIABLE") val revision = Store.revision
@@ -59,13 +65,6 @@ fun LogsScreen() {
     var confirmClear by remember { mutableStateOf(false) }
 
     val all = remember(Store.state.usage, revision) { Store.state.usage.toList() }
-    val filtered = remember(all, filter) {
-        when (filter) {
-            "Success" -> all.filter { it.ok }
-            "Failed" -> all.filter { !it.ok }
-            else -> all
-        }
-    }.asReversed()
 
     val errors = all.count { !it.ok }
     val avgLatency = all.filter { it.latencyMs > 0 }
@@ -109,8 +108,8 @@ fun LogsScreen() {
                     (fadeOut(tween(130)) + slideOutVertically(tween(160)) { -it / 16 })
             },
             label = "logsList",
-        ) { _ ->
-            val entries = filtered
+        ) { activeFilter ->
+            val entries = remember(all, activeFilter) { filterLogs(all, activeFilter) }.asReversed()
             if (entries.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     EmptyState(
