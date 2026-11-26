@@ -1,10 +1,22 @@
-# 9Router Android 0.1.24
+# 9Router Android 0.1.25
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.23
+## What changed since 0.1.24
+
+- **About page.** New profile-led page reachable from the drawer and from
+  Settings, with a short history of the project.
+- **Developer card.** Bundled GitHub profile photo for itswill00, the creator
+  and maintainer credit, and a direct profile link.
+- **Project detail.** Feature grid, tech-stack rows, live provider/connection/
+  combo counts, version and build information, and source/releases/issues/
+  MIT licence links.
+- **Cleaner Settings.** Duplicate project links now live on the About page;
+  Settings keeps the version, build number and a single shortcut.
+
+## What changed in 0.1.24
 
 - **Chat session button card.** The session-list action now uses the same
   surface, border and rounded shape as the model selector and New chat
@@ -492,10 +504,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `9Router-0.1.24-release.apk` and sideload it:
+Download `9Router-0.1.25-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.1.24-release.apk
+adb install -r 9Router-0.1.25-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -557,7 +569,7 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.24-android` (version code 26)
+- Version: `0.1.25-android` (version code 27)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
