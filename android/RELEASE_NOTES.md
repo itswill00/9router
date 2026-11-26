@@ -1,10 +1,45 @@
-# 9Router Android 0.1.16
+# 9Router Android 0.1.17
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.15
+## What changed since 0.1.16
+
+This is the local API-parity pass: the loopback gateway is now safer for real
+clients, and streaming speaks the client's own protocol.
+
+- **Model discovery endpoints.** `GET /v1`, `/v1/models`, `/v1/models/{kind}`,
+  `/v1/models/{provider}/{model}` and `/v1/models/info` now serve a full catalog
+  (providers, custom nodes, combos, aliases, capability kinds), filtered by key
+  access.
+- **Restricted API keys are actually enforced.** Chat, embeddings, discovery and
+  `count_tokens` share one constant-time authorization policy. A combo grant no
+  longer leaks its members as directly callable models.
+- **Native streaming protocols.** `POST /v1/messages` now emits Anthropic
+  `message_start` / content blocks (text, thinking, tool use) / `message_delta`
+  with `stop_reason` + usage / `message_stop`. `POST /v1/responses` emits
+  `response.created` … `output_text.delta` … `response.completed` (or
+  `response.incomplete` on a length cutoff). Neither emits the OpenAI `[DONE]`
+  sentinel, and reasoning/tool deltas survive the translation.
+- **Safer HTTP layer.** Request bodies are parsed with hard bounds (8 MiB,
+  `Content-Length` or `chunked`, no conflicting framing), preflight `OPTIONS`
+  returns a validated CORS response, and JSON errors carry consistent headers.
+- **Embeddings and token utilities.** Supported embedding fields (`input`,
+  `dimensions`, `encoding_format`, `user`) reach the upstream and its status/body
+  are passed through. `POST /v1/messages/count_tokens` returns an approximate
+  Anthropic input count, and `POST /v1/responses/compact` fails explicitly with
+  `501 unsupported_operation` instead of silently running a normal completion.
+- **Two installable variants.** Debug and R8-minified release APKs are both
+  signed with the same key and published as `9Router-<version>-<variant>.apk`;
+  the in-app updater prefers the release variant.
+- **Honest coverage.** `android/API_COMPATIBILITY.md` marks every `/v1` route
+  supported, partial or unsupported — no full-parity claim.
+- **One version source.** `AppInfo` now derives from Gradle `BuildConfig`, so
+  the gateway banner, settings, OAuth headers and update channel cannot drift
+  from the APK's real version.
+
+## What changed in 0.1.16
 
 - **Usage now includes streaming requests.** Most API clients stream by default;
   those requests were previously absent from Usage because tracking only ran
@@ -289,9 +324,11 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 - **Native foreground service** hosting a loopback-only HTTP gateway at
   `http://127.0.0.1:20128/v1`. The app never binds to `0.0.0.0`.
-- **Compatible API surface**: `/api/health`, `/v1/models`,
-  `/v1/chat/completions` (JSON and SSE), `/v1/messages`, `/v1/responses`,
-  `/v1/embeddings`, and `/api/settings`.
+- **Compatible API surface**: `/api/health`, `/v1`, `/v1/models` (kind filters,
+  lookup and info), `/v1/chat/completions` (JSON and SSE), `/v1/messages` and
+  `/v1/responses` (JSON and native SSE), `/v1/embeddings`,
+  `/v1/messages/count_tokens`, and `/api/settings`. See
+  `android/API_COMPATIBILITY.md` for partial and unsupported routes.
 - **In-app streaming chat**, so the APK is useful without any external CLI.
 - **Compact mobile-first UI built from the upstream design system**: the exact
   dark palette from `src/app/globals.css`, brand orange, grouped provider cards,
@@ -324,10 +361,12 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `app-debug.apk` from this release and sideload it:
+Download either APK from this release and sideload it. Both share the same
+signature, so they replace each other in place:
 
 ```bash
-adb install -r app-debug.apk
+adb install -r 9Router-0.1.17-release.apk   # R8-minified, recommended
+adb install -r 9Router-0.1.17-debug.apk     # verbose debug build
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -357,8 +396,10 @@ persistent foreground service notification.
   node API keys.
 - Forwarded-header spoofing is avoided: there is no `X-Forwarded-For` trust
   path in this gateway.
-- This is a **debug-signed** APK intended for sideloading. A Play Store build
-  would need a dedicated release keystore and signing configuration.
+- Both published variants are intentionally signed with the same sideloading
+  identity so they replace each other in place and the in-app updater keeps
+  working. A Play Store build would need a dedicated release keystore and
+  signing configuration.
 
 ## Known limitations
 
@@ -375,17 +416,18 @@ This is a native slice, not full parity with the Node gateway:
   supported for OpenAI-compatible upstreams.
 - Translator coverage focuses on OpenAI, Claude, Gemini, and Responses.
   Thinking-block and tool-id edge cases are still being ported.
-- Streaming on `/v1/responses` currently emits Chat Completions-style chunks.
+- `/v1/responses/compact` is explicitly unsupported (`501 unsupported_operation`)
+  because it needs Codex server-side compaction. Native streaming itself is
+  supported for `/v1/messages` and `/v1/responses`.
 - Combo strategies `fallback`, `round-robin`, and `smart` are available;
   `fusion` (parallel panel + judge) is not yet ported.
 
 ## Build information
 
-- Version: `0.1.16-android` (version code 18)
+- Version: `0.1.17-android` (version code 19)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
-- SHA-256 of the attached APK:
-  `9e78b08b65451a8299886d410c8c1141e65b33d284db7e2aa0108b967270823b`
+- SHA-256 for both attached APKs is recorded in the artifact footer below.
 
 See `android/README.md` for the module layout and build instructions.

@@ -98,7 +98,7 @@ android/dist/9Router-<version>-release.apk   # R8-minified, same debug signing i
 Both are signed with the same key, so either installs over the other in place:
 
 ```bash
-adb install -r android/dist/9Router-0.1.16-debug.apk
+adb install -r android/dist/9Router-<version>-debug.apk
 ```
 
 The raw, unstaged Gradle outputs remain at
