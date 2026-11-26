@@ -1,10 +1,23 @@
-# 9Router Android 0.1.22
+# 9Router Android 0.1.23
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.21
+## What changed since 0.1.22
+
+- **Live pages really refresh.** Each screen now reads the live revision in
+  its own composition scope, so Usage, Console Log, Quota Tracker and the
+  other state-backed pages update while open. The previous helper only
+  recomposed itself, which is why logs still needed an app restart.
+- **Easier drawer button.** The hamburger is 56 dp, moved inward from the
+  system gesture edge, brighter, clears text focus before opening, and the
+  top bar is drawn above clipped page content.
+- **Basic Chat model picker.** Chat now uses the same provider-grouped picker
+  as combos: long ids wrap, provider prefixes are shown once, and aliases are
+  included.
+
+## What changed in 0.1.22
 
 - **Combo parity.** Each combo now has its own strategy: Fallback, Round
   Robin, Smart Router or Fusion. Create and edit only the name and ordered
@@ -473,10 +486,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `9Router-0.1.22-release.apk` and sideload it:
+Download `9Router-0.1.23-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.1.22-release.apk
+adb install -r 9Router-0.1.23-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -538,7 +551,7 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.22-android` (version code 24)
+- Version: `0.1.23-android` (version code 25)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
