@@ -10,18 +10,17 @@ APK per version.
 ## Current state
 
 - Branch: `master` — clean; synced with `origin/master`.
-- Version: `0.1.32-android` (version code 34).
-- Latest release: https://github.com/itswill00/9router/releases/tag/android-v0.1.32
-  - asset: `9Router-0.1.32-release.apk` (11,026,670 bytes)
-  - SHA-256: `92b9aed94c64bd6969be27334d1cc9a4c6fcda43ed75ff59614c14b019aa6390`
+- Version: `0.1.33-android` (version code 35).
+- Latest release: https://github.com/itswill00/9router/releases/tag/android-v0.1.33
+  - asset: `9Router-0.1.33-release.apk` (11,026,666 bytes)
+  - SHA-256: `67b59807a82addd521f9d2f37f762cb55ea00eb4bd4778b1b6cbac9276fce567`
 - Recent commits:
+  - `c136efb9 chore(android): release 0.1.33`
+  - `e9d98dad fix(i18n): escape the placeholder regex for Android ICU`
   - `d7129f7a chore(android): release 0.1.32`
+  - `af629cb2 docs: record release 0.1.32`
   - `fd1c7664 docs: record the localization pass`
   - `2a8c7c2d feat(i18n): add runtime language switching`
-  - `f90662c3 docs: record release 0.1.31`
-  - `1218ff01 chore(android): release 0.1.31`
-  - `172e1f85 docs: record the unreleased audit pass`
-  - `0d5d3407 fix(gateway): harden auth, keys and stream failures`
   - `a3d9ae20 fix(core): preserve native tool calls and stream usage`
   - `931d26ad fix(android): harden oauth, updates and background lifecycle`
   - `0cbddaca fix(ui): keep state live and remove interaction traps`
@@ -91,14 +90,14 @@ APK per version.
 ```
 
 Last result: `BUILD SUCCESSFUL` (unit tests + fatal lint). The release build
-for 0.1.32 also succeeded and the APK metadata was verified:
+for 0.1.33 also succeeded and the APK metadata was verified:
 
 ```text
-package: com.ninerouter.android  versionCode=34  versionName=0.1.32-android
+package: com.ninerouter.android  versionCode=35  versionName=0.1.33-android
 ```
 
-The localization pass kept the fast check green (`I18nTest`, 3 cases) and the
-release APK contains 34 `assets/i18n/*.json` files.
+The hotfix release still contains 34 `assets/i18n/*.json` files and `I18nTest`
+stays green.
 
 ## Stuck on
 
@@ -107,7 +106,7 @@ Nothing is blocked. There is no active bug or failing test.
 ## Next steps
 
 1. Read `AGENTS.md`; verify the tree is clean and `versionName` is
-   `0.1.32-android` before touching code.
+   `0.1.33-android` before touching code.
 2. Ask the user which backlog item to take. Do not invent a release or push
    without an explicit request.
 3. If a release is requested, follow the release procedure in `AGENTS.md`:
@@ -130,6 +129,11 @@ Nothing is blocked. There is no active bug or failing test.
 
 ## Pitfalls — do not repeat
 
+- **Android regex is ICU, not the JVM** → `Regex("""\{\d+}""")` compiled on the
+  test JVM but threw `PatternSyntaxException` in `App.onCreate` on Android. A
+  closing brace after a quantifier must be escaped too (`\{\d+\}`). JVM unit
+  tests cannot prove a pattern is Android-safe; exercise regex-heavy startup
+  code on a device or keep the pattern trivially escaped.
 - **Live pages looked stale** → the revision was read only inside a helper that
   returned a plain value, so only the helper recomposed. Read it unconditionally
   in the screen's own scope (`val revision = storeRevision().value`, or use the
