@@ -132,6 +132,7 @@ fun UsageScreen(refresh: () -> Unit) {
             } else {
                 Overview(
                     filtered = filtered,
+                    revision = revision,
                     chartMode = chartMode,
                     setChartMode = { chartMode = it },
                     providerMode = providerMode,
@@ -175,6 +176,7 @@ fun UsageScreen(refresh: () -> Unit) {
 @Composable
 private fun Overview(
     filtered: List<UsageEntry>,
+    revision: Long,
     chartMode: String,
     setChartMode: (String) -> Unit,
     providerMode: String,
@@ -204,6 +206,8 @@ private fun Overview(
                 Stat("Est. Cost", money(cost), NineRouterColors.Warning),
             )
         )
+
+        ProviderTopologyCard(usage = Store.state.usage, revision = revision)
 
         Panel {
             SectionHeader("Recent Requests", action = {
