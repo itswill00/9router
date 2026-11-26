@@ -1,10 +1,31 @@
-# 9Router Android 0.1.19
+# 9Router Android 0.1.20
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.18
+## What changed since 0.1.19
+
+- **Chat sessions persist.** Leaving Basic Chat and coming back no longer wipes
+  the conversation. Sessions are saved in app state, restored on return and on
+  app restart, and the partial answer is kept if you leave mid-stream.
+- **Session menu.** The chat header has a session list with titles derived from
+  the first prompt, message counts, relative time, one-tap switching, a new
+  chat action, and delete with image cleanup. Up to 40 sessions are kept.
+- **Image attachments for vision models.** Attach up to four photos from the
+  composer. Images are downsampled, compressed and stored on disk, then sent as
+  OpenAI image parts and translated to Claude, Gemini and Responses formats.
+  Thumbnails appear in the composer and in the user bubble, and the composer
+  warns when the selected model is not marked vision-capable.
+- **OAuth chat streams fixed.** Basic Chat was forcing the OpenAI stream
+  decoder even for Claude, Gemini and Antigravity, so those OAuth providers
+  rendered "(no content returned)". It now uses the provider's real stream
+  format and CLI envelope; a stream request that comes back as JSON is consumed
+  as a normal response instead of zero SSE lines.
+- **Safer image decode.** Bounds are read first and the bitmap is downsampled,
+  so a full-resolution phone photo cannot exhaust memory.
+
+## What changed in 0.1.19
 
 - **Hamburger navigation drawer.** The top-bar hamburger opens a labelled
   drawer with Basic Chat, Endpoint, Providers, Combos, Usage, Logs and
@@ -402,10 +423,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `9Router-0.1.19-release.apk` and sideload it:
+Download `9Router-0.1.20-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.1.19-release.apk
+adb install -r 9Router-0.1.20-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -462,7 +483,7 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.19-android` (version code 21)
+- Version: `0.1.20-android` (version code 22)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`

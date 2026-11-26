@@ -40,7 +40,7 @@ http://127.0.0.1:20128/v1
   encodings, Basic Auth (iFlow), and client secrets are honored.
 - Custom OpenAI/Anthropic-compatible nodes with per-node API key.
 - Multiple API keys with per-key model/combo allow-list, constant-time compare.
-- In-app streaming chat, so the APK is usable without any external CLI.
+- In-app streaming chat with persistent sessions, a session menu, image attachments for vision models, and a vision-capability warning.
 - **Compact mobile-first dashboard** using the upstream visual language: exact
   dark palette from `src/app/globals.css`, brand orange, the original `hub`
   brand mark, provider icon set bundled from `public/providers`, grouped
