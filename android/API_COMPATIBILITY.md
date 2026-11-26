@@ -58,7 +58,13 @@ counts are captured through EOF for every format (`ChatEngineStreamUsageTest`).
 
 ## Release gate
 
-1. `./scripts/android-build.sh check` must pass after the final code/doc change.
-2. Inspect the built APK's `versionCode`/`versionName` against `android/app/build.gradle.kts` and record the artifact SHA-256.
-3. Do not tag or publish a release until the route coverage above is reviewed and the release intent is confirmed; no device/emulator runtime claim without device evidence.
-4. Release title convention: use `9Router Android <version>` and pass the notes body **without** its leading `# …` heading. GitHub already renders the title above the body, so repeating the heading duplicates the name on the release page (and the in-app updater renders notes as plain text, showing the raw `#`).
+Releases are cut with `./scripts/android-release.sh` (see `android/README.md`).
+
+1. `./scripts/android-release.sh` builds and verifies both variants, then prints the plan without publishing. It runs `./scripts/android-build.sh full` (unit tests + full lint + debug + R8 release) and refuses a dirty tree, an existing tag, or mismatched APK metadata.
+2. Two APKs are staged in `android/dist/` and published together:
+   - `9Router-<version>-debug.apk` — debug signing, verbose.
+   - `9Router-<version>-release.apk` — R8-minified/shrunk, **same debug signing identity** so the variants update each other in place and the in-app updater keeps working with no uninstall.
+   Both embedded `versionCode`/`versionName` must match `android/app/build.gradle.kts`; each SHA-256 is recorded in the release notes.
+3. The in-app updater prefers the `-release` asset, then `-debug`, then any `.apk` (`UpdateManagerAssetTest`).
+4. Do not tag or publish until the route coverage above is reviewed and the release intent is confirmed; no device/emulator runtime claim without device evidence.
+5. Release title convention: `9Router Android <version>`, and pass the notes body **without** its leading `# …` heading (the script does this). GitHub already renders the title above the body, so repeating the heading duplicates the name on the release page and shows a raw `#` in the in-app updater.

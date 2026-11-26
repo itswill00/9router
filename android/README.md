@@ -82,24 +82,39 @@ http://127.0.0.1:20128/v1
 
 ## Build / install
 
-The debug APK is built and ready at:
-
-```
-android/app/build/outputs/apk/debug/app-debug.apk
-```
+Build both variants and stage release-ready artifacts:
 
 ```bash
-adb install -r /root/9router/android/app/build/outputs/apk/debug/app-debug.apk
+./scripts/android-build.sh dist
 ```
 
-To rebuild:
+That produces:
+
+```
+android/dist/9Router-<version>-debug.apk     # debug signing, verbose
+android/dist/9Router-<version>-release.apk   # R8-minified, same debug signing identity
+```
+
+Both are signed with the same key, so either installs over the other in place:
 
 ```bash
-cd android
-./gradlew :app:assembleDebug
+adb install -r android/dist/9Router-0.1.16-debug.apk
 ```
 
-Release notes for the current GitHub release are in `android/RELEASE_NOTES.md`.
+The raw, unstaged Gradle outputs remain at
+`android/app/build/outputs/apk/<variant>/app-<variant>.apk`.
+
+## Release
+
+```bash
+./scripts/android-release.sh          # build + verify + preview (no publish)
+./scripts/android-release.sh --yes    # tag + publish both APKs
+```
+
+The release title is `9Router Android <version>`, and the notes are generated from
+`android/RELEASE_NOTES.md` — its leading `# …` heading is dropped so the release
+page does not repeat the name. Both APKs are attached with their SHA-256. See
+`android/API_COMPATIBILITY.md` for the full release gate.
 
 Regenerate the provider asset after changing the upstream registry:
 
