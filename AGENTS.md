@@ -164,7 +164,7 @@ This file is the durable working agreement for this repository. Read
   (normally with `by`). A helper that returns a plain value only recomposes
   itself and leaves the screen stale — this was the cause of Console Log and
   Usage needing an app restart.
-- Current release: `0.1.32-android` (code 34). See `HANDOFF.md` for the exact
+- Current release: `0.1.33-android` (code 35). See `HANDOFF.md` for the exact
   tag, SHA, and latest-release URL.
 
 ## Known limitations

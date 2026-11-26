@@ -1,10 +1,22 @@
-# 9Router Android 0.1.32
+# 9Router Android 0.1.33
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.31
+## What changed since 0.1.32
+
+- **Startup crash fixed.** The runtime translator built its placeholder pattern
+  with an unescaped closing brace. The JVM accepts it, but Android's ICU regex
+  engine throws `PatternSyntaxException` during `App.onCreate`, so the app could
+  crash before the first frame. The pattern is now escaped correctly.
+- **Regression coverage.** `I18nTest` still exercises exact lookup, template
+  reordering and RTL detection; the release build also verifies the bundled
+  dictionaries.
+
+Everyone on 0.1.32 should install this build.
+
+## What changed in 0.1.32
 
 - **Language switching.** Settings → Language now offers the 35 locales from
   the upstream 9Router dashboard. The app follows the system language until a
@@ -621,10 +633,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `9Router-0.1.32-release.apk` and sideload it:
+Download `9Router-0.1.33-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.1.32-release.apk
+adb install -r 9Router-0.1.33-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -690,7 +702,7 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.32-android` (version code 34)
+- Version: `0.1.33-android` (version code 35)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
