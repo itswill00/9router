@@ -130,7 +130,8 @@ project.
   **Connections** and the full **Models** catalog (searchable), and per-flow
   connect actions. OAuth-only providers show *OAuth login* or *Device code*;
   API-key providers show *API key*; providers with crypto-specific handshakes
-  fall back to *Paste token*.
+  fall back to *Paste token*. Compatible nodes keep an ordered list of API keys
+  with failover/round-robin, and their probes try each key until one works.
 - **Model catalog**: model ids and display names are exported from the same
   source the dashboard uses (`getModelsByProviderId`) into
   `provider_registry.json`.

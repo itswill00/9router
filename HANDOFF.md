@@ -10,16 +10,18 @@ APK per version.
 ## Current state
 
 - Branch: `master` — clean; synced with `origin/master`.
-- Version: `0.1.33-android` (version code 35).
-- Latest release: https://github.com/itswill00/9router/releases/tag/android-v0.1.33
-  - asset: `9Router-0.1.33-release.apk` (11,026,666 bytes)
-  - SHA-256: `67b59807a82addd521f9d2f37f762cb55ea00eb4bd4778b1b6cbac9276fce567`
+- Version: `0.1.34-android` (version code 36).
+- Latest release: https://github.com/itswill00/9router/releases/tag/android-v0.1.34
+  - asset: `9Router-0.1.34-release.apk` (11,081,042 bytes)
+  - SHA-256: `87e489c34a3c3afb61cb1ba706f4da7c6509f5538d99dae088b7086c49465494`
 - Recent commits:
+  - `5a6efea4 chore(android): release 0.1.34`
+  - `894a4c88 fix(i18n): translate interpolation templates`
+  - `4aecdd79 feat(providers): allow multiple keys on custom endpoints`
   - `c136efb9 chore(android): release 0.1.33`
   - `e9d98dad fix(i18n): escape the placeholder regex for Android ICU`
   - `d7129f7a chore(android): release 0.1.32`
   - `af629cb2 docs: record release 0.1.32`
-  - `fd1c7664 docs: record the localization pass`
   - `2a8c7c2d feat(i18n): add runtime language switching`
   - `a3d9ae20 fix(core): preserve native tool calls and stream usage`
   - `931d26ad fix(android): harden oauth, updates and background lifecycle`
@@ -73,6 +75,12 @@ APK per version.
   unsigned APKs and verifies SHA-256, and the UI no longer loses drafts,
   auto-scrolls while the user reads, or exposes stale test results. **Verified**
   by the fast check and new `TranslatorNativeTest` cases.
+- Custom endpoint keys (shipped in 0.1.34): `ProviderNode` keeps an ordered
+  `apiKeys` list plus the legacy `apiKey`, the add/edit dialogs manage the list,
+  ChatEngine synthesizes one connection per key (fill-first fallback and
+  round-robin cursor), and NodeProbe probes until a key succeeds. The node API
+  accepts `apiKeys` and reports `keyCount`. **Verified** by
+  `ProviderNodeKeysTest` and the fast check; not yet exercised on a phone.
 - Runtime localization (shipped in 0.1.32): `ui/I18n.kt` shadows Compose `Text`, loads
   one dictionary per locale from `assets/i18n/<tag>.json`, supports `{0}`
   templates, and switches immediately through Settings → Language. The picker
@@ -90,14 +98,14 @@ APK per version.
 ```
 
 Last result: `BUILD SUCCESSFUL` (unit tests + fatal lint). The release build
-for 0.1.33 also succeeded and the APK metadata was verified:
+for 0.1.34 also succeeded and the APK metadata was verified:
 
 ```text
-package: com.ninerouter.android  versionCode=35  versionName=0.1.33-android
+package: com.ninerouter.android  versionCode=36  versionName=0.1.34-android
 ```
 
-The hotfix release still contains 34 `assets/i18n/*.json` files and `I18nTest`
-stays green.
+`ProviderNodeKeysTest` covers legacy-key migration, deduplication and cursor
+reset. The release APK still contains 34 `assets/i18n/*.json` files.
 
 ## Stuck on
 
@@ -106,7 +114,7 @@ Nothing is blocked. There is no active bug or failing test.
 ## Next steps
 
 1. Read `AGENTS.md`; verify the tree is clean and `versionName` is
-   `0.1.33-android` before touching code.
+   `0.1.34-android` before touching code.
 2. Ask the user which backlog item to take. Do not invent a release or push
    without an explicit request.
 3. If a release is requested, follow the release procedure in `AGENTS.md`:
@@ -119,12 +127,15 @@ Nothing is blocked. There is no active bug or failing test.
    tablet layouts.
 5. Verify the language picker on a physical phone (system default, Indonesian,
    an RTL locale, and a CJK locale) before the next release.
-5. Known audit leftovers, deliberately not forced in this pass:
+6. Known audit leftovers, deliberately not forced in this pass:
    GitHub Claude models still use the Chat Completions endpoint; registry
    `upstreamModelId` rewrites are not exported; keyless/noAuth and
    provider-specific executors (opencode, qoder, kiro, cursor, commandcode,
    Ollama, web-cookie) still need either a port or a structured 501; per-account
-   quota cards are provider-wide; and the UI has not been exercised on a
+   quota cards are provider-wide; built-in providers can hold multiple keys but
+    the bulk `name|key` paste flow is not ported; custom embedding nodes and
+    provider-specific credential forms (Azure, Cloudflare, Bedrock, Ollama) are
+    absent from the mobile UI; and the UI has not been exercised on a
    physical device since these changes.
 
 ## Pitfalls — do not repeat
