@@ -1,10 +1,21 @@
-# 9Router Android 0.1.26
+# 9Router Android 0.1.27
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.25
+## What changed since 0.1.26
+
+- **Provider Topology card.** Usage now shows the native echo of the upstream
+  graph: 9Router in the centre, up to four connected providers around it, and
+  animated traffic for providers active in the last minute.
+- **Success Rate card.** The sixth overview slot is filled with a colour-coded
+  success rate (green at 98%, amber at 90%, red below) and a dash when there is
+  no traffic yet.
+- **Adaptive stat grid.** Six cards use two columns on phones and three on
+  wider screens, so the row never leaves a blank slot.
+
+## What changed in 0.1.26
 
 - **Honest project lineage.** About now names decolua as the founder of
   9Router and itswill00 as the author of the native Android port. A lineage
@@ -515,10 +526,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `9Router-0.1.26-release.apk` and sideload it:
+Download `9Router-0.1.27-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.1.26-release.apk
+adb install -r 9Router-0.1.27-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -580,7 +591,7 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.26-android` (version code 28)
+- Version: `0.1.27-android` (version code 29)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
