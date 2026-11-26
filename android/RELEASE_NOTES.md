@@ -1,10 +1,34 @@
-# 9Router Android 0.1.20
+# 9Router Android 0.1.21
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.19
+## What changed since 0.1.20
+
+- **Sidebar parity.** The drawer now matches the full 9Router navigation:
+  Endpoint & Key, Providers, Combo & Vision Adapter, Usage, Quota Tracker,
+  Token Saver, CLI Tools, plus a System group with Media Providers, Proxy
+  Pools, Skills, Console Log, Translator, 9Remote, 9English and Settings.
+  Basic Chat stays out of the drawer, as upstream, and opens from the top-bar
+  chat button.
+- **Media Providers accordion.** Embedding, Text to Image, Video, Text To
+  Speech, Speech To Text, System One and Web Fetch & Search each open a page
+  with the gateway route and the providers that advertise the capability.
+- **Quota Tracker.** Shows per-account availability, cooldown countdown, local
+  seven-day requests/tokens/cost, the last error, and an enable switch.
+- **Token Saver page.** RTK compression, Caveman, Ponytail and the custom
+  system prompt moved from Settings to their own page.
+- **CLI Tools.** Copy-ready snippets for Claude Code, Codex, Cline/Roo, Cursor,
+  Continue and OpenCode, with the API key masked in the UI.
+- **Skills and Translator.** Skill links can be copied or opened on GitHub, and
+  the Translator page previews request bodies between OpenAI, Claude, Gemini
+  and Responses formats.
+- **Console Log label.** The request log is now named Console Log to match the
+  dashboard.
+- **External shortcuts.** 9Remote (HOT) and 9English open in the browser.
+
+## What changed in 0.1.20
 
 - **Chat sessions persist.** Leaving Basic Chat and coming back no longer wipes
   the conversation. Sessions are saved in app state, restored on return and on
@@ -423,10 +447,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `9Router-0.1.20-release.apk` and sideload it:
+Download `9Router-0.1.21-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.1.20-release.apk
+adb install -r 9Router-0.1.21-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -472,7 +496,9 @@ This is a native slice, not full parity with the Node gateway:
   custom binary handshake (Cursor, Windsurf, Trae, Qoder) use the manual token
   paste path.
 - No cloud sync, TTS, STT, image, or video endpoints. `/v1/embeddings` is
-  supported for OpenAI-compatible upstreams.
+  supported for OpenAI-compatible upstreams. Media Providers pages list the
+  bundled registry and gateway routes, but only embeddings has a native route.
+- Proxy Pools is informational only; outbound proxy transport is not ported.
 - Translator coverage focuses on OpenAI, Claude, Gemini, and Responses.
   Thinking-block and tool-id edge cases are still being ported.
 - `/v1/responses/compact` is explicitly unsupported (`501 unsupported_operation`)
@@ -483,7 +509,7 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.20-android` (version code 22)
+- Version: `0.1.21-android` (version code 23)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
