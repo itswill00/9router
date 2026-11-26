@@ -3,8 +3,10 @@ package com.ninerouter.android.core
 import com.ninerouter.android.data.Catalog
 import com.ninerouter.android.data.Combo
 import com.ninerouter.android.data.Connection
+import com.ninerouter.android.data.Redact
 import com.ninerouter.android.data.Store
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
@@ -34,6 +36,11 @@ class ChatEngine(
     private val upstream: Upstream = Upstream(),
 ) {
     private val json = Json { ignoreUnknownKeys = true }
+
+    /** Dedicated pool: fusion blocks inside each panel call, so running panel
+     * children on Dispatchers.IO can deadlock when all 64 workers are blocked. */
+    private val fusionDispatcher = java.util.concurrent.Executors.newFixedThreadPool(16)
+        .asCoroutineDispatcher()
 
     sealed class Outcome {
         data class Json(val body: String, val member: String = "") : Outcome()
@@ -148,10 +155,10 @@ class ChatEngine(
 
             val excluded = HashSet<String>()
             var accountMisses = 0
-            while (true) {
+            while (excluded.size < 32) {
                 val conn = pickAccount(target.provider, excluded, accountStrategy)
                 if (conn == null) {
-                    if (accountMisses == 0) {
+                    if (lastError == null) {
                         lastError = Outcome.Error(404, "No active credentials for ${target.provider}")
                     }
                     break
@@ -167,7 +174,6 @@ class ChatEngine(
                 }
 
                 if (response.isSuccessful) {
-                    markSuccess(conn)
                     val cliEnvelope = isCliEnvelope(def ?: emptyDef(target.provider))
                     if (wantsStream) {
                         // Some OAuth upstreams ignore stream=true and return a normal
@@ -175,9 +181,15 @@ class ChatEngine(
                         val contentType = response.body?.contentType()?.toString().orEmpty()
                         if (contentType.contains("application/json", ignoreCase = true)) {
                             val raw = response.body?.string().orEmpty()
-                            val parsed = parseObject(raw) ?: JsonObject(emptyMap())
+                            val parsed = parseObject(raw)
+                            if (parsed == null) {
+                                lastError = Outcome.Error(502, "Upstream returned a non-JSON body")
+                                response.close()
+                                continue
+                            }
                             val upstreamJson = if (cliEnvelope) Translator.unwrapEnvelope(parsed) else parsed
                             val finalJson = Translator.responseBody(providerFormat, responseFormat, upstreamJson, requestedModel)
+                            markSuccess(conn)
                             trackUsage(
                                 provider = target.provider,
                                 model = member,
@@ -191,6 +203,7 @@ class ChatEngine(
                             )
                             return Outcome.Json(json.encodeToString(finalJson), member)
                         }
+                        markSuccess(conn)
                         val tracked = trackStream(
                             response = response,
                             provider = target.provider,
@@ -204,9 +217,15 @@ class ChatEngine(
                         return Outcome.Stream(tracked, providerFormat, responseFormat, requestedModel, cliEnvelope, member)
                     }
                     val raw = response.body?.string().orEmpty()
-                    val parsed = parseObject(raw) ?: JsonObject(emptyMap())
+                    val parsed = parseObject(raw)
+                    if (parsed == null) {
+                        lastError = Outcome.Error(502, "Upstream returned a non-JSON body")
+                        response.close()
+                        continue
+                    }
                     val upstreamJson = if (cliEnvelope) Translator.unwrapEnvelope(parsed) else parsed
                     val finalJson = Translator.responseBody(providerFormat, responseFormat, upstreamJson, requestedModel)
+                    markSuccess(conn)
                     trackUsage(
                         provider = target.provider,
                         model = member,
@@ -222,9 +241,9 @@ class ChatEngine(
                 }
 
                 val code = response.code
-                val errorText = response.body?.string().orEmpty().take(400)
+                val errorText = Redact.text(response.body?.string().orEmpty(), 400)
                 val decision = Fallback.check(code, errorText)
-                conn.lastError = errorText.take(160)
+                conn.lastError = Redact.text(errorText, 160)
                 if (decision.cooldownMs > 0L) {
                     conn.unavailableUntil = System.currentTimeMillis() + decision.cooldownMs
                 }
@@ -401,9 +420,9 @@ class ChatEngine(
         val judge = combo.judgeModel.ifBlank { panel.first() }
             .takeIf { it.isNotBlank() && it != combo.name } ?: panel.first()
 
-        val answers = runBlocking {
+        val answers = runBlocking(fusionDispatcher) {
             panel.map { member ->
-                async(Dispatchers.IO) {
+                async {
                     val panelBody = JsonObject(body.toMutableMap().apply {
                         remove("tools")
                         remove("tool_choice")
@@ -644,7 +663,9 @@ class ChatEngine(
             it.enabled && it.provider == provider && it.id !in excluded && it.unavailableUntil <= now
         }
         if (available.isEmpty()) {
-            val node = Store.state.nodes.firstOrNull { it.id == provider && provider !in excluded }
+            // A provider node is a synthetic account. Check the id we actually
+            // put in `excluded`, otherwise a failing node is picked forever.
+            val node = Store.state.nodes.firstOrNull { it.id == provider && "node:${it.id}" !in excluded }
             if (node != null) {
                 return Connection(
                     id = "node:${node.id}",
@@ -674,7 +695,8 @@ class ChatEngine(
 
     private fun markSuccess(conn: Connection) {
         conn.unavailableUntil = 0L
-        conn.consecutiveUseCount = 0
+        // Do not reset consecutiveUseCount here: the sticky round-robin counter
+        // is what makes the next request rotate after stickyLimit successes.
         Store.save()
     }
 
@@ -692,12 +714,16 @@ class ChatEngine(
         val usage = upstreamJson["usage"] as? JsonObject ?: upstreamJson["usageMetadata"] as? JsonObject
         // Upstream parity: when a provider omits usage metadata, estimate from
         // the wire bodies rather than recording a misleading zero.
-        val prompt = (
+        val promptBase = (
             int(usage?.get("prompt_tokens"))
                 ?: int(usage?.get("input_tokens"))
                 ?: int(usage?.get("promptTokenCount"))
                 ?: 0
-            ).takeIf { it > 0 } ?: estimateTokens(requestBody)
+            )
+        val cacheRead = int(usage?.get("cache_read_input_tokens")) ?: 0
+        val cacheCreate = int(usage?.get("cache_creation_input_tokens")) ?: 0
+        val prompt = (promptBase + cacheRead + cacheCreate)
+            .takeIf { it > 0 } ?: estimateTokens(requestBody)
         val completion = (
             int(usage?.get("completion_tokens"))
                 ?: int(usage?.get("output_tokens"))
@@ -705,12 +731,13 @@ class ChatEngine(
                 ?: 0
             ).takeIf { it > 0 } ?: estimateTokens(responseBody)
         val details = usage?.get("prompt_tokens_details") as? JsonObject
-        val cached = (
+        val cached = if (cacheRead > 0 || cacheCreate > 0) {
+            cacheRead
+        } else {
             int(details?.get("cached_tokens"))
-                ?: int(usage?.get("cache_read_input_tokens"))
                 ?: int(usage?.get("cachedContentTokenCount"))
                 ?: 0
-            ).coerceAtMost(prompt)
+        }.coerceAtMost(prompt)
         recordUsage(
             provider = provider,
             model = model,
@@ -754,7 +781,7 @@ class ChatEngine(
                 latencyMs = System.currentTimeMillis() - startedAt,
                 stream = true,
                 endpoint = endpoint,
-                error = error?.message?.take(300).orEmpty(),
+                error = Redact.text(error?.message.orEmpty(), 300),
             )
         }
         return response.newBuilder().body(tracked).build()
@@ -782,12 +809,20 @@ class ChatEngine(
             val inner = if (cliEnvelope) Translator.unwrapEnvelope(obj) else obj
 
             (inner["usage"] as? JsonObject)?.let { usage ->
-                prompt = maxOf(prompt, int(usage["prompt_tokens"]) ?: int(usage["input_tokens"]) ?: 0)
-                completion = maxOf(completion, int(usage["completion_tokens"]) ?: int(usage["output_tokens"]) ?: 0)
                 val details = usage["prompt_tokens_details"] as? JsonObject
+                prompt = maxOf(
+                    prompt,
+                    (int(usage["prompt_tokens"]) ?: int(usage["input_tokens"]) ?: 0) +
+                        (int(usage["cache_read_input_tokens"]) ?: 0) +
+                        (int(usage["cache_creation_input_tokens"]) ?: 0),
+                )
+                completion = maxOf(completion, int(usage["completion_tokens"]) ?: int(usage["output_tokens"]) ?: 0)
                 cached = maxOf(
                     cached,
-                    int(details?.get("cached_tokens")) ?: int(usage["cache_read_input_tokens"]) ?: 0,
+                    int(details?.get("cached_tokens"))
+                        ?: int(usage["cache_read_input_tokens"])
+                        ?: int(usage["cachedContentTokenCount"])
+                        ?: 0,
                 )
             }
 
@@ -795,7 +830,12 @@ class ChatEngine(
             when (text(inner["type"], "")) {
                 "message_start" -> {
                     val usage = (inner["message"] as? JsonObject)?.get("usage") as? JsonObject
-                    prompt = maxOf(prompt, int(usage?.get("input_tokens")) ?: 0)
+                    prompt = maxOf(
+                        prompt,
+                        (int(usage?.get("input_tokens")) ?: 0) +
+                            (int(usage?.get("cache_read_input_tokens")) ?: 0) +
+                            (int(usage?.get("cache_creation_input_tokens")) ?: 0),
+                    )
                     cached = maxOf(cached, int(usage?.get("cache_read_input_tokens")) ?: 0)
                 }
                 "message_delta" -> {
@@ -884,9 +924,9 @@ class ChatEngine(
             latencyMs = System.currentTimeMillis() - startedAt,
             stream = false,
             endpoint = endpoint,
-            error = message.take(300),
+            error = Redact.text(message, 300),
         )
-        return Outcome.Error(status, message)
+        return Outcome.Error(status, Redact.text(message, 400))
     }
 
     private fun estimateTokens(text: String): Int = (text.length / 4).coerceAtLeast(1)
@@ -914,6 +954,9 @@ private class StreamUsageBody(
 ) : ResponseBody() {
     private val finished = AtomicBoolean(false)
     private val capture = Buffer()
+    private val tail = Buffer()
+    private var truncated = false
+    private var eof = false
     private var buffered: BufferedSource? = null
 
     override fun contentType() = delegate.contentType()
@@ -931,11 +974,18 @@ private class StreamUsageBody(
                     throw t
                 }
                 if (read == -1L) {
+                    eof = true
                     finish(null)
                 } else if (read > 0) {
                     synchronized(this@StreamUsageBody) {
                         val room = MAX_CAPTURE - capture.size
                         if (room > 0) sink.copyTo(capture, sink.size - read, minOf(read, room))
+                        if (read > room) truncated = true
+                        // Usage usually arrives in the final event; keep a bounded
+                        // tail so a long answer cannot hide the terminal counts.
+                        val tailBytes = minOf(read, MAX_TAIL)
+                        sink.copyTo(tail, sink.size - tailBytes, tailBytes)
+                        if (tail.size > MAX_TAIL) tail.skip(tail.size - MAX_TAIL)
                     }
                 }
                 return read
@@ -948,19 +998,24 @@ private class StreamUsageBody(
         try {
             delegate.close()
         } finally {
-            finish(null)
+            // A close before EOF means the client cancelled or the upstream
+            // truncated the answer; do not record that as a successful stream.
+            finish(if (eof) null else java.io.IOException("stream closed before completion"))
         }
     }
 
     private fun finish(error: Throwable?) {
         val raw = synchronized(this) {
             if (!finished.compareAndSet(false, true)) return
-            try { capture.readUtf8() } catch (_: Exception) { "" }
+            try {
+                if (truncated) tail.readUtf8() else capture.readUtf8()
+            } catch (_: Exception) { "" }
         }
         onDone(raw, error)
     }
 
     private companion object {
         const val MAX_CAPTURE = 512L * 1024L
+        const val MAX_TAIL = 64L * 1024L
     }
 }

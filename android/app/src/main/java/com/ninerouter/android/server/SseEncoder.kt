@@ -55,7 +55,11 @@ private class OpenAiSseEncoder(private val model: String) : SseEncoder {
     override fun accept(chunk: JsonObject): List<String> = listOf("data: " + encode(chunk))
 
     override fun finish(finishReason: String?, sawToolCalls: Boolean, usage: JsonObject?): List<String> = listOf(
-        Translator.terminalSseChunk(model, finishReason ?: if (sawToolCalls) "tool_calls" else "stop"),
+        Translator.terminalSseChunk(
+            model,
+            finishReason ?: if (sawToolCalls) "tool_calls" else "stop",
+            usage,
+        ),
         "data: [DONE]",
     )
 }
@@ -184,6 +188,8 @@ private class AnthropicSseEncoder(private val model: String) : SseEncoder {
             put("usage", buildJsonObject {
                 put("input_tokens", usage?.get("prompt_tokens")?.let { num(it) } ?: 0L)
                 put("output_tokens", usage?.get("completion_tokens")?.let { num(it) } ?: 0L)
+                val cached = usage?.get("cached_tokens")?.let { num(it) } ?: 0L
+                if (cached > 0L) put("cache_read_input_tokens", cached)
             })
         })
         out += frame("message_stop", buildJsonObject { put("type", "message_stop") })
@@ -271,6 +277,11 @@ private class ResponsesSseEncoder(private val model: String) : SseEncoder {
     private var completedSent = false
     private var inThinking = false
 
+    private companion object {
+        const val MESSAGE_INDEX = 1
+        const val TOOL_INDEX_BASE = 2
+    }
+
     override fun accept(chunk: JsonObject): List<String> {
         val choices = chunk["choices"] as? JsonArray
         if (choices == null || choices.isEmpty()) return emptyList()
@@ -310,14 +321,14 @@ private class ResponsesSseEncoder(private val model: String) : SseEncoder {
             }
             if (content.isNotEmpty()) {
                 closeReasoning(out)
-                emitTextContent(out, idx, content)
+                emitTextContent(out, MESSAGE_INDEX, content)
             }
         }
 
         val toolCalls = delta["tool_calls"] as? JsonArray
         if (toolCalls != null && toolCalls.isNotEmpty()) {
             closeReasoning(out)
-            closeMessage(out, idx)
+            closeMessage(out, MESSAGE_INDEX)
             toolCalls.forEach { raw -> (raw as? JsonObject)?.let { emitToolCall(out, it) } }
         }
 
@@ -533,6 +544,7 @@ private class ResponsesSseEncoder(private val model: String) : SseEncoder {
 
     private fun emitToolCall(out: MutableList<String>, tc: JsonObject) {
         val tcIdx = num(tc["index"]).toInt()
+        val outputIndex = TOOL_INDEX_BASE + tcIdx
         text(tc["id"])?.let { funcCallIds[tcIdx] = it }
         text((tc["function"] as? JsonObject)?.get("name"))?.let { funcNames[tcIdx] = it }
         val callId = funcCallIds[tcIdx]
@@ -540,7 +552,7 @@ private class ResponsesSseEncoder(private val model: String) : SseEncoder {
         if (funcItemAdded[tcIdx] != true && callId != null && name != null) {
             funcItemAdded[tcIdx] = true
             emit(out, "response.output_item.added") {
-                put("output_index", tcIdx)
+                put("output_index", outputIndex)
                 put("item", buildJsonObject {
                     put("id", "fc_$callId")
                     put("type", "function_call")
@@ -555,7 +567,7 @@ private class ResponsesSseEncoder(private val model: String) : SseEncoder {
             if (funcItemAdded[tcIdx] == true && callId != null) {
                 emit(out, "response.function_call_arguments.delta") {
                     put("item_id", "fc_$callId")
-                    put("output_index", tcIdx)
+                    put("output_index", outputIndex)
                     put("delta", args)
                 }
             }
@@ -567,10 +579,11 @@ private class ResponsesSseEncoder(private val model: String) : SseEncoder {
         val callId = funcCallIds[idx] ?: return
         if (funcItemDone[idx] == true) return
         funcItemDone[idx] = true
+        val outputIndex = TOOL_INDEX_BASE + idx
         val args = funcArgsBuf[idx]?.toString()?.takeIf { it.isNotEmpty() } ?: "{}"
         emit(out, "response.function_call_arguments.done") {
             put("item_id", "fc_$callId")
-            put("output_index", idx)
+            put("output_index", outputIndex)
             put("arguments", args)
         }
         val item = buildJsonObject {
@@ -581,10 +594,10 @@ private class ResponsesSseEncoder(private val model: String) : SseEncoder {
             put("name", funcNames[idx] ?: "")
         }
         emit(out, "response.output_item.done") {
-            put("output_index", idx)
+            put("output_index", outputIndex)
             put("item", item)
         }
-        completedItems[idx] = item
+        completedItems[outputIndex] = item
     }
 
     private fun emit(out: MutableList<String>, type: String, body: JsonObjectBuilder.() -> Unit) {

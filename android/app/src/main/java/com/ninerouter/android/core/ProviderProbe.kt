@@ -62,12 +62,16 @@ object ProviderProbe {
                 if (response.isSuccessful) {
                     Result(true, elapsed, "OK")
                 } else {
-                    val detail = response.body?.string().orEmpty().take(220)
+                    val detail = com.ninerouter.android.data.Redact.text(response.body?.string().orEmpty(), 220)
                     Result(false, elapsed, "HTTP ${response.code}${if (detail.isBlank()) "" else ": $detail"}")
                 }
             }
         } catch (e: Exception) {
-            Result(false, System.currentTimeMillis() - started, e.message?.take(220) ?: "Request failed")
+            Result(
+                false,
+                System.currentTimeMillis() - started,
+                com.ninerouter.android.data.Redact.text(e.message.orEmpty(), 220).ifBlank { "Request failed" },
+            )
         }
     }
 }

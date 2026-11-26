@@ -28,10 +28,17 @@ object Pricing {
 
     fun cost(model: String, prompt: Int, completion: Int, cached: Int = 0): Double {
         val bare = model.substringAfterLast('/')
-        // Thinking/effort suffixes share the base model's rate.
-        val rate = rates[model] ?: rates[bare]
-            ?: rates.entries.firstOrNull { (k, _) -> bare.startsWith(k) }?.value
-            ?: return 0.0
+        // Thinking/effort suffixes share the base model's rate. Pick the
+        // longest real prefix and require a token boundary, otherwise a dated
+        // id can match an unrelated shorter entry.
+        val prefixRate = rates.entries
+            .filter { (key, _) ->
+                key.isNotBlank() && bare.startsWith(key) &&
+                    (bare.length == key.length || bare[key.length] in "-._:/")
+            }
+            .maxByOrNull { it.key.length }
+            ?.value
+        val rate = rates[model] ?: rates[bare] ?: prefixRate ?: return 0.0
         val nonCached = (prompt - cached).coerceAtLeast(0)
         return nonCached * rate.input / 1_000_000.0 +
             cached * (rate.cached.takeIf { it > 0 } ?: rate.input) / 1_000_000.0 +

@@ -43,11 +43,23 @@ open class Upstream(
         var response = client.newCall(request).execute()
 
         if ((response.code == 401 || response.code == 403) && refreshable(def, conn)) {
-            val fresh = refresh(def, conn)
-            if (fresh != null) {
-                conn.accessToken = fresh.first
-                if (fresh.second.isNotBlank()) conn.refreshToken = fresh.second
-                conn.expiresAt = System.currentTimeMillis() + 3_600_000L
+            var refreshed = false
+            synchronized(conn) {
+                // Another request may have refreshed while this one waited.
+                if (conn.expiresAt > System.currentTimeMillis() + 5_000L) {
+                    refreshed = true
+                } else {
+                    val fresh = refresh(def, conn)
+                    if (fresh != null) {
+                        conn.accessToken = fresh.first
+                        if (fresh.second.isNotBlank()) conn.refreshToken = fresh.second
+                        conn.expiresAt = System.currentTimeMillis() + 3_600_000L
+                        com.ninerouter.android.data.Store.save()
+                        refreshed = true
+                    }
+                }
+            }
+            if (refreshed) {
                 response.close()
                 request = requestFor(url, def, conn, wire.toString(), wantsStream)
                 response = client.newCall(request).execute()
@@ -71,10 +83,14 @@ open class Upstream(
         if (conn.accessToken.isBlank() || conn.expiresAt <= 0L) return false
         if (conn.expiresAt > System.currentTimeMillis() + skewMs) return false
         if (!refreshable(def, conn)) return false
-        val fresh = refresh(def, conn) ?: return false
-        conn.accessToken = fresh.first
-        if (fresh.second.isNotBlank()) conn.refreshToken = fresh.second
-        conn.expiresAt = System.currentTimeMillis() + 3_600_000L
+        synchronized(conn) {
+            if (conn.expiresAt > System.currentTimeMillis() + skewMs) return false
+            val fresh = refresh(def, conn) ?: return false
+            conn.accessToken = fresh.first
+            if (fresh.second.isNotBlank()) conn.refreshToken = fresh.second
+            conn.expiresAt = System.currentTimeMillis() + 3_600_000L
+            com.ninerouter.android.data.Store.save()
+        }
         return true
     }
 
@@ -258,12 +274,31 @@ open class Upstream(
             builder.header("session_id", java.util.UUID.randomUUID().toString())
             if (conn.accountId.isNotBlank()) builder.header("ChatGPT-Account-ID", conn.accountId)
         }
+        if (def.id == "codex") {
+            builder.header("version", "0.167.1")
+            builder.header("User-Agent", "codex_cli_rs/0.167.1")
+            if (def.models.any { it.contains("lite", ignoreCase = true) }) {
+                builder.header("x-openai-internal-codex-responses-lite", "true")
+            }
+        }
         if (def.id == "kimi") {
             builder.header("X-Msh-Platform", "9router")
             builder.header("X-Msh-Version", com.ninerouter.android.AppInfo.VERSION_NAME)
             builder.header("X-Msh-Device-Name", android.os.Build.MODEL ?: "android")
             builder.header("X-Msh-Device-Model", "Android ${android.os.Build.VERSION.RELEASE}")
             if (conn.deviceId.isNotBlank()) builder.header("X-Msh-Device-Id", conn.deviceId)
+        }
+        if (def.id.startsWith("codebuddy")) {
+            builder.header("X-Request-ID", java.util.UUID.randomUUID().toString())
+            builder.header("X-Conversation-ID", java.util.UUID.randomUUID().toString())
+            builder.header("X-Conversation-Request-ID", java.util.UUID.randomUUID().toString())
+            builder.header("X-Conversation-Message-ID", java.util.UUID.randomUUID().toString())
+        }
+        if (def.id == "kimi" || def.id.startsWith("minimax") || def.id == "glm") {
+            builder.header(
+                "Anthropic-Beta",
+                "claude-code-20250219,interleaved-thinking-2025-05-14",
+            )
         }
         if (def.id == "minimax-code" || def.id == "minimax-code-global") {
             builder.header("x-api-key", "sk-xxx")
@@ -286,7 +321,7 @@ open class Upstream(
             // Claude Code is special: OAuth tokens need the CLI identity and beta
             // headers. Other format=claude providers (Kimi, MiniMax, GLM) use
             // their registry-declared header instead.
-            def.format == Formats.CLAUDE -> {
+            Formats.normalize(def.format) == Formats.CLAUDE -> {
                 if (oauth && def.id == "claude") {
                     builder.header("Authorization", "Bearer ${conn.accessToken}")
                     builder.header(
@@ -297,9 +332,10 @@ open class Upstream(
                     builder.header("user-agent", "claude-cli/2.0.0 (external, cli)")
                     builder.header("x-app", "cli")
                 } else if (token.isNotBlank()) {
-                    if (def.authHeader.equals("Authorization", true) ||
-                        def.authScheme.equals("bearer", true)
-                    ) {
+                    // Anthropic and Anthropic-compatible endpoints take the
+                    // key in x-api-key; only an explicit Authorization header
+                    // (for example MiniMax Code) uses Bearer.
+                    if (def.authHeader.equals("Authorization", true)) {
                         builder.header("Authorization", "Bearer $token")
                     } else {
                         builder.header("x-api-key", token)
@@ -312,7 +348,7 @@ open class Upstream(
                 if (token.isNotBlank()) builder.header("x-goog-api-key", token)
             token.isNotBlank() -> builder.header("Authorization", "Bearer $token")
         }
-        if (def.format == Formats.CLAUDE) {
+        if (Formats.normalize(def.format) == Formats.CLAUDE) {
             builder.header("anthropic-version", "2023-06-01")
         }
         return builder.post(payload.toRequestBody(mediaJson)).build()
@@ -327,17 +363,45 @@ open class Upstream(
             return "$root:$action"
         }
         var base = def.baseUrl.ifBlank {
-            when (def.format) {
-                Formats.CLAUDE -> "https://api.anthropic.com/v1/messages"
-                Formats.GEMINI -> "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent"
-                else -> "https://api.openai.com/v1/chat/completions"
+            when (def.id) {
+                "openai" -> "https://api.openai.com/v1/chat/completions"
+                "anthropic", "claude" -> "https://api.anthropic.com/v1/messages"
+                "gemini" -> "https://generativelanguage.googleapis.com/v1beta/models"
+                else -> throw IllegalArgumentException(
+                    "${def.name.ifBlank { def.id }} has no endpoint configured for the native gateway.",
+                )
             }
         }
-        if (def.format == Formats.GEMINI && wantsStream) {
-            base = base.replace(":generateContent", ":streamGenerateContent")
-            if (!base.contains("alt=sse")) base += (if (base.contains("?")) "&" else "?") + "alt=sse"
+        if (base.contains("{") || base.contains("}")) {
+            throw IllegalArgumentException(
+                "${def.name.ifBlank { def.id }} needs provider-specific account settings that this build does not support.",
+            )
         }
-        if (def.urlSuffix.isNotBlank() && !base.contains("?")) base += def.urlSuffix
+        if (Formats.normalize(def.format) == Formats.GEMINI) {
+            val root = base.trimEnd('/')
+            val action = if (wantsStream) "streamGenerateContent?alt=sse" else "generateContent"
+            val hasAction = root.contains(":generateContent") || root.contains(":streamGenerateContent")
+            base = if (hasAction) {
+                if (wantsStream) {
+                    root.replace(":generateContent", ":streamGenerateContent").let {
+                        if (it.contains("alt=sse")) it else it + (if (it.contains("?")) "&" else "?") + "alt=sse"
+                    }
+                } else {
+                    root.replace(":streamGenerateContent?alt=sse", ":generateContent")
+                        .replace(":streamGenerateContent", ":generateContent")
+                }
+            } else {
+                val modelsRoot = when {
+                    root.endsWith("/models") -> root
+                    root.contains("/models/") -> root.substringBefore("/models/") + "/models"
+                    else -> "$root/models"
+                }
+                "$modelsRoot/$model:$action"
+            }
+        }
+        if (def.urlSuffix.isNotBlank()) {
+            base += (if (base.contains("?")) "&" else "") + def.urlSuffix
+        }
         return base
     }
 }

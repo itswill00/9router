@@ -7,8 +7,13 @@ object ModelResolver {
     data class Target(val provider: String, val model: String)
 
     fun resolve(modelStr: String): Target? {
-        val trimmed = modelStr.trim()
-        Store.state.aliases[trimmed]?.let { return resolve(it) }
+        var trimmed = modelStr.trim()
+        val seen = HashSet<String>()
+        while (true) {
+            if (!seen.add(trimmed) || seen.size > 32) return null // alias cycle
+            val next = Store.state.aliases[trimmed] ?: break
+            trimmed = next.trim()
+        }
         if (trimmed.indexOf('/') >= 0) {
             val cut = trimmed.indexOf('/')
             val prefix = trimmed.substring(0, cut)

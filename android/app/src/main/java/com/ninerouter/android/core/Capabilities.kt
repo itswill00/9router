@@ -10,13 +10,14 @@ object Capabilities {
     fun supports(modelStr: String, required: Set<String>): Boolean {
         if (required.isEmpty()) return true
         val target = ModelResolver.resolve(modelStr) ?: return false
-        val def = Catalog.find(target.provider) ?: return true
+        val def = Catalog.find(target.provider)
+            ?: return com.ninerouter.android.data.Store.state.nodes.any { it.id == target.provider }
         val declared = def.modelCapabilities[target.model].orEmpty()
         val lowered = declared.map { it.lowercase() }
         val model = target.model.lowercase()
         val inferred = mutableSetOf<String>()
         if (lowered.any { it.contains("vision") } ||
-            Regex("gpt-4o|gpt-5|gemini|claude-(3|4|5)|qwen-vl|llava|pixtral").containsMatchIn(model)
+            Regex("gpt-4o|gpt-5|gemini|claude-|qwen-vl|llava|pixtral|vision|omni").containsMatchIn(model)
         ) inferred.add("vision")
         if (lowered.any { it.contains("audio") } || Regex("audio|whisper|tts").containsMatchIn(model)) {
             inferred.add("audio")

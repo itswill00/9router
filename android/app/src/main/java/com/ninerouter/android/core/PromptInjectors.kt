@@ -44,11 +44,18 @@ object PromptInjectors {
     fun inject(body: JsonObject, format: String, text: String): JsonObject {
         if (text.isBlank()) return body
         return when (format) {
-            Formats.OPENAI, Formats.OPENAI_RESPONSES -> injectOpenAi(body, text)
+            Formats.OPENAI -> injectOpenAi(body, text)
+            Formats.OPENAI_RESPONSES -> injectResponses(body, text)
             Formats.CLAUDE -> injectClaude(body, text)
             Formats.GEMINI -> injectGemini(body, text)
             else -> body // binary/protobuf envelopes: never guess their system shape
         }
+    }
+
+    private fun injectResponses(body: JsonObject, text: String): JsonObject {
+        val existing = (body["instructions"] as? JsonPrimitive)?.content.orEmpty()
+        val merged = if (existing.isBlank()) text else existing + "\n\n" + text
+        return JsonObject(body.toMap() + ("instructions" to JsonPrimitive(merged)))
     }
 
     private fun injectOpenAi(body: JsonObject, text: String): JsonObject {

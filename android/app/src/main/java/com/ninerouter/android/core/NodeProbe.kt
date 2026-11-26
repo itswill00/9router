@@ -86,12 +86,17 @@ object NodeProbe {
             client.newCall(request).execute().use { response ->
                 val body = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
-                    ModelsResult(emptyList(), "HTTP ${response.code}: ${body.take(180)}")
+                    ModelsResult(
+                        emptyList(),
+                        "HTTP ${response.code}: ${com.ninerouter.android.data.Redact.text(body, 180)}",
+                    )
                 } else {
                     ModelsResult(parseModelIds(body))
                 }
             }
-        }.getOrElse { ModelsResult(emptyList(), it.message ?: "Could not fetch models") }
+        }.getOrElse {
+            ModelsResult(emptyList(), com.ninerouter.android.data.Redact.text(it.message.orEmpty(), 220))
+        }
     }
 
     suspend fun testModel(node: ProviderNode, model: String): TestResult = withContext(Dispatchers.IO) {
@@ -135,11 +140,19 @@ object NodeProbe {
                     val summary = replySummary(body)
                     TestResult(true, if (summary.isBlank()) "Model responded" else summary, elapsed)
                 } else {
-                    TestResult(false, "HTTP ${response.code}: ${body.take(220)}", elapsed)
+                    TestResult(
+                        false,
+                        "HTTP ${response.code}: ${com.ninerouter.android.data.Redact.text(body, 220)}",
+                        elapsed,
+                    )
                 }
             }
         }.getOrElse {
-            TestResult(false, it.message ?: "Request failed", System.currentTimeMillis() - started)
+            TestResult(
+                false,
+                com.ninerouter.android.data.Redact.text(it.message.orEmpty(), 220).ifBlank { "Request failed" },
+                System.currentTimeMillis() - started,
+            )
         }
     }
 

@@ -34,7 +34,7 @@ internal object SseWriter {
         while (true) {
             val line = source?.readUtf8Line() ?: break
             Translator.sseFinishReason(result.targetFormat, line, result.cliEnvelope)?.let { finishReason = it }
-            Translator.sseUsage(result.targetFormat, line, result.cliEnvelope)?.let { usage = it }
+            usage = Translator.mergeUsage(usage, Translator.sseUsage(result.targetFormat, line, result.cliEnvelope))
             val converted = Translator.sseDelta(result.targetFormat, line, result.model, result.cliEnvelope)
                 ?: continue
             if (converted.contains("[DONE]")) continue
