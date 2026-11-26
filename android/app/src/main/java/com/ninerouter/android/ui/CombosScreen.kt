@@ -96,7 +96,7 @@ private fun policyLabel(combo: Combo): String = when (combo.smartPolicy) {
 
 @Composable
 fun CombosScreen(refresh: () -> Unit) {
-    val revision = storeRevision()
+    val revision by storeRevision()
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     var query by remember { mutableStateOf("") }
@@ -876,7 +876,7 @@ private fun modelOption(value: String): ModelOption {
 }
 
 @Composable
-private fun ModelPickerDialog(
+internal fun ModelPickerDialog(
     title: String,
     models: List<String>,
     selected: List<String>,

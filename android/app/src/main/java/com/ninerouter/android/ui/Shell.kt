@@ -65,9 +65,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -75,6 +77,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.sp
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
@@ -163,7 +166,7 @@ private fun Screen.mediaKind(): MediaKind? = when (this) {
 
 @Composable
 fun AppShell(refreshTrigger: () -> Unit) {
-    val revision = storeRevision()
+    val revision by storeRevision()
     var screenName by rememberSaveable { mutableStateOf(Screen.Endpoint.name) }
     val screen = Screen.from(screenName)
     var showChat by rememberSaveable { mutableStateOf(false) }
@@ -251,6 +254,7 @@ fun AppShell(refreshTrigger: () -> Unit) {
                 Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .clipToBounds()
                     .navigationBarsPadding()
                     .imePadding(),
             ) {
@@ -639,12 +643,13 @@ private fun TopBar(
     updateLabel: String?,
     onUpdateClick: () -> Unit,
 ) {
-    Surface(color = NineRouterColors.BgAlt) {
+    val focusManager = LocalFocusManager.current
+    Surface(modifier = Modifier.zIndex(1f), color = NineRouterColors.BgAlt) {
         Row(
             Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
+                .padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             AnimatedVisibility(
@@ -652,13 +657,26 @@ private fun TopBar(
                 enter = fadeIn(tween(180)) + scaleIn(tween(180), initialScale = 0.8f),
                 exit = fadeOut(tween(120)) + scaleOut(tween(120), targetScale = 0.8f),
             ) {
-                IconButton(onClick = onMenu, modifier = Modifier.size(48.dp)) {
-                    Icon(
-                        Icons.Default.Menu,
-                        contentDescription = "Open navigation",
-                        tint = NineRouterColors.TextMuted,
-                        modifier = Modifier.size(21.dp),
-                    )
+                IconButton(
+                    onClick = {
+                        focusManager.clearFocus(force = true)
+                        onMenu()
+                    },
+                    modifier = Modifier.size(56.dp),
+                ) {
+                    Box(
+                        Modifier
+                            .size(40.dp)
+                            .background(NineRouterColors.Surface2.copy(alpha = 0.7f), androidx.compose.foundation.shape.CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Default.Menu,
+                            contentDescription = "Open navigation",
+                            tint = NineRouterColors.TextMain,
+                            modifier = Modifier.size(23.dp),
+                        )
+                    }
                 }
             }
             AnimatedVisibility(

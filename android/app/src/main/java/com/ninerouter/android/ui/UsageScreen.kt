@@ -87,7 +87,7 @@ private data class ModelAgg(
 
 @Composable
 fun UsageScreen(refresh: () -> Unit) {
-    val revision = liveRevision(1_500L)
+    val revision by liveRevision(1_500L)
     var tab by remember { mutableStateOf("Overview") }
     var period by remember { mutableStateOf("Today") }
     var chartMode by remember { mutableStateOf("Tokens") }

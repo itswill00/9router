@@ -132,7 +132,7 @@ import java.util.UUID
 
 @Composable
 fun EndpointScreen(refresh: () -> Unit) {
-    val revision = storeRevision()
+    val revision by storeRevision()
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
@@ -570,7 +570,7 @@ fun ChatScreen() {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val running by GatewayState.running.collectAsState()
-    val revision = storeRevision()
+    val revision by storeRevision()
 
     val options = remember(revision) {
         buildList {
@@ -579,6 +579,7 @@ fun ChatScreen() {
                 Catalog.find(c.provider)?.models?.forEach { add("${c.provider}/$it") }
             }
             Store.state.nodes.forEach { n -> n.models.forEach { add("${n.prefix}/$it") } }
+            Store.state.aliases.keys.forEach { add(it) }
         }.distinct()
     }
 
@@ -1078,15 +1079,19 @@ fun ChatScreen() {
 
     if (showPicker) {
         ModelPickerDialog(
-            options = options,
-            selected = model,
-            onPick = {
-                model = it
-                currentSession()?.model = it
-                Store.save()
+            title = "Choose a model",
+            models = options,
+            selected = listOfNotNull(model.takeIf { it.isNotBlank() }),
+            multi = false,
+            onDismiss = { showPicker = false },
+            onConfirm = { picked ->
+                picked.firstOrNull()?.let {
+                    model = it
+                    currentSession()?.model = it
+                    Store.save()
+                }
                 showPicker = false
             },
-            onDismiss = { showPicker = false },
         )
     }
 
@@ -1111,7 +1116,7 @@ private fun ChatSessionsDialog(
     onDelete: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val now = liveNow(30_000L)
+    val now by liveNow(30_000L)
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = NineRouterColors.Surface,
@@ -1506,99 +1511,6 @@ private fun MessageBubble(
             }
         }
     }
-}
-
-@Composable
-private fun ModelPickerDialog(
-    options: List<String>,
-    selected: String,
-    onPick: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var query by remember { mutableStateOf("") }
-    val filtered = remember(query, options) {
-        if (query.isBlank()) options else options.filter { it.contains(query, ignoreCase = true) }
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = NineRouterColors.Surface,
-        title = { Text("Choose a model", color = NineRouterColors.TextMain) },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    placeholder = { Text("Search models and combos") },
-                    singleLine = true,
-                    shape = NineRouterShapes.small,
-                    leadingIcon = {
-                        Icon(
-                            Icons.Default.Search,
-                            contentDescription = null,
-                            tint = NineRouterColors.TextSubtle,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    },
-                    trailingIcon = {
-                        AnimatedVisibility(visible = query.isNotEmpty()) {
-                            IconButton(onClick = { query = "" }, modifier = Modifier.size(32.dp)) {
-                                Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = "Clear search",
-                                    tint = NineRouterColors.TextSubtle,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(10.dp))
-                if (filtered.isEmpty()) {
-                    EmptyState(
-                        title = "Nothing to chat with",
-                        body = "Add a connection or combo on the Providers tab first.",
-                    )
-                } else {
-                    LazyColumn(Modifier.heightIn(max = 360.dp)) {
-                        items(filtered, key = { it }) { option ->
-                            val isSelected = option == selected
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .animateItem()
-                                    .clickable { onPick(option) }
-                                    .padding(vertical = 9.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                StatusDot(
-                                    if (isSelected) NineRouterColors.BrandOrange else NineRouterColors.TextSubtle,
-                                    size = 6.dp,
-                                )
-                                Spacer(Modifier.width(9.dp))
-                                MonoText(
-                                    option,
-                                    color = if (isSelected) NineRouterColors.TextMain else NineRouterColors.TextMuted,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                if (isSelected) {
-                                    Text(
-                                        "current",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = NineRouterColors.BrandOrange,
-                                    )
-                                }
-                            }
-                            DividerLine()
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Done", color = NineRouterColors.BrandOrange) }
-        },
-    )
 }
 
 private fun seconds(ms: Long): String = String.format(java.util.Locale.US, "%.1f", ms / 1000f)

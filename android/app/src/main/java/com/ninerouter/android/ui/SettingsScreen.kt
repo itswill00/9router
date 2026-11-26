@@ -65,7 +65,7 @@ fun SettingsScreen(
     onOpenTokenSaver: () -> Unit,
     onOpenCombos: () -> Unit,
 ) {
-    val revision = storeRevision()
+    val revision by storeRevision()
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val s = Store.state.settings

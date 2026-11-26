@@ -59,7 +59,7 @@ private fun filterLogs(all: List<UsageEntry>, filter: String): List<UsageEntry> 
 
 @Composable
 fun LogsScreen() {
-    val revision = liveRevision(2_000L)
+    val revision by liveRevision(2_000L)
     var filter by remember { mutableStateOf("All") }
     var selected by remember { mutableStateOf<UsageEntry?>(null) }
     var confirmClear by remember { mutableStateOf(false) }
