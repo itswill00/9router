@@ -29,6 +29,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -38,10 +39,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ninerouter.android.AppInfo
 import com.ninerouter.android.R
@@ -69,8 +68,9 @@ fun AboutScreen() {
         ) {
             item { AboutHero() }
             item {
-                DeveloperCard(
-                    onGitHub = { open("https://github.com/itswill00") },
+                LineageCard(
+                    onUpstream = { open("https://github.com/decolua/9router") },
+                    onPort = { open(AppInfo.GITHUB_URL) },
                 )
             }
             item { AboutHeading("What the app does", "A gateway, not another chat client") }
@@ -79,13 +79,15 @@ fun AboutScreen() {
             item { StoryCard() }
             item { AboutHeading("Under the hood", "The small stack behind the app") }
             item { TechCard() }
-            item { AboutHeading("Project", "Source, releases and issues") }
+            item { AboutHeading("Credits & license", "The people and terms behind the project") }
             item {
-                LinksCard(
+                CreditsCard(
+                    onContributors = { open("https://github.com/decolua/9router/graphs/contributors") },
+                    onLicense = { open("https://github.com/decolua/9router/blob/master/LICENSE") },
                     onSource = { open(AppInfo.GITHUB_URL) },
                     onReleases = { open(AppInfo.RELEASES_URL) },
                     onIssues = { open("${AppInfo.GITHUB_URL}/issues") },
-                    onLicense = { open("${AppInfo.GITHUB_URL}/blob/master/LICENSE") },
+                    onProfile = { open("https://github.com/itswill00") },
                 )
             }
             item { AboutFooter() }
@@ -138,21 +140,21 @@ private fun AboutHero() {
             }
             Spacer(Modifier.height(18.dp))
             Text(
-                "One local endpoint for the AI providers you already use.",
+                "A native Android port of 9Router.",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.SemiBold,
                 color = NineRouterColors.TextMain,
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                "A native Android build of the 9Router gateway. It routes OpenAI, Claude, Gemini and Responses traffic across your connected providers, with combos, fallback, vision and chat on the device.",
+                "The open-source gateway by decolua and contributors now runs on your phone. This app rebuilds the runtime in Kotlin and Compose: provider routing, combos, vision and chat without Node, Termux or root.",
                 style = MaterialTheme.typography.bodySmall,
                 color = NineRouterColors.TextMuted,
             )
             Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Pill("Kotlin")
-                Pill("Loopback")
+                Pill("Open source")
+                Pill("MIT")
                 Pill("No Node.js")
             }
             Spacer(Modifier.height(14.dp))
@@ -186,68 +188,172 @@ private fun AboutMetric(value: String, label: String, modifier: Modifier = Modif
 }
 
 @Composable
-private fun DeveloperCard(onGitHub: () -> Unit) {
+private fun LineageCard(
+    onUpstream: () -> Unit,
+    onPort: () -> Unit,
+) {
     Surface(
         color = NineRouterColors.Surface,
         shape = NineRouterShapes.large,
         border = BorderStroke(1.dp, NineRouterColors.BorderSubtle),
     ) {
         Column(Modifier.padding(18.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier
-                        .size(88.dp)
-                        .background(
-                            Brush.linearGradient(
-                                listOf(NineRouterColors.Brand, NineRouterColors.BrandOrange),
-                            ),
-                            CircleShape,
-                        )
-                        .padding(3.dp),
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.itswill00),
-                        contentDescription = "itswill00 GitHub profile photo",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize().clip(CircleShape),
-                    )
-                }
-                Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        "Built by",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = NineRouterColors.TextSubtle,
-                    )
-                    Text(
-                        "itswill00",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = NineRouterColors.TextMain,
-                    )
-                    Text(
-                        "Creator & maintainer",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NineRouterColors.TextMuted,
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        "github.com/itswill00",
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                        color = NineRouterColors.BrandOrange,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            Spacer(Modifier.height(12.dp))
             Text(
-                "The native Android client, loopback gateway and in-app chat are designed and maintained by itswill00.",
+                "Project lineage",
+                style = MaterialTheme.typography.titleSmall,
+                color = NineRouterColors.TextMain,
+            )
+            Text(
+                "9Router existed before this app. Here is who made what.",
+                style = MaterialTheme.typography.labelSmall,
+                color = NineRouterColors.TextMuted,
+            )
+            Spacer(Modifier.height(14.dp))
+            CreditProfileRow(
+                avatar = R.drawable.decolua,
+                name = "decolua",
+                badge = "Founder",
+                role = "Original 9Router",
+                body = "Created the upstream gateway, provider registry and dashboard that this port builds on.",
+                linkLabel = "Upstream project",
+                ring = NineRouterColors.BorderStrong,
+                badgeColor = NineRouterColors.TextMain,
+                badgeBackground = NineRouterColors.Surface2,
+                onOpen = onUpstream,
+            )
+            LineageConnector()
+            CreditProfileRow(
+                avatar = R.drawable.itswill00,
+                name = "itswill00",
+                badge = "Android port",
+                role = "Creator of this Android app",
+                body = "Rebuilt the runtime in Kotlin and Compose and adapted the gateway to run on-device.",
+                linkLabel = "Android source",
+                ring = NineRouterColors.BrandOrange,
+                badgeColor = NineRouterColors.BrandOrange,
+                badgeBackground = NineRouterColors.BrandOrange.copy(alpha = 0.14f),
+                onOpen = onPort,
+            )
+            Spacer(Modifier.height(14.dp))
+            DividerLine()
+            Spacer(Modifier.height(10.dp))
+            ContributorStrip()
+        }
+    }
+}
+
+@Composable
+private fun CreditProfileRow(
+    avatar: Int,
+    name: String,
+    badge: String,
+    role: String,
+    body: String,
+    linkLabel: String,
+    ring: androidx.compose.ui.graphics.Color,
+    badgeColor: androidx.compose.ui.graphics.Color,
+    badgeBackground: androidx.compose.ui.graphics.Color,
+    onOpen: () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.Top) {
+        ProfileAvatar(avatar, name, ring, size = 64.dp)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = NineRouterColors.TextMain,
+                )
+                Spacer(Modifier.width(6.dp))
+                Pill(badge, badgeColor, badgeBackground)
+            }
+            Text(
+                role,
                 style = MaterialTheme.typography.bodySmall,
                 color = NineRouterColors.TextMuted,
             )
-            Spacer(Modifier.height(10.dp))
-            SecondaryButton("GitHub profile", modifier = Modifier.fillMaxWidth(), onClick = onGitHub)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                body,
+                style = MaterialTheme.typography.labelSmall,
+                color = NineRouterColors.TextMuted,
+            )
+            TextButton(
+                onClick = onOpen,
+                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp),
+            ) {
+                Text(linkLabel, color = NineRouterColors.BrandOrange, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileAvatar(avatar: Int, name: String, ring: androidx.compose.ui.graphics.Color, size: androidx.compose.ui.unit.Dp) {
+    Box(
+        Modifier
+            .size(size)
+            .background(ring.copy(alpha = 0.3f), CircleShape)
+            .padding(3.dp),
+    ) {
+        Image(
+            painter = painterResource(avatar),
+            contentDescription = "$name GitHub profile photo",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize().clip(CircleShape),
+        )
+    }
+}
+
+@Composable
+private fun LineageConnector() {
+    Row(
+        Modifier.fillMaxWidth().padding(start = 31.dp, top = 2.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.width(2.dp).height(14.dp).background(NineRouterColors.Border))
+            Box(Modifier.size(5.dp).background(NineRouterColors.BrandOrange, CircleShape))
+            Box(Modifier.width(2.dp).height(14.dp).background(NineRouterColors.Border))
+        }
+        Spacer(Modifier.width(18.dp))
+        Text(
+            "forked and ported for Android",
+            style = MaterialTheme.typography.labelSmall,
+            color = NineRouterColors.TextSubtle,
+        )
+    }
+}
+
+@Composable
+private fun ContributorStrip() {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            ProfileAvatar(R.drawable.decolua, "decolua", NineRouterColors.BorderStrong, size = 28.dp)
+            ProfileAvatar(R.drawable.itswill00, "itswill00", NineRouterColors.BrandOrange, size = 28.dp)
+            Box(
+                Modifier
+                    .size(28.dp)
+                    .background(NineRouterColors.Surface2, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("+", style = MaterialTheme.typography.labelMedium, color = NineRouterColors.TextMuted)
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                "decolua and the 9Router contributors",
+                style = MaterialTheme.typography.bodySmall,
+                color = NineRouterColors.TextMain,
+            )
+            Text(
+                "The upstream community built the gateway this app ports.",
+                style = MaterialTheme.typography.labelSmall,
+                color = NineRouterColors.TextMuted,
+            )
         }
     }
 }
@@ -412,11 +518,13 @@ private fun TechRow(label: String, value: String) {
 }
 
 @Composable
-private fun LinksCard(
+private fun CreditsCard(
+    onContributors: () -> Unit,
+    onLicense: () -> Unit,
     onSource: () -> Unit,
     onReleases: () -> Unit,
     onIssues: () -> Unit,
-    onLicense: () -> Unit,
+    onProfile: () -> Unit,
 ) {
     Surface(
         color = NineRouterColors.Surface,
@@ -424,18 +532,34 @@ private fun LinksCard(
         border = BorderStroke(1.dp, NineRouterColors.BorderSubtle),
     ) {
         Column(Modifier.padding(16.dp)) {
+            Text(
+                "MIT License",
+                style = MaterialTheme.typography.titleSmall,
+                color = NineRouterColors.TextMain,
+            )
+            Text(
+                "Copyright (c) 2024-2026 decolua and contributors. The original 9Router and this Android port are distributed under the MIT License.",
+                style = MaterialTheme.typography.bodySmall,
+                color = NineRouterColors.TextMuted,
+            )
+            Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SecondaryButton("Source code", modifier = Modifier.weight(1f), onClick = onSource)
+                SecondaryButton("License text", modifier = Modifier.weight(1f), onClick = onLicense)
+                SecondaryButton("Contributors", modifier = Modifier.weight(1f), onClick = onContributors)
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SecondaryButton("Android source", modifier = Modifier.weight(1f), onClick = onSource)
                 SecondaryButton("Releases", modifier = Modifier.weight(1f), onClick = onReleases)
             }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SecondaryButton("Issues", modifier = Modifier.weight(1f), onClick = onIssues)
-                SecondaryButton("License (MIT)", modifier = Modifier.weight(1f), onClick = onLicense)
+                SecondaryButton("GitHub profile", modifier = Modifier.weight(1f), onClick = onProfile)
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                "Links open in your browser.",
+                "The Android runtime is independent Kotlin; it keeps the upstream provider registry and design tokens.",
                 style = MaterialTheme.typography.labelSmall,
                 color = NineRouterColors.TextSubtle,
             )
@@ -467,7 +591,13 @@ private fun AboutFooter() {
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            "Native Android build by itswill00. 9Router is MIT licensed.",
+            "Original 9Router by decolua and contributors.",
+            style = MaterialTheme.typography.labelSmall,
+            color = NineRouterColors.TextSubtle,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            "Native Android port by itswill00. MIT licensed.",
             style = MaterialTheme.typography.labelSmall,
             color = NineRouterColors.TextSubtle,
             textAlign = TextAlign.Center,

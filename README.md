@@ -29,6 +29,12 @@ bundles a Linux userland.
 > is not yet full parity with the Node gateway. See
 > [Known limitations](#known-limitations).
 
+> **Project lineage.** 9Router was created by
+> [decolua](https://github.com/decolua) and is built with the
+> [9Router contributors](https://github.com/decolua/9router/graphs/contributors).
+> This repository is a fork and native Android port maintained by
+> [itswill00](https://github.com/itswill00).
+
 ## Highlights
 
 - **Native foreground service** hosting a loopback-only HTTP gateway.
@@ -219,15 +225,32 @@ This is a native preview, not full parity with the Node gateway:
   for OpenAI-compatible upstreams.
 - Translator coverage focuses on OpenAI, Claude, Gemini, and Responses.
   Thinking-block and tool-id edge cases are still being ported.
-- Streaming on `/v1/responses` currently emits Chat Completions-style chunks.
-- Combo strategy `fusion` (parallel panel + judge) is not ported.
+- Fusion implements the parallel panel and judge, but waits for the full panel;
+  the upstream quorum-grace window is not ported.
+- Live pages refresh on store changes and a 1-2s heartbeat while visible;
+  there is no websocket push.
 - The desktop-only sections of the upstream dashboard (MITM, tunnel, proxy-pool
   editor, media providers, SSO) are not in the mobile UI.
 
-## Upstream and license
+## Credits and license
 
-This project is based on [9Router](https://github.com/decolua/9router) by
-decolua and contributors, licensed under the MIT License. See [LICENSE](LICENSE).
+9Router is an open-source project created by
+[decolua](https://github.com/decolua) and maintained with the
+[9Router contributors](https://github.com/decolua/9router/graphs/contributors).
+This repository is a fork and native Android port by
+[itswill00](https://github.com/itswill00).
 
-The Android port keeps the upstream provider registry and design tokens, but
-the runtime is an independent Kotlin implementation.
+| Role | Credit |
+|---|---|
+| Original 9Router gateway, provider registry and dashboard | decolua and the 9Router contributors |
+| Native Android runtime, Compose UI and on-device adaptation | itswill00 |
+
+The project is distributed under the [MIT License](LICENSE). Copyright
+(c) 2024-2026 decolua and contributors. The Android port keeps the upstream
+provider registry and design tokens; its runtime is an independent Kotlin
+implementation.
+
+Please send upstream gateway and dashboard issues to
+[decolua/9router](https://github.com/decolua/9router), and Android UI or runtime
+issues to [itswill00/9router](https://github.com/itswill00/9router). Forks and
+redistributions must keep the MIT copyright notice and this credit.

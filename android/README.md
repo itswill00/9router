@@ -10,6 +10,24 @@ The gateway runs as a foreground service and listens on loopback only:
 http://127.0.0.1:20128/v1
 ```
 
+## Project lineage and credits
+
+9Router was created by [decolua](https://github.com/decolua) and is developed
+with the [9Router contributors](https://github.com/decolua/9router/graphs/contributors).
+This module is a fork and native Android port maintained by
+[itswill00](https://github.com/itswill00); it is not the original upstream
+project.
+
+| Role | Credit |
+|---|---|
+| Original 9Router gateway, registry and dashboard | decolua and the 9Router contributors |
+| Native Android port and Compose UI | itswill00 |
+| License | MIT, copyright (c) 2024-2026 decolua and contributors |
+
+- Upstream: https://github.com/decolua/9router
+- Contributors: https://github.com/decolua/9router/graphs/contributors
+- Android port: https://github.com/itswill00/9router
+
 ## What works in this slice
 
 - Foreground service + loopback HTTP/1.1 server (`Gateway.kt`).
@@ -68,9 +86,10 @@ http://127.0.0.1:20128/v1
   on GitHub, the Translator page previews request bodies between OpenAI,
   Claude, Gemini and Responses formats, and Proxy Pools explains why the
   native build connects directly.
-- **About page.** A profile-led project page with the itswill00 GitHub avatar,
-  app story, a 2×2 feature grid, tech-stack rows, project links, MIT licence
-  link and dynamic provider/connection/combo counts.
+- **About page.** A project lineage that credits decolua as the upstream
+  9Router founder and the upstream contributors, alongside itswill00 as the
+  Android port author. It carries both profile photos, a 2×2 feature grid,
+  tech-stack rows, dynamic counts and source/releases/issues/MIT links.
 - **Provider detail polish.** Connections render as individual cards with
   ellipsis-safe account rows, confirmed delete, and per-model Test / Test all
   (OAuth and API key, 20 s timeout, 3 parallel) with Working/Failed filters.
@@ -171,7 +190,7 @@ Point any OpenAI-compatible client at:
 
 ```
 Base URL: http://127.0.0.1:20128/v1
-API key:  copied from the app's Overview tab
+API key:  copied from the app's Endpoint & Key tab
 Model:    openai/gpt-5-mini, claude/claude-sonnet-5, or a combo name
 ```
 
@@ -200,3 +219,15 @@ This module intentionally mirrors the upstream flow:
 | `open-sse/executors/*` | `core/Upstream.kt` |
 | `src/lib/db/*` + `localDb.js` | `data/Store.kt` + `data/Crypto.kt` |
 | `src/app/(dashboard)/*` | `MainActivity.kt` |
+
+## Credits and license
+
+The upstream gateway, provider registry and dashboard were created by
+[decolua](https://github.com/decolua) and are maintained with the
+[9Router contributors](https://github.com/decolua/9router/graphs/contributors).
+The native Android implementation in this directory is maintained by
+[itswill00](https://github.com/itswill00).
+
+Distributed under the [MIT License](../LICENSE). Copyright (c) 2024-2026
+decolua and contributors. Keep the upstream copyright notice and credit when
+redistributing.
