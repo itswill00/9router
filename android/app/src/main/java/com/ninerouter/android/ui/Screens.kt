@@ -106,6 +106,7 @@ import com.ninerouter.android.data.Catalog
 import com.ninerouter.android.data.ChatImage
 import com.ninerouter.android.data.ChatMessage
 import com.ninerouter.android.data.ChatSession
+import com.ninerouter.android.data.Exposure
 import com.ninerouter.android.data.Pricing
 import com.ninerouter.android.data.Store
 import com.ninerouter.android.server.GatewayState
@@ -141,6 +142,12 @@ fun EndpointScreen(refresh: () -> Unit) {
     var testing by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf("") }
     var revealKey by remember { mutableStateOf(false) }
+    var publicUrlDraft by remember { mutableStateOf(Store.state.settings.publicBaseUrl) }
+    var testingPublic by remember { mutableStateOf(false) }
+    var publicResult by remember { mutableStateOf("") }
+    val current = Store.state.settings
+    val exposed = Exposure.enabled(current)
+    val apiRoot = Exposure.apiRoot(current, GatewayState.BASE_URL)
 
     fun copy(label: String, value: String) {
         clipboard.setText(AnnotatedString(value))
@@ -165,8 +172,9 @@ fun EndpointScreen(refresh: () -> Unit) {
                         color = NineRouterColors.TextMain,
                     )
                     Text(
-                        if (running) "Serving OpenAI-compatible traffic on loopback"
-                        else "Start it to serve requests",
+                        if (!running) "Start it to serve requests"
+                        else if (exposed) "Serving loopback plus private Wi-Fi and tailnet peers"
+                        else "Serving OpenAI-compatible traffic on loopback",
                         style = MaterialTheme.typography.labelSmall,
                         color = NineRouterColors.TextMuted,
                     )
@@ -174,7 +182,7 @@ fun EndpointScreen(refresh: () -> Unit) {
                 Pill(":${GatewayState.PORT}")
             }
             Spacer(Modifier.height(NineRouterSpacing.md))
-            CopyRow("OpenAI base URL", "${GatewayState.BASE_URL}/v1") { copy("Base URL", "${GatewayState.BASE_URL}/v1") }
+            CopyRow("OpenAI base URL", apiRoot) { copy("Base URL", apiRoot) }
             Spacer(Modifier.height(6.dp))
             CopyRow("Dashboard", GatewayState.BASE_URL) { copy("URL", GatewayState.BASE_URL) }
             if (gatewayError.isNotBlank()) {
@@ -247,13 +255,27 @@ fun EndpointScreen(refresh: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Browser access", style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain)
                 Spacer(Modifier.weight(1f))
-                Pill("loopback only")
+                Pill(
+                    if (exposed) "private networks" else "loopback only",
+                    if (exposed) NineRouterColors.Warning else NineRouterColors.TextMuted,
+                    if (exposed) NineRouterColors.Warning.copy(alpha = 0.12f) else NineRouterColors.Surface2,
+                )
             }
             Spacer(Modifier.height(NineRouterSpacing.sm))
-            Bullet("Open http://127.0.0.1:${GatewayState.PORT} on this phone — include http:// and the port.")
-            Bullet("Make sure the gateway shows running above, then use Open dashboard if typing fails.")
-            Bullet("From a computer run adb reverse tcp:${GatewayState.PORT} tcp:${GatewayState.PORT}, then open http://localhost:${GatewayState.PORT}.")
-            Bullet("The server binds to loopback by design and is never exposed to the local network.")
+            if (exposed) {
+                val first = remember(revision, running) { localEndpoints().firstOrNull() }
+                Bullet(
+                    if (first != null) "Open $first on a phone, tablet or computer on the same Wi-Fi or tailnet."
+                    else "Connect to Wi-Fi or a VPN; no private address is up yet."
+                )
+                Bullet("Public internet peers are rejected when the connection is accepted. Put a tunnel or reverse proxy in front and use the public URL in Remote access.")
+                Bullet("The API key is always required while remote access is on.")
+            } else {
+                Bullet("Open http://127.0.0.1:${GatewayState.PORT} on this phone — include http:// and the port.")
+                Bullet("Make sure the gateway shows running above, then use Open dashboard if typing fails.")
+                Bullet("From a computer run adb reverse tcp:${GatewayState.PORT} tcp:${GatewayState.PORT}, then open http://localhost:${GatewayState.PORT}.")
+                Bullet("The server binds to loopback by default; turn on Remote access below to reach it from other devices.")
+            }
             Spacer(Modifier.height(NineRouterSpacing.sm))
             Row(horizontalArrangement = Arrangement.spacedBy(NineRouterSpacing.sm)) {
                 SecondaryButton("Restart gateway", modifier = Modifier.weight(1f)) {
@@ -318,11 +340,195 @@ fun EndpointScreen(refresh: () -> Unit) {
                 SecondaryButton("Copy config", modifier = Modifier.weight(1f)) {
                     copy(
                         "Config",
-                        "Base URL: ${GatewayState.BASE_URL}/v1\nAPI key: ${Store.state.settings.apiKey}\nModel: openai/gpt-5-mini",
+                        "Base URL: $apiRoot\nAPI key: ${Store.state.settings.apiKey}\nModel: openai/gpt-5-mini",
                     )
                 }
             }
         }
+
+        Panel {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Remote access", style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain)
+                Spacer(Modifier.weight(1f))
+                Pill(
+                    if (exposed) "LAN & tunnel" else "this phone only",
+                    if (exposed) NineRouterColors.Warning else NineRouterColors.TextMuted,
+                    if (exposed) NineRouterColors.Warning.copy(alpha = 0.12f) else NineRouterColors.Surface2,
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            ToggleRow(
+                "Allow LAN and tunnel clients",
+                "Adds private Wi-Fi, link-local and tailnet peers. Public internet addresses are dropped.",
+                exposed,
+            ) { enable ->
+                when {
+                    !enable -> {
+                        Store.mutate { settings = settings.copy(exposure = Exposure.LOOPBACK) }
+                        if (running) GatewayService.restart(context)
+                        Toast.makeText(context, "Back to loopback only", Toast.LENGTH_SHORT).show()
+                        refresh()
+                    }
+                    Store.state.settings.apiKey.isBlank() -> {
+                        Toast.makeText(context, "Generate an API key first", Toast.LENGTH_SHORT).show()
+                    }
+                    else -> {
+                        Store.mutate {
+                            settings = settings.copy(exposure = Exposure.NETWORK, requireApiKey = true)
+                        }
+                        if (running) GatewayService.restart(context)
+                        Toast.makeText(
+                            context,
+                            if (running) "Restarting with network access…" else "Network mode saved",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                        refresh()
+                    }
+                }
+            }
+
+            if (exposed) {
+                Spacer(Modifier.height(8.dp))
+                NoticeBanner(
+                    "The API key is required while remote access is on. Do not paste it into shared configs.",
+                    NineRouterColors.Warning,
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Reachable on this device",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.TextSubtle,
+                )
+                Spacer(Modifier.height(2.dp))
+                val hosts = remember(revision, running) { localEndpoints() }
+                if (hosts.isEmpty()) {
+                    Text(
+                        "No private network interface yet. Connect to Wi-Fi or a VPN.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NineRouterColors.TextMuted,
+                    )
+                } else {
+                    hosts.forEach { url ->
+                        CopyRow(url.removePrefix("http://"), url) { copy("URL", url) }
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    publicUrlDraft,
+                    { publicUrlDraft = it },
+                    label = { Text("Public base URL") },
+                    placeholder = { Text("https://ai.example.com") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Point a tunnel or reverse proxy at this phone, then use this HTTPS URL in clients. " +
+                        "TLS ends at the proxy; the phone keeps serving plain HTTP on the private hop.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.TextSubtle,
+                )
+                val draftRoot = Exposure.normalizePublicUrl(publicUrlDraft)
+                if (!draftRoot.isNullOrBlank() && !draftRoot.startsWith("https://")) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "HTTP is not encrypted. Use HTTPS outside a tailnet.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NineRouterColors.Warning,
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(NineRouterSpacing.sm)) {
+                    SecondaryButton("Save URL", modifier = Modifier.weight(1f)) {
+                        val normalized = Exposure.normalizePublicUrl(publicUrlDraft)
+                        when {
+                            normalized == null -> Toast.makeText(
+                                context,
+                                "Use http(s)://host, optionally with a port or path",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                            else -> {
+                                Store.mutate { settings = settings.copy(publicBaseUrl = normalized) }
+                                publicUrlDraft = normalized
+                                Toast.makeText(
+                                    context,
+                                    if (normalized.isBlank()) "Public URL cleared" else "Public URL saved",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                                refresh()
+                            }
+                        }
+                    }
+                    SecondaryButton(
+                        if (testingPublic) "Testing…" else "Test URL",
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        if (testingPublic) return@SecondaryButton
+                        val root = Exposure.normalizePublicUrl(publicUrlDraft)
+                        if (root.isNullOrBlank()) {
+                            publicResult = "Enter a public base URL first."
+                            return@SecondaryButton
+                        }
+                        testingPublic = true
+                        publicResult = ""
+                        scope.launch {
+                            val result = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    val started = System.currentTimeMillis()
+                                    val health = httpProbe("$root/api/health", null)
+                                    val auth = httpProbe("$root/v1/models", Store.state.settings.apiKey)
+                                    "Health $health · Auth $auth · ${System.currentTimeMillis() - started} ms"
+                                }.getOrElse { it.message ?: it.javaClass.simpleName }
+                            }
+                            testingPublic = false
+                            publicResult = result
+                        }
+                    }
+                }
+                if (publicResult.isNotBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        publicResult,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (publicResult.contains("Auth 200")) NineRouterColors.Success else NineRouterColors.Warning,
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "The test runs from this phone. If hairpin NAT blocks the round trip, try it from another device.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.TextSubtle,
+                )
+            }
+        }
+    }
+}
+
+private fun localEndpoints(): List<String> = runCatching {
+    java.net.NetworkInterface.getNetworkInterfaces().toList()
+        .filter { it.isUp && !it.isLoopback }
+        .flatMap { it.inetAddresses.toList() }
+        .filter { !it.isLoopbackAddress && !it.isLinkLocalAddress && Exposure.allows(it) }
+        .mapNotNull { address ->
+            val host = address.hostAddress?.substringBefore('%') ?: return@mapNotNull null
+            if (host.contains(':')) "http://[$host]:${GatewayState.PORT}"
+            else "http://$host:${GatewayState.PORT}"
+        }
+        .distinct()
+}.getOrDefault(emptyList())
+
+private fun httpProbe(url: String, apiKey: String?): String {
+    val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+    return try {
+        connection.connectTimeout = 8000
+        connection.readTimeout = 8000
+        connection.instanceFollowRedirects = true
+        if (!apiKey.isNullOrBlank()) connection.setRequestProperty("Authorization", "Bearer $apiKey")
+        val code = connection.responseCode
+        if (code in 200..299) code.toString() else "HTTP $code"
+    } finally {
+        connection.disconnect()
     }
 }
 

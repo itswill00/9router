@@ -2,6 +2,7 @@ package com.ninerouter.android.server
 
 import com.ninerouter.android.data.ApiKey
 import com.ninerouter.android.data.AppState
+import com.ninerouter.android.data.Exposure
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.security.MessageDigest
@@ -10,6 +11,14 @@ import java.security.MessageDigest
 internal object ApiAccess {
     fun isAuthorized(headers: Map<String, String>, state: AppState): Boolean {
         val settings = state.settings
+        // Network mode always requires a key, regardless of the local toggle.
+        // A blank key would otherwise leave the gateway open to the LAN/tailnet.
+        if (Exposure.enabled(settings)) {
+            if (settings.apiKey.isBlank()) return false
+            val presented = presentedKey(headers)
+            if (constantTimeEquals(presented, settings.apiKey)) return true
+            return state.apiKeys.any { it.active && constantTimeEquals(presented, it.key) }
+        }
         if (!settings.requireApiKey || settings.apiKey.isBlank()) return true
         val presented = presentedKey(headers)
         if (constantTimeEquals(presented, settings.apiKey)) return true

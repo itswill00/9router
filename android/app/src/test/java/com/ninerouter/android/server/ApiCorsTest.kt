@@ -46,4 +46,14 @@ class ApiCorsTest {
         assertTrue(headers["Access-Control-Allow-Methods"].orEmpty().contains("OPTIONS"))
         assertEquals("11", headers["Content-Length"])
     }
+
+    @Test
+    fun networkModeCanDropTheWildcardOrigin() {
+        val headers = ApiHttp.jsonHeaders("{}".toByteArray(), allowAnyOrigin = false)
+        val preflight = ApiHttp.preflight(emptyMap(), allowAnyOrigin = false)
+
+        assertFalse(headers.containsKey("Access-Control-Allow-Origin"))
+        assertFalse(preflight.headers.containsKey("Access-Control-Allow-Origin"))
+        assertEquals(204, preflight.status)
+    }
 }

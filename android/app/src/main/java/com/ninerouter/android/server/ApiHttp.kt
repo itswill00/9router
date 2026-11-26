@@ -12,7 +12,7 @@ internal object ApiHttp {
     private const val DEFAULT_HEADERS = "Authorization, Content-Type, X-API-Key"
     private val HEADER_NAME = Regex("[!#$%&'*+.^_`|~0-9A-Za-z-]+")
 
-    fun preflight(requestHeaders: Map<String, String>): ApiHttpResponse {
+    fun preflight(requestHeaders: Map<String, String>, allowAnyOrigin: Boolean = true): ApiHttpResponse {
         val requested = requestHeaders.entries
             .firstOrNull { it.key.equals("access-control-request-headers", ignoreCase = true) }
             ?.value
@@ -24,26 +24,26 @@ internal object ApiHttp {
             ?.joinToString(", ")
             ?: DEFAULT_HEADERS
         val headers = linkedMapOf(
-            "Access-Control-Allow-Origin" to "*",
             "Access-Control-Allow-Methods" to METHODS,
             "Access-Control-Allow-Headers" to allowedHeaders,
             "Content-Length" to "0",
             "Connection" to "close",
         )
+        if (allowAnyOrigin) headers["Access-Control-Allow-Origin"] = "*"
         if (requested != null && validHeaderList(requested)) {
             headers["Vary"] = "Access-Control-Request-Headers"
         }
         return ApiHttpResponse(204, headers)
     }
 
-    fun jsonHeaders(body: ByteArray): Map<String, String> = linkedMapOf(
-        "Content-Type" to "application/json; charset=utf-8",
-        "Content-Length" to body.size.toString(),
-        "Access-Control-Allow-Origin" to "*",
-        "Access-Control-Allow-Methods" to METHODS,
-        "Access-Control-Allow-Headers" to DEFAULT_HEADERS,
-        "Connection" to "close",
-    )
+    fun jsonHeaders(body: ByteArray, allowAnyOrigin: Boolean = true): Map<String, String> = linkedMapOf<String, String>().apply {
+        put("Content-Type", "application/json; charset=utf-8")
+        put("Content-Length", body.size.toString())
+        if (allowAnyOrigin) put("Access-Control-Allow-Origin", "*")
+        put("Access-Control-Allow-Methods", METHODS)
+        put("Access-Control-Allow-Headers", DEFAULT_HEADERS)
+        put("Connection", "close")
+    }
 
     private fun validHeaderList(value: String): Boolean {
         if (value.any { it == '\r' || it == '\n' }) return false

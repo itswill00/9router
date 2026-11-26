@@ -53,6 +53,7 @@ import com.ninerouter.android.AppInfo
 import com.ninerouter.android.R
 import com.ninerouter.android.GatewayService
 import com.ninerouter.android.data.ApiKey
+import com.ninerouter.android.data.Exposure
 import com.ninerouter.android.data.Settings
 import com.ninerouter.android.data.Store
 import com.ninerouter.android.server.GatewayState
@@ -123,11 +124,15 @@ fun SettingsScreen(
                         if (value) GatewayService.start(context) else GatewayService.stop(context)
                     }
                     DividerLine(Modifier.padding(vertical = 8.dp))
-                    ToggleRow(
-                        "Require API key",
-                        "Reject /v1 requests without a valid key.",
-                        s.requireApiKey,
-                    ) { value -> save { copy(requireApiKey = value) } }
+                    if (Exposure.enabled(s)) {
+                        StatusRow("Require API key", "Always on for remote access")
+                    } else {
+                        ToggleRow(
+                            "Require API key",
+                            "Reject /v1 requests without a valid key.",
+                            s.requireApiKey,
+                        ) { value -> save { copy(requireApiKey = value) } }
+                    }
                     Spacer(Modifier.height(NineRouterSpacing.sm))
                     Row(horizontalArrangement = Arrangement.spacedBy(NineRouterSpacing.sm)) {
                         SecondaryButton("Open dashboard", modifier = Modifier.weight(1f)) {

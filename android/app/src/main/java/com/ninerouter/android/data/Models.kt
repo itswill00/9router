@@ -154,6 +154,8 @@ data class CapacityAdapter(
 data class Settings(
     val requireApiKey: Boolean = true,
     val apiKey: String = "",
+    val exposure: String = Exposure.LOOPBACK,
+    val publicBaseUrl: String = "",
     val autoStartGateway: Boolean = true,
     val rtkEnabled: Boolean = true,
     val fallbackStrategy: String = "fill-first",

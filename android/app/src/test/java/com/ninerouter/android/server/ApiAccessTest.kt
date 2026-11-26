@@ -3,6 +3,7 @@ package com.ninerouter.android.server
 import com.ninerouter.android.data.ApiKey
 import com.ninerouter.android.data.AppState
 import com.ninerouter.android.data.Combo
+import com.ninerouter.android.data.Exposure
 import com.ninerouter.android.data.Settings
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -126,6 +127,26 @@ class ApiAccessTest {
 
         assertNull(ApiAccess.deniedModel(mapOf("x-api-key" to "sk-any"), body("anything"), state))
         assertNull(ApiAccess.deniedModel(mapOf("authorization" to "Bearer sk-primary"), body("anything"), state))
+    }
+
+    @Test
+    fun networkModeRequiresKeyEvenWhenToggleIsOff() {
+        val state = AppState(
+            settings = Settings(requireApiKey = false, apiKey = "sk-primary", exposure = Exposure.NETWORK),
+        )
+
+        assertFalse(ApiAccess.isAuthorized(emptyMap(), state))
+        assertTrue(ApiAccess.isAuthorized(mapOf("authorization" to "Bearer sk-primary"), state))
+    }
+
+    @Test
+    fun networkModeWithBlankKeyDeniesEveryRequest() {
+        val state = AppState(
+            settings = Settings(requireApiKey = false, apiKey = "", exposure = Exposure.NETWORK),
+        )
+
+        assertFalse(ApiAccess.isAuthorized(emptyMap(), state))
+        assertFalse(ApiAccess.isAuthorized(mapOf("x-api-key" to ""), state))
     }
 
     private fun state() = AppState(settings = Settings(requireApiKey = true, apiKey = "sk-primary"))

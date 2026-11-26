@@ -10,6 +10,7 @@ import com.ninerouter.android.data.ApiKey
 import com.ninerouter.android.data.Catalog
 import com.ninerouter.android.data.Combo
 import com.ninerouter.android.data.Connection
+import com.ninerouter.android.data.Exposure
 import com.ninerouter.android.data.ProviderNode
 import com.ninerouter.android.data.Store
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -35,7 +36,8 @@ import java.net.Socket
 import java.security.MessageDigest
 
 /**
- * Tiny HTTP/1.1 server bound to loopback only. No Node, no shell, no root.
+ * Tiny HTTP/1.1 server. Loopback is the default; network mode is opt-in and
+ * only accepts loopback plus private/tailnet peers. No Node, no shell, no root.
  * Supports the /v1 surface needed by coding clients plus the dashboard's
  * health/settings endpoints.
  */
@@ -63,11 +65,18 @@ class Gateway(private val context: Context) {
         if (!scope.isActive) scope = newScope()
         val bound = mutableListOf<ServerSocket>()
         try {
-            // Loopback only: remote access requires an explicit reverse tunnel,
-            // never a 0.0.0.0 bind from the app itself. IPv4 is primary; IPv6
-            // loopback is added when available so `localhost` works either way.
-            bound += bind(InetAddress.getByName("127.0.0.1"))
-            runCatching { bound += bind(InetAddress.getByName("::1")) }
+            // Loopback by default. Network mode is an explicit opt-in for LAN
+            // and tunnel/proxy use: the wildcard is required because interface
+            // addresses change, but the accept loop drops every peer outside
+            // loopback and the private/tailnet ranges. Public source addresses
+            // are never served, and ApiAccess forces an API key in this mode.
+            if (Exposure.enabled(Store.state.settings)) {
+                bound += bind(InetAddress.getByName("0.0.0.0"))
+                runCatching { bound += bind(InetAddress.getByName("::")) }
+            } else {
+                bound += bind(InetAddress.getByName("127.0.0.1"))
+                runCatching { bound += bind(InetAddress.getByName("::1")) }
+            }
             server = bound.first()
             extraServers.clear()
             extraServers += bound.drop(1)
@@ -76,7 +85,7 @@ class Gateway(private val context: Context) {
             bound.forEach { socket -> activeScope.launch { acceptLoop(socket) } }
             GatewayState.running.value = true
             GatewayState.error.value = ""
-            android.util.Log.i("9R-Gateway", "listening on ${GatewayState.BASE_URL}")
+            android.util.Log.i("9R-Gateway", "listening on ${GatewayState.BASE_URL} (${if (Exposure.enabled(Store.state.settings)) "network" else "loopback"} mode)")
         } catch (e: Exception) {
             bound.forEach { runCatching { it.close() } }
             GatewayState.running.value = false
@@ -110,6 +119,11 @@ class Gateway(private val context: Context) {
         val activeScope = scope
         while (started && activeScope.isActive) {
             val client = try { socket.accept() } catch (_: Exception) { break }
+            if (!Exposure.allows(client.inetAddress)) {
+                android.util.Log.w("9R-Gateway", "dropped peer outside allowed ranges: ${client.inetAddress?.hostAddress}")
+                runCatching { client.close() }
+                continue
+            }
             client.soTimeout = 30_000
             activeScope.launch { handle(client) }
         }
@@ -131,18 +145,33 @@ class Gateway(private val context: Context) {
             val headers = request.headers
             val body = request.body.toString(Charsets.UTF_8)
             val authorized = authorized(headers)
+            val exposed = Exposure.enabled(Store.state.settings)
+
+            if (exposed && AuthThrottle.isBlocked(socket.inetAddress)) {
+                return writeJson(output, 429, errorJson(429, "Too many failed attempts. Try again later."))
+            }
+            if (exposed && !authorized && isProtectedManagementPath(path)) {
+                AuthThrottle.recordFailure(socket.inetAddress)
+                return writeJson(output, 401, errorJson(401, "Invalid API key"))
+            }
+            if (exposed && !authorized && (path == "/v1" || path.startsWith("/v1/"))) {
+                AuthThrottle.recordFailure(socket.inetAddress)
+            }
 
             when {
-                method == "OPTIONS" && isApiCorsRoute(path) -> writePreflight(output, ApiHttp.preflight(headers))
+                method == "OPTIONS" && isApiCorsRoute(path) -> writePreflight(output, ApiHttp.preflight(headers, corsOpen()))
                 path == "/" || path == "/index.html" -> writeHtml(output, statusPage())
 
                 path == "/api/health" || path == "/health" -> writeJson(output, 200, buildJsonObject {
                     put("ok", true)
                     put("android", true)
                     put("version", com.ninerouter.android.AppInfo.VERSION_NAME)
-                    put("baseUrl", GatewayState.BASE_URL)
-                    put("connections", Store.state.connections.size)
-                    put("models", Catalog.modelIds().size + Store.state.nodes.sumOf { it.models.size })
+                    put("mode", if (exposed) Exposure.NETWORK else Exposure.LOOPBACK)
+                    if (!exposed) {
+                        put("baseUrl", GatewayState.BASE_URL)
+                        put("connections", Store.state.connections.size)
+                        put("models", Catalog.modelIds().size + Store.state.nodes.sumOf { it.models.size })
+                    }
                 }.let { json.encodeToString(it) })
 
                 method == "GET" && (path == "/v1" || path == "/api/v1") -> {
@@ -311,6 +340,24 @@ class Gateway(private val context: Context) {
         MessageDigest.isEqual(a.toByteArray(), b.toByteArray())
 
     private fun authorized(headers: Map<String, String>): Boolean = ApiAccess.isAuthorized(headers, Store.state)
+
+    /** Browser origins are only echoed while the gateway is loopback-only. */
+    private fun corsOpen(): Boolean = !Exposure.enabled(Store.state.settings)
+
+    /**
+     * Management routes mutate keys, providers, combos and settings. They are
+     * always key-gated in network mode so a tunnel cannot turn into an open
+     * admin API.
+     */
+    private fun isProtectedManagementPath(path: String): Boolean =
+        path == "/api/keys" || path.startsWith("/api/keys/") ||
+            path == "/api/providers" || path.startsWith("/api/providers/") ||
+            path == "/api/provider-nodes" || path.startsWith("/api/provider-nodes/") ||
+            path == "/api/combos" || path.startsWith("/api/combos/") ||
+            path == "/api/models/alias" || path.startsWith("/api/models/alias/") ||
+            path == "/api/settings" || path.startsWith("/api/settings/") ||
+            path == "/api/shutdown" || path == "/api/version/shutdown" ||
+            path.startsWith("/api/usage/")
 
     private fun keyAccessDenied(headers: Map<String, String>, rawBody: String): String? {
         val body = try { json.parseToJsonElement(rawBody) as? JsonObject } catch (_: Exception) { null }
@@ -718,6 +765,8 @@ class Gateway(private val context: Context) {
         val s = Store.state.settings
         put("requireApiKey", s.requireApiKey)
         put("apiKey", s.apiKey)
+        put("exposure", s.exposure)
+        put("publicBaseUrl", s.publicBaseUrl)
         put("rtkEnabled", s.rtkEnabled)
         put("fallbackStrategy", s.fallbackStrategy)
         put("stickyLimit", s.stickyLimit)
@@ -773,8 +822,20 @@ class Gateway(private val context: Context) {
 
     private fun applySettings(raw: String) {
         val incoming = try { json.parseToJsonElement(raw) as? JsonObject } catch (_: Exception) { null } ?: return
+        val previousExposure = Store.state.settings.exposure
         Store.mutate {
             (incoming["requireApiKey"] as? JsonPrimitive)?.content?.toBoolean()?.let { settings = settings.copy(requireApiKey = it) }
+            (incoming["exposure"] as? JsonPrimitive)?.content?.let { value ->
+                val mode = if (value == Exposure.NETWORK) Exposure.NETWORK else Exposure.LOOPBACK
+                settings = settings.copy(
+                    exposure = mode,
+                    // Network mode always needs a key; do not inherit an open toggle.
+                    requireApiKey = if (mode == Exposure.NETWORK) true else settings.requireApiKey,
+                )
+            }
+            (incoming["publicBaseUrl"] as? JsonPrimitive)?.content?.let { raw ->
+                Exposure.normalizePublicUrl(raw)?.let { settings = settings.copy(publicBaseUrl = it) }
+            }
             (incoming["rtkEnabled"] as? JsonPrimitive)?.content?.toBoolean()?.let { settings = settings.copy(rtkEnabled = it) }
             (incoming["fallbackStrategy"] as? JsonPrimitive)?.content?.let { settings = settings.copy(fallbackStrategy = it) }
             (incoming["stickyLimit"] as? JsonPrimitive)?.content?.toIntOrNull()?.let { settings = settings.copy(stickyLimit = it) }
@@ -785,13 +846,21 @@ class Gateway(private val context: Context) {
             (incoming["cavemanLevel"] as? JsonPrimitive)?.content?.let { settings = settings.copy(cavemanLevel = it) }
             (incoming["ponytailLevel"] as? JsonPrimitive)?.content?.let { settings = settings.copy(ponytailLevel = it) }
         }
+        if (previousExposure != Store.state.settings.exposure) {
+            // Rebind after the response is flushed so the caller sees the new
+            // settings instead of a dropped connection.
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                com.ninerouter.android.GatewayService.restart(context)
+            }, 900)
+        }
     }
 
     private fun writeSse(output: OutputStream, result: ChatEngine.Outcome.Stream) {
+        val cors = if (corsOpen()) "Access-Control-Allow-Origin: *\r\n" else ""
         val head = "HTTP/1.1 200 OK\r\n" +
             "Content-Type: text/event-stream; charset=utf-8\r\n" +
             "Cache-Control: no-cache\r\n" +
-            "Access-Control-Allow-Origin: *\r\n" +
+            cors +
             "Transfer-Encoding: chunked\r\n" +
             "Connection: close\r\n\r\n"
         output.write(head.toByteArray(Charsets.UTF_8))
@@ -806,7 +875,36 @@ class Gateway(private val context: Context) {
         output.write("\r\n".toByteArray(Charsets.US_ASCII))
     }
 
-    private fun statusPage(): String = """
+    private fun statusPage(): String {
+        val settings = Store.state.settings
+        val exposed = Exposure.enabled(settings)
+        val publicRoot = Exposure.publicRoot(settings)
+        val endpoint = escapeHtml(publicRoot?.let { "$it/v1" } ?: "${GatewayState.BASE_URL}/v1")
+        val shownRoot = escapeHtml(publicRoot.orEmpty())
+        val modeLine = when {
+            exposed && publicRoot != null ->
+                "Native gateway · <span class=\"ok\">running</span> at <code>$shownRoot</code>"
+            exposed -> "Native gateway · <span class=\"ok\">running</span> for private networks"
+            else -> "Native gateway · <span class=\"ok\">running</span> on ${GatewayState.BASE_URL}"
+        }
+        val details = buildString {
+            append("<li>Version: <code>${escapeHtml(com.ninerouter.android.AppInfo.VERSION_NAME)}</code></li>")
+            append("<li>OpenAI base URL: <code>$endpoint</code></li>")
+            append("<li>Health: <a href=\"/api/health\">/api/health</a></li>")
+            append("<li>API key: <code>required</code></li>")
+            if (!exposed) {
+                append("<li>Models: <a href=\"/v1/models\">/v1/models</a></li>")
+                append("<li>Connections: ${Store.state.connections.size} · Models: ${Catalog.modelIds().size + Store.state.nodes.sumOf { it.models.size }}</li>")
+            }
+        }
+        val footer = if (exposed) {
+            "Only loopback and private/tailnet peers are accepted; public source addresses are dropped. " +
+                "Terminate TLS in your tunnel or reverse proxy."
+        } else {
+            "This server listens on loopback inside the phone. From a computer use " +
+                "<code>adb reverse tcp:${GatewayState.PORT} tcp:${GatewayState.PORT}</code>."
+        }
+        return """
         <!doctype html>
         <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
         <title>9Router Android</title>
@@ -819,19 +917,18 @@ class Gateway(private val context: Context) {
         </style></head>
         <body><div class="card">
           <h1>9Router Android</h1>
-          <p class="muted">Native gateway · <span class="ok">running</span> on ${GatewayState.BASE_URL}</p>
-          <ul>
-            <li>Version: <code>${com.ninerouter.android.AppInfo.VERSION_NAME}</code></li>
-            <li>OpenAI base URL: <code>${GatewayState.BASE_URL}/v1</code></li>
-            <li>Health: <a href="/api/health">/api/health</a></li>
-            <li>Models: <a href="/v1/models">/v1/models</a></li>
-            <li>API key: <code>${if (Store.state.settings.requireApiKey) "required" else "not required"}</code></li>
-            <li>Connections: ${Store.state.connections.size} · Models: ${Catalog.modelIds().size + Store.state.nodes.sumOf { it.models.size }}</li>
-          </ul>
-          <p class="muted">This server only listens on loopback inside the phone. From a computer use
-          <code>adb reverse tcp:${GatewayState.PORT} tcp:${GatewayState.PORT}</code>.</p>
+          <p class="muted">$modeLine</p>
+          <ul>$details</ul>
+          <p class="muted">$footer</p>
         </div></body></html>
-    """.trimIndent()
+        """.trimIndent()
+    }
+
+    private fun escapeHtml(value: String): String = value
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
 
     private fun writeHtml(output: OutputStream, body: String) {
         val bytes = body.toByteArray(Charsets.UTF_8)
@@ -851,11 +948,12 @@ class Gateway(private val context: Context) {
         val reason = when (status) {
             200 -> "OK"; 201 -> "Created"; 204 -> "No Content"
             400 -> "Bad Request"; 401 -> "Unauthorized"; 403 -> "Forbidden"; 404 -> "Not Found"
-            413 -> "Payload Too Large"; 500 -> "Internal Server Error"; 501 -> "Not Implemented"
+            413 -> "Payload Too Large"; 429 -> "Too Many Requests"
+            500 -> "Internal Server Error"; 501 -> "Not Implemented"
             502 -> "Bad Gateway"; 503 -> "Service Unavailable"
             else -> "Error"
         }
-        val headers = ApiHttp.jsonHeaders(bytes)
+        val headers = ApiHttp.jsonHeaders(bytes, corsOpen())
         output.write((buildString {
             append("HTTP/1.1 $status $reason\r\n")
             headers.forEach { (name, value) -> append("$name: $value\r\n") }

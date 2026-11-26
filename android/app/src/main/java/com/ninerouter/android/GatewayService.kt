@@ -10,6 +10,8 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import com.ninerouter.android.data.Exposure
+import com.ninerouter.android.data.Store
 import com.ninerouter.android.server.Gateway
 import com.ninerouter.android.server.GatewayState
 
@@ -81,7 +83,10 @@ class GatewayService : Service() {
         return builder
             .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setContentTitle("9Router gateway")
-            .setContentText("Local endpoint ${GatewayState.BASE_URL}")
+            .setContentText(
+                if (Exposure.enabled(Store.state.settings)) "Remote access on · port ${GatewayState.PORT}"
+                else "Local endpoint ${GatewayState.BASE_URL}",
+            )
             .setContentIntent(open)
             .setOngoing(true)
             .build()
@@ -91,7 +96,7 @@ class GatewayService : Service() {
         private const val CHANNEL_ID = "ninerouter_gateway"
         private const val NOTIFICATION_ID = 20128
 
-        /** Starts the loopback gateway. Safe to call repeatedly. */
+        /** Starts the gateway in the configured exposure mode. Safe to call repeatedly. */
         fun start(context: Context) {
             val intent = Intent(context, GatewayService::class.java)
             try {
