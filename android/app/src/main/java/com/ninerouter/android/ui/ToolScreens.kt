@@ -164,7 +164,8 @@ private fun openUrl(context: android.content.Context, url: String) {
 
 @Composable
 fun QuotaScreen(refresh: () -> Unit, onOpenProviders: () -> Unit) {
-    @Suppress("UNUSED_VARIABLE") val revision by storeRevision()
+    @Suppress("UNUSED_VARIABLE")
+    val revision = storeRevision().value
     val now by liveNow(1_000L)
     val connections = Store.state.connections
     val weekAgo = now - 7L * 24 * 60 * 60 * 1000
@@ -393,7 +394,8 @@ private fun quotaMoney(n: Double): String = "$" + String.format(Locale.US, "%.2f
 
 @Composable
 fun TokenSaverScreen(refresh: () -> Unit) {
-    @Suppress("UNUSED_VARIABLE") val revision by storeRevision()
+    @Suppress("UNUSED_VARIABLE")
+    val revision = storeRevision().value
     val s = Store.state.settings
     fun save(mutator: Settings.() -> Settings) {
         Store.mutate { settings = settings.mutator() }
@@ -579,7 +581,8 @@ models:
 
 @Composable
 fun CliToolsScreen() {
-    @Suppress("UNUSED_VARIABLE") val revision by storeRevision()
+    @Suppress("UNUSED_VARIABLE")
+    val revision = storeRevision().value
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val base = GatewayState.BASE_URL

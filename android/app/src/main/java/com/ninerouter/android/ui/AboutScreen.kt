@@ -49,7 +49,8 @@ import com.ninerouter.android.data.Store
 
 @Composable
 fun AboutScreen() {
-    @Suppress("UNUSED_VARIABLE") val revision by storeRevision()
+    @Suppress("UNUSED_VARIABLE")
+    val revision = storeRevision().value
     val context = LocalContext.current
 
     fun open(url: String) {

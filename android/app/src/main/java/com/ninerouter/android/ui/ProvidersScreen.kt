@@ -99,7 +99,8 @@ import java.util.concurrent.atomic.AtomicReference
 
 @Composable
 fun ProvidersScreen(refresh: () -> Unit) {
-    val revision by storeRevision()
+    @Suppress("UNUSED_VARIABLE")
+    val revision = storeRevision().value
     var detailId by remember { mutableStateOf<String?>(null) }
     var nodeId by remember { mutableStateOf<String?>(null) }
     val detail = detailId?.let { Catalog.find(it) }
@@ -541,7 +542,8 @@ private fun NodeInfo(label: String, value: String) {
 
 @Composable
 private fun NodeDetail(nodeId: String, onBack: () -> Unit, refresh: () -> Unit) {
-    val revision by storeRevision()
+    @Suppress("UNUSED_VARIABLE")
+    val revision = storeRevision().value
     val context = LocalContext.current
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val node = Store.state.nodes.firstOrNull { it.id == nodeId }
@@ -983,7 +985,8 @@ private data class ModelProbeState(
 
 @Composable
 private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> Unit) {
-    val revision by storeRevision()
+    @Suppress("UNUSED_VARIABLE")
+    val revision = storeRevision().value
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()

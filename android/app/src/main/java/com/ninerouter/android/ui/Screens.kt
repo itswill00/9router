@@ -133,7 +133,10 @@ import java.util.UUID
 
 @Composable
 fun EndpointScreen(refresh: () -> Unit) {
-    val revision by storeRevision()
+    // Read the revision here, in this screen's scope, and unconditionally.
+    // Reading it only inside the network-mode branch leaves the screen
+    // unsubscribed while the toggle is off, so the switch never turns on.
+    val revision = storeRevision().value
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
@@ -362,28 +365,28 @@ fun EndpointScreen(refresh: () -> Unit) {
                 "Adds private Wi-Fi, link-local and tailnet peers. Public internet addresses are dropped.",
                 exposed,
             ) { enable ->
-                when {
-                    !enable -> {
-                        Store.mutate { settings = settings.copy(exposure = Exposure.LOOPBACK) }
-                        if (running) GatewayService.restart(context)
-                        Toast.makeText(context, "Back to loopback only", Toast.LENGTH_SHORT).show()
-                        refresh()
+                if (!enable) {
+                    Store.mutate { settings = settings.copy(exposure = Exposure.LOOPBACK) }
+                    if (running) GatewayService.restart(context)
+                    Toast.makeText(context, "Back to loopback only", Toast.LENGTH_SHORT).show()
+                    refresh()
+                } else {
+                    Store.mutate {
+                        settings = settings.copy(
+                            exposure = Exposure.NETWORK,
+                            requireApiKey = true,
+                            // Legacy state could have an empty key; generate one
+                            // instead of silently refusing to turn the mode on.
+                            apiKey = settings.apiKey.ifBlank { Store.newKey() },
+                        )
                     }
-                    Store.state.settings.apiKey.isBlank() -> {
-                        Toast.makeText(context, "Generate an API key first", Toast.LENGTH_SHORT).show()
-                    }
-                    else -> {
-                        Store.mutate {
-                            settings = settings.copy(exposure = Exposure.NETWORK, requireApiKey = true)
-                        }
-                        if (running) GatewayService.restart(context)
-                        Toast.makeText(
-                            context,
-                            if (running) "Restarting with network access…" else "Network mode saved",
-                            Toast.LENGTH_SHORT,
-                        ).show()
-                        refresh()
-                    }
+                    if (running) GatewayService.restart(context)
+                    Toast.makeText(
+                        context,
+                        if (running) "Restarting with network access…" else "Network mode saved",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                    refresh()
                 }
             }
 

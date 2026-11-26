@@ -67,7 +67,8 @@ fun SettingsScreen(
     onOpenCombos: () -> Unit,
     onOpenAbout: () -> Unit,
 ) {
-    val revision by storeRevision()
+    @Suppress("UNUSED_VARIABLE")
+    val revision = storeRevision().value
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val s = Store.state.settings

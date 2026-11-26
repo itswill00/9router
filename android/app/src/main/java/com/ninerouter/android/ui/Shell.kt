@@ -167,7 +167,8 @@ private fun Screen.mediaKind(): MediaKind? = when (this) {
 
 @Composable
 fun AppShell(refreshTrigger: () -> Unit) {
-    val revision by storeRevision()
+    @Suppress("UNUSED_VARIABLE")
+    val revision = storeRevision().value
     var screenName by rememberSaveable { mutableStateOf(Screen.Endpoint.name) }
     val screen = Screen.from(screenName)
     var showChat by rememberSaveable { mutableStateOf(false) }
