@@ -132,6 +132,22 @@ data class Combo(
     val strategy: String = "fallback",
     val routerModel: String = "",
     val judgeModel: String = "",
+    val smartPolicy: String = "smart",
+    val confidenceThreshold: Float = 0.8f,
+    val sessionSticky: Boolean = true,
+)
+
+@Serializable
+data class CapacityPool(
+    val enabled: Boolean = true,
+    val roundRobin: Boolean = false,
+    val models: List<String> = emptyList(),
+)
+
+@Serializable
+data class CapacityAdapter(
+    val vision: CapacityPool = CapacityPool(),
+    val audio: CapacityPool = CapacityPool(),
 )
 
 @Serializable
@@ -148,6 +164,8 @@ data class Settings(
     val customPrompt: String = "",
     val cavemanLevel: String = "full",
     val ponytailLevel: String = "full",
+    val comboStickyRoundRobinLimit: Int = 1,
+    val capacityAdapter: CapacityAdapter = CapacityAdapter(),
 )
 
 @Serializable

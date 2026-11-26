@@ -4,6 +4,9 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -22,6 +25,11 @@ object Store {
      * list edits recompose without abusing mutable list identity. */
     var revision by mutableIntStateOf(0)
         private set
+
+    /** Observable mirror of [revision] for screens that need an explicit,
+     * thread-safe live subscription instead of reading the mutable state. */
+    private val _version = MutableStateFlow(0)
+    val version: StateFlow<Int> = _version.asStateFlow()
 
     fun init(context: Context) {
         file = File(context.filesDir, "appstate.json")
@@ -67,12 +75,15 @@ object Store {
         }
     }
 
+    @Synchronized
     fun save() {
         if (!::file.isInitialized) return
         file.writeText(json.encodeToString(snapshot()))
         revision += 1
+        _version.value = revision
     }
 
+    @Synchronized
     fun mutate(block: AppState.() -> Unit) {
         block(state)
         save()

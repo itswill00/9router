@@ -1,13 +1,20 @@
 package com.ninerouter.android.core
 
 import com.ninerouter.android.data.Catalog
+import com.ninerouter.android.data.Combo
 import com.ninerouter.android.data.Connection
 import com.ninerouter.android.data.Store
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import okhttp3.Response
@@ -46,6 +53,8 @@ class ChatEngine(
         sourceFormat: String,
         responseFormat: String,
         endpoint: String = "/v1/chat/completions",
+        headers: Map<String, String> = emptyMap(),
+        depth: Int = 0,
     ): Outcome {
         val startedAt = System.currentTimeMillis()
         val body = parseObject(clientBody)
@@ -55,16 +64,58 @@ class ChatEngine(
             return fail(400, "Missing model", "", "", endpoint, startedAt)
         }
 
+        if (depth > 3) {
+            return fail(400, "Combo nesting is too deep", "", requestedModel, endpoint, startedAt)
+        }
+
         val wantsStream = (body["stream"] as? JsonPrimitive)?.content?.toBoolean() ?: false
         val combo = Store.state.combos.firstOrNull { it.name == requestedModel }
-        val rawMembers = combo?.models?.ifEmpty { listOf(requestedModel) } ?: listOf(requestedModel)
-        val required = requiredCapabilities(body)
-        val scored = if (required.isEmpty()) rawMembers
-        else rawMembers.sortedByDescending { supports(it, required) }
-        val members = if (combo?.strategy == "smart" && combo.routerModel.isNotBlank()) {
-            smartOrder(body, scored, combo.routerModel) ?: scored
-        } else scored
         val strategy = combo?.strategy ?: Store.state.settings.fallbackStrategy
+
+        if (combo != null && strategy == "fusion") {
+            return handleFusion(
+                body = body,
+                sourceFormat = sourceFormat,
+                responseFormat = responseFormat,
+                endpoint = endpoint,
+                headers = headers,
+                depth = depth,
+                combo = combo,
+                wantsStream = wantsStream,
+                startedAt = startedAt,
+            )
+        }
+
+        val rawMembers = if (combo == null) {
+            listOf(requestedModel)
+        } else {
+            combo.models.filter { it.isNotBlank() && it != combo.name }
+                .ifEmpty { listOf(requestedModel) }
+        }
+        val required = requiredCapabilities(body)
+        val sessionId = resolveSessionId(headers, body)
+        var candidates = rawMembers
+        if (combo != null && strategy == "round-robin") {
+            candidates = ComboRotation.order(
+                candidates,
+                "combo:${combo.name}",
+                Store.state.settings.comboStickyRoundRobinLimit,
+            )
+        }
+        if (combo != null && strategy == "smart") {
+            candidates = smartSelection(body, candidates, combo, sessionId) ?: candidates
+        }
+        if (required.isNotEmpty()) {
+            // Stable: equal-capability members keep the chosen rotation/order.
+            candidates = candidates.sortedByDescending { Capabilities.supports(it, required) }
+        }
+        val hard = required.intersect(setOf("vision", "audio"))
+        if (hard.isNotEmpty() && candidates.none { Capabilities.supports(it, hard) }) {
+            val pool = adapterPool(hard)
+            if (pool.isNotEmpty()) candidates = pool + candidates
+        }
+        val members = candidates
+        val accountStrategy = Store.state.settings.fallbackStrategy
         var lastError: Outcome.Error? = null
         var lastProvider = ""
 
@@ -98,7 +149,7 @@ class ChatEngine(
             val excluded = HashSet<String>()
             var accountMisses = 0
             while (true) {
-                val conn = pickAccount(target.provider, excluded, strategy)
+                val conn = pickAccount(target.provider, excluded, accountStrategy)
                 if (conn == null) {
                     if (accountMisses == 0) {
                         lastError = Outcome.Error(404, "No active credentials for ${target.provider}")
@@ -195,31 +246,78 @@ class ChatEngine(
     private fun isCliEnvelope(def: com.ninerouter.android.data.ProviderDef): Boolean =
         def.format == "gemini-cli" || def.format == "antigravity"
 
-    /** Smart Router: ask the configured router model to pick one combo member.
-     * The router itself is resolved and translated through the same pipeline, so
-     * OpenAI/Claude/Gemini router providers all work. Failure is fail-open: the
-     * original order is used when the router is unreachable or ambiguous. */
-    private fun smartOrder(body: JsonObject, members: List<String>, routerModel: String): List<String>? {
+    private data class SmartPick(val choice: String, val confidence: Double?)
+
+    /** Smart Router with the four upstream policies. A session-sticky choice
+     * keeps the warm prompt cache; Smart Switch only changes it when the router
+     * reports enough confidence, Strict Lock never re-asks, and Per-Turn asks
+     * on every request. Router failures always fall back to the combo order. */
+    private fun smartSelection(
+        body: JsonObject,
+        members: List<String>,
+        combo: Combo,
+        sessionId: String?,
+    ): List<String>? {
         if (members.size <= 1) return members
+        val policy = combo.smartPolicy.ifBlank { "smart" }
+        val perTurn = policy == "per-turn" || !combo.sessionSticky || sessionId.isNullOrBlank()
+        var existing = if (!perTurn && sessionId != null) SmartSessions.get(combo.name, sessionId) else null
+        if (existing != null && existing !in members) {
+            if (sessionId != null) SmartSessions.clear(combo.name, sessionId)
+            existing = null
+        }
+        if (policy == "strict" && existing != null) return orderByChoice(members, existing)
+
+        val pick = callSmartRouter(body, members, combo.routerModel)
+        val threshold = when (policy) {
+            "custom" -> combo.confidenceThreshold.toDouble()
+            "strict" -> 0.0
+            else -> 0.8
+        }
+        val choice = pick?.choice?.takeIf { it in members }
+        val confidence = pick?.confidence
+
+        if (existing != null) {
+            val confidentSwitch = choice != null && choice != existing &&
+                confidence != null && confidence >= threshold
+            if (confidentSwitch) {
+                if (sessionId != null) SmartSessions.put(combo.name, sessionId, choice!!)
+                return orderByChoice(members, choice!!)
+            }
+            return orderByChoice(members, existing)
+        }
+
+        if (choice != null && (threshold <= 0.0 || confidence == null || confidence >= threshold)) {
+            if (!perTurn && sessionId != null) SmartSessions.put(combo.name, sessionId, choice)
+            return orderByChoice(members, choice)
+        }
+        return null
+    }
+
+    private fun orderByChoice(members: List<String>, choice: String): List<String> =
+        listOf(choice) + members.filter { it != choice }
+
+    private fun callSmartRouter(body: JsonObject, members: List<String>, routerModel: String): SmartPick? {
+        if (routerModel.isBlank()) return null
         val target = ModelResolver.resolve(routerModel) ?: return null
         val def = Catalog.find(target.provider) ?: nodeDef(target.provider) ?: return null
         val conn = pickAccount(target.provider, emptySet(), "fill-first") ?: return null
-        val lastUser = (body["messages"] as? JsonArray)
-            ?.mapNotNull { it as? JsonObject }
-            ?.lastOrNull { (it["role"] as? JsonPrimitive)?.content == "user" }
-            ?.let { (it["content"] as? JsonPrimitive)?.content }
-            .orEmpty()
-            .take(2000)
+        val lastUser = lastUserText(body).ifBlank { "general coding task" }
         val prompt = buildJsonObject {
             put("model", target.model)
-            put("max_tokens", 16)
+            put("max_tokens", 64)
             put("stream", false)
             put("messages", JsonArray(listOf(
                 buildJsonObject {
                     put("role", "system")
-                    put("content", "Pick exactly one model id from this list for the user request. Reply with the id only: ${members.joinToString(", ")}")
+                    put(
+                        "content",
+                        "Pick exactly one model id from this list for the user request. " +
+                            "Reply with JSON only: {\"model\":\"<id>\",\"confidence\":0.0}. " +
+                            "confidence is 0 to 1. Models: ${members.joinToString(", ")}",
+                    )
                 },
-                buildJsonObject { put("role", "user"); put("content", lastUser.ifBlank { "general coding task" }) },
+                buildJsonObject { put("role", "user"); put("content", lastUser) },
             )))
         }
         val providerFormat = Formats.normalize(def.format)
@@ -234,10 +332,276 @@ class ChatEngine(
         val openAi = Translator.responseBody(providerFormat, Formats.OPENAI, unwrapped, target.model)
         val content = ((openAi["choices"] as? JsonArray)?.firstOrNull() as? JsonObject)
             ?.let { it["message"] as? JsonObject }
-            ?.let { (it["content"] as? JsonPrimitive)?.content }
+            ?.let { contentText(it["content"]) }
             .orEmpty()
-        val chosen = members.firstOrNull { content.contains(it, ignoreCase = true) } ?: return null
-        return listOf(chosen) + members.filter { it != chosen }
+        val cleaned = content.trim()
+            .removePrefix("```json")
+            .removePrefix("```")
+            .removeSuffix("```")
+            .trim()
+        val payload = parseObject(cleaned)
+        val choice = payload?.let { text(it["model"], "") }
+            ?.takeIf { it in members }
+            ?: members.firstOrNull { content.contains(it, ignoreCase = true) }
+            ?: return null
+        val confidence = payload?.let { (it["confidence"] as? JsonPrimitive)?.content?.toDoubleOrNull() }
+            ?.coerceIn(0.0, 1.0)
+        return SmartPick(choice, confidence)
+    }
+
+    private fun lastUserText(body: JsonObject): String {
+        val fromMessages = (body["messages"] as? JsonArray)
+            ?.mapNotNull { it as? JsonObject }
+            ?.lastOrNull { (it["role"] as? JsonPrimitive)?.content == "user" }
+            ?.let { contentText(it["content"]) }
+        if (!fromMessages.isNullOrBlank()) return fromMessages.take(2000)
+        val fromInput = (body["input"] as? JsonArray)
+            ?.mapNotNull { it as? JsonObject }
+            ?.lastOrNull { (it["role"] as? JsonPrimitive)?.content == "user" }
+            ?.let { contentText(it["content"]) }
+        if (!fromInput.isNullOrBlank()) return fromInput.take(2000)
+        val fromContents = (body["contents"] as? JsonArray)
+            ?.mapNotNull { it as? JsonObject }
+            ?.lastOrNull()
+            ?.let { contentText(it["parts"]) }
+        return fromContents.orEmpty().take(2000)
+    }
+
+    private fun contentText(value: JsonElement?): String = when (value) {
+        is JsonPrimitive -> value.content
+        is JsonArray -> value.joinToString("\n") { part ->
+            when (part) {
+                is JsonPrimitive -> part.content
+                is JsonObject -> contentText(part["text"] ?: part["content"])
+                else -> ""
+            }
+        }
+        is JsonObject -> contentText(value["text"] ?: value["content"])
+        else -> ""
+    }
+
+    /** Fusion: fan the request out to every panel model in parallel, then let a
+     * judge synthesize one answer. Each panel call is a normal non-streaming
+     * routing call, so usage, fallback and capability handling still apply. */
+    private fun handleFusion(
+        body: JsonObject,
+        sourceFormat: String,
+        responseFormat: String,
+        endpoint: String,
+        headers: Map<String, String>,
+        depth: Int,
+        combo: Combo,
+        wantsStream: Boolean,
+        startedAt: Long,
+    ): Outcome {
+        val panel = combo.models.filter { it.isNotBlank() && it != combo.name }.distinct()
+        if (panel.isEmpty()) {
+            return fail(400, "Fusion combo has no models", "", combo.name, endpoint, startedAt)
+        }
+        val judge = combo.judgeModel.ifBlank { panel.first() }
+            .takeIf { it.isNotBlank() && it != combo.name } ?: panel.first()
+
+        val answers = runBlocking {
+            panel.map { member ->
+                async(Dispatchers.IO) {
+                    val panelBody = JsonObject(body.toMutableMap().apply {
+                        remove("tools")
+                        remove("tool_choice")
+                        remove("stream_options")
+                        put("model", JsonPrimitive(member))
+                        put("stream", JsonPrimitive(false))
+                    }).let { flattenToolHistory(it) }
+                    val result = runCatching {
+                        handle(
+                            clientBody = json.encodeToString(panelBody),
+                            sourceFormat = sourceFormat,
+                            responseFormat = responseFormat,
+                            endpoint = endpoint,
+                            headers = headers,
+                            depth = depth + 1,
+                        )
+                    }.getOrNull()
+                    if (result is Outcome.Json) {
+                        val answer = parseObject(result.body)
+                            ?.let { extractText(it, responseFormat) }
+                            .orEmpty()
+                            .trim()
+                        if (answer.isNotEmpty()) member to answer else null
+                    } else {
+                        null
+                    }
+                }
+            }.awaitAll().filterNotNull()
+        }
+
+        if (answers.isEmpty()) {
+            return fail(503, "All fusion panel models failed", "", combo.name, endpoint, startedAt)
+        }
+        val judgeBody = appendJudgeTurn(body, answers, judge, wantsStream)
+        return handle(
+            clientBody = json.encodeToString(judgeBody),
+            sourceFormat = sourceFormat,
+            responseFormat = responseFormat,
+            endpoint = endpoint,
+            headers = headers,
+            depth = depth + 1,
+        )
+    }
+
+    private fun flattenToolHistory(body: JsonObject): JsonObject {
+        val messages = body["messages"] as? JsonArray ?: return body
+        val flat = messages.map { raw ->
+            val msg = raw as? JsonObject ?: return@map raw
+            when ((msg["role"] as? JsonPrimitive)?.content) {
+                "tool", "function" -> buildJsonObject {
+                    put("role", "assistant")
+                    put("content", "[Tool result: " + contentText(msg["content"]) + "]")
+                }
+                "assistant" -> {
+                    val calls = msg["tool_calls"] as? JsonArray
+                    if (calls.isNullOrEmpty()) {
+                        msg
+                    } else {
+                        val names = calls.mapNotNull { call ->
+                            ((call as? JsonObject)?.get("function") as? JsonObject)
+                                ?.let { text(it["name"], "") }
+                                ?.takeIf { it.isNotBlank() }
+                        }
+                        val base = contentText(msg["content"])
+                        buildJsonObject {
+                            put("role", "assistant")
+                            put(
+                                "content",
+                                base + (if (base.isNotBlank()) "\n" else "") +
+                                    "[Called tools: " + names.joinToString(", ") + "]",
+                            )
+                        }
+                    }
+                }
+                else -> msg
+            }
+        }
+        return JsonObject(body + ("messages" to JsonArray(flat)))
+    }
+
+    private fun appendJudgeTurn(
+        body: JsonObject,
+        answers: List<Pair<String, String>>,
+        judge: String,
+        wantsStream: Boolean,
+    ): JsonObject {
+        val prompt = buildJudgePrompt(answers)
+        val updated: JsonObject = when {
+            body["messages"] is JsonArray -> {
+                val list = (body["messages"] as JsonArray) +
+                    buildJsonObject { put("role", "user"); put("content", prompt) }
+                JsonObject(body + ("messages" to JsonArray(list)))
+            }
+            body["input"] is JsonArray -> {
+                val list = (body["input"] as JsonArray) +
+                    buildJsonObject { put("role", "user"); put("content", prompt) }
+                JsonObject(body + ("input" to JsonArray(list)))
+            }
+            body["contents"] is JsonArray -> {
+                val list = (body["contents"] as JsonArray) + buildJsonObject {
+                    put("role", "user")
+                    put("parts", buildJsonArray { add(buildJsonObject { put("text", prompt) }) })
+                }
+                JsonObject(body + ("contents" to JsonArray(list)))
+            }
+            else -> JsonObject(
+                body + ("messages" to buildJsonArray {
+                    add(buildJsonObject { put("role", "user"); put("content", prompt) })
+                })
+            )
+        }
+        return JsonObject(updated.toMutableMap().apply {
+            put("model", JsonPrimitive(judge))
+            put("stream", JsonPrimitive(wantsStream))
+        })
+    }
+
+    private fun buildJudgePrompt(answers: List<Pair<String, String>>): String {
+        val panel = answers.mapIndexed { index, (_, text) ->
+            "[Source ${index + 1}]\n$text"
+        }.joinToString("\n\n")
+        return """
+            You are the JUDGE in a model-fusion panel. ${answers.size} expert models independently answered the user's most recent request. Their responses are below, anonymized by source.
+
+            Do NOT mention that multiple models were used, and do NOT refer to the sources. Produce ONE authoritative final answer addressed directly to the user.
+
+            First, internally analyze the panel for consensus, contradictions, partial coverage, unique insights and blind spots. Then write the best possible final answer grounded in that analysis.
+
+            === PANEL RESPONSES ===
+            $panel
+            === END PANEL RESPONSES ===
+
+            Now write the final answer to the user's original request.
+        """.trimIndent()
+    }
+
+    private fun extractText(json: JsonObject, format: String): String = when (format) {
+        Formats.CLAUDE -> {
+            val blocks = json["content"] as? JsonArray
+            if (blocks != null) {
+                blocks.joinToString("") { block ->
+                    (block as? JsonObject)?.let { text(it["text"], "") }.orEmpty()
+                }
+            } else {
+                contentText(json["content"])
+            }
+        }
+        Formats.OPENAI_RESPONSES -> (json["output"] as? JsonArray)?.joinToString("") { item ->
+            ((item as? JsonObject)?.get("content") as? JsonArray)?.joinToString("") { part ->
+                (part as? JsonObject)?.let { text(it["text"], "") }.orEmpty()
+            }.orEmpty()
+        }.orEmpty()
+        Formats.GEMINI -> ((json["candidates"] as? JsonArray)?.firstOrNull() as? JsonObject)
+            ?.let { it["content"] as? JsonObject }
+            ?.let { it["parts"] as? JsonArray }
+            ?.joinToString("") { part -> (part as? JsonObject)?.let { text(it["text"], "") }.orEmpty() }
+            .orEmpty()
+        else -> ((json["choices"] as? JsonArray)?.firstOrNull() as? JsonObject)
+            ?.let { it["message"] as? JsonObject }
+            ?.let { contentText(it["content"]) }
+            .orEmpty()
+    }
+
+    private fun adapterPool(hard: Set<String>): List<String> {
+        val adapter = Store.state.settings.capacityAdapter
+        val pools = buildList {
+            if ("vision" in hard) add("vision" to adapter.vision)
+            if ("audio" in hard) add("audio" to adapter.audio)
+        }
+        val out = mutableListOf<String>()
+        for ((key, pool) in pools) {
+            if (!pool.enabled) continue
+            var models = pool.models.distinct()
+            if (pool.roundRobin) models = ComboRotation.order(models, "adapter:$key", 1)
+            out += models
+        }
+        return out.distinct().filter { Capabilities.supports(it, hard) }
+    }
+
+    private fun resolveSessionId(headers: Map<String, String>, body: JsonObject): String? {
+        fun header(name: String): String? = headers.entries
+            .firstOrNull { it.key.equals(name, ignoreCase = true) }
+            ?.value
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() && it.length <= 256 }
+
+        header("x-session-id")?.let { return it }
+        header("session-id")?.let { return it }
+        header("session_id")?.let { return it }
+        header("x-amp-thread-id")?.let { return it }
+        header("x-client-request-id")?.let { return it }
+        header("x-claude-code-session-id")?.let { return "claude:$it" }
+
+        val fromBody = (body["session_id"] as? JsonPrimitive)?.content
+            ?: (body["conversation_id"] as? JsonPrimitive)?.content
+            ?: (body["prompt_cache_key"] as? JsonPrimitive)?.content
+            ?: ((body["metadata"] as? JsonObject)?.get("user_id") as? JsonPrimitive)?.content
+        return fromBody?.trim()?.takeIf { it.isNotEmpty() && it.length <= 256 }
     }
 
     /** Port of open-sse/services/combo.js detectRequiredCapabilities: only flags
@@ -256,27 +620,6 @@ class ChatEngine(
         if (body["tools"] != null) caps.add("tools")
         if (body["reasoning_effort"] != null || body["thinking"] != null) caps.add("reasoning")
         return caps
-    }
-
-    private fun supports(modelStr: String, required: Set<String>): Boolean {
-        if (required.isEmpty()) return true
-        val target = ModelResolver.resolve(modelStr) ?: return false
-        val def = Catalog.find(target.provider) ?: return true
-        val declared = def.modelCapabilities[target.model].orEmpty()
-        val lowered = declared.map { it.lowercase() }
-        val model = target.model.lowercase()
-        val inferred = mutableSetOf<String>()
-        if (lowered.any { it.contains("vision") } ||
-            Regex("gpt-4o|gpt-5|gemini|claude-(3|4|5)|qwen-vl|llava|pixtral").containsMatchIn(model)
-        ) inferred.add("vision")
-        if (lowered.any { it.contains("audio") } || Regex("audio|whisper|tts").containsMatchIn(model)) {
-            inferred.add("audio")
-        }
-        if (lowered.any { it.contains("reason") } || Regex("o1|o3|o4|thinking|reason").containsMatchIn(model)) {
-            inferred.add("reasoning")
-        }
-        if (!Regex("tts|whisper|embedding|image").containsMatchIn(model)) inferred.add("tools")
-        return required.all { need -> need in inferred || lowered.any { it.contains(need) } }
     }
 
     private fun nodeDef(id: String): com.ninerouter.android.data.ProviderDef? {

@@ -106,7 +106,6 @@ import com.ninerouter.android.data.Catalog
 import com.ninerouter.android.data.ChatImage
 import com.ninerouter.android.data.ChatMessage
 import com.ninerouter.android.data.ChatSession
-import com.ninerouter.android.data.Combo
 import com.ninerouter.android.data.Pricing
 import com.ninerouter.android.data.Store
 import com.ninerouter.android.server.GatewayState
@@ -133,7 +132,7 @@ import java.util.UUID
 
 @Composable
 fun EndpointScreen(refresh: () -> Unit) {
-    @Suppress("UNUSED_VARIABLE") val revision = Store.revision
+    val revision = storeRevision()
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
@@ -311,41 +310,18 @@ fun EndpointScreen(refresh: () -> Unit) {
                 }
             }
             Spacer(Modifier.height(NineRouterSpacing.sm))
-            SecondaryButton("Regenerate key", modifier = Modifier.fillMaxWidth()) {
-                Store.mutate { settings = settings.copy(apiKey = Store.newKey()) }
-                refresh()
-            }
-        }
-
-        Panel {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Client configuration", style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain)
-                Spacer(Modifier.weight(1f))
-                TextButton(onClick = {
+            Row(horizontalArrangement = Arrangement.spacedBy(NineRouterSpacing.sm)) {
+                SecondaryButton("Regenerate key", modifier = Modifier.weight(1f)) {
+                    Store.mutate { settings = settings.copy(apiKey = Store.newKey()) }
+                    refresh()
+                }
+                SecondaryButton("Copy config", modifier = Modifier.weight(1f)) {
                     copy(
                         "Config",
                         "Base URL: ${GatewayState.BASE_URL}/v1\nAPI key: ${Store.state.settings.apiKey}\nModel: openai/gpt-5-mini",
                     )
-                }) { Text("Copy", color = NineRouterColors.TextMuted) }
-            }
-            Spacer(Modifier.height(NineRouterSpacing.sm))
-            Surface(
-                color = NineRouterColors.SurfaceSunken,
-                shape = NineRouterShapes.small,
-                border = BorderStroke(1.dp, NineRouterColors.BorderSubtle),
-            ) {
-                Column(Modifier.fillMaxWidth().padding(11.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    MonoText("base_url  ${GatewayState.BASE_URL}/v1")
-                    MonoText("api_key   ${Store.state.settings.apiKey.take(8)}…")
-                    MonoText("model     openai/gpt-5-mini")
                 }
             }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "Pair these with any OpenAI-compatible client after pointing it at the gateway.",
-                style = MaterialTheme.typography.labelSmall,
-                color = NineRouterColors.TextSubtle,
-            )
         }
     }
 }
@@ -392,152 +368,6 @@ private fun Bullet(text: String) {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Combos
-// ---------------------------------------------------------------------------
-
-@Composable
-fun CombosScreen(refresh: () -> Unit) {
-    @Suppress("UNUSED_VARIABLE") val revision = Store.revision
-    var showDialog by remember { mutableStateOf(false) }
-    var name by remember { mutableStateOf("") }
-    var models by remember { mutableStateOf("") }
-    var strategy by remember { mutableStateOf("fallback") }
-    var routerModel by remember { mutableStateOf("") }
-    val strategies = listOf("fallback", "round-robin", "smart")
-
-    Column(Modifier.fillMaxSize()) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            SectionHeader(
-                "Combos",
-                "Try models in order with automatic failover",
-                action = { Pill("${Store.state.combos.size}") },
-            )
-            Spacer(Modifier.height(NineRouterSpacing.sm))
-            PrimaryButton("Add combo", modifier = Modifier.fillMaxWidth(), onClick = { showDialog = true })
-        }
-        if (Store.state.combos.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-                EmptyState(
-                    title = "No combos yet",
-                    body = "Group model ids into a combo so requests fall back automatically when a provider is unavailable.",
-                )
-            }
-        } else {
-            LazyColumn(
-                Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                items(Store.state.combos, key = { it.name }, contentType = { "combo" }) { combo ->
-                    Panel(modifier = Modifier.animateItem()) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                combo.name,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = NineRouterColors.TextMain,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Pill(
-                                combo.strategy,
-                                color = NineRouterColors.BrandOrange,
-                                background = NineRouterColors.BrandOrange.copy(alpha = 0.14f),
-                            )
-                        }
-                        Spacer(Modifier.height(NineRouterSpacing.sm))
-                        combo.models.forEachIndexed { index, model ->
-                            if (index > 0) DividerLine(Modifier.padding(vertical = 2.dp))
-                            Row(
-                                Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Pill("${index + 1}")
-                                Spacer(Modifier.width(8.dp))
-                                MonoText(model, modifier = Modifier.weight(1f))
-                            }
-                        }
-                        if (combo.routerModel.isNotBlank()) {
-                            Spacer(Modifier.height(4.dp))
-                            MonoText("router · ${combo.routerModel}", color = NineRouterColors.TextSubtle)
-                        }
-                        Spacer(Modifier.height(NineRouterSpacing.xs))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            TextButton(onClick = {
-                                Store.state.combos.removeAll { it.name == combo.name }
-                                Store.save()
-                                refresh()
-                            }) { Text("Remove", color = NineRouterColors.Danger) }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (showDialog) {
-        AlertDialog(
-            onDismissRequest = { showDialog = false },
-            containerColor = NineRouterColors.Surface,
-            title = { Text("Add combo", color = NineRouterColors.TextMain) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
-                        name,
-                        { name = it },
-                        label = { Text("Combo name") },
-                        singleLine = true,
-                        shape = NineRouterShapes.small,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    OutlinedTextField(
-                        models,
-                        { models = it },
-                        label = { Text("Models, comma separated") },
-                        shape = NineRouterShapes.small,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Column {
-                        Text("Strategy", style = MaterialTheme.typography.labelSmall, color = NineRouterColors.TextSubtle)
-                        Spacer(Modifier.height(6.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            strategies.forEach { option ->
-                                ChoiceChip(option, strategy == option) { strategy = option }
-                            }
-                        }
-                    }
-                    AnimatedVisibility(
-                        visible = strategy == "smart",
-                        enter = fadeIn(tween(200)) + expandVertically(tween(240)),
-                        exit = fadeOut(tween(140)) + shrinkVertically(tween(180)),
-                    ) {
-                        OutlinedTextField(
-                            routerModel,
-                            { routerModel = it },
-                            label = { Text("Router model") },
-                            singleLine = true,
-                            shape = NineRouterShapes.small,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val list = models.split(",").map { it.trim() }.filter { it.isNotBlank() }
-                    if (name.isNotBlank() && list.isNotEmpty()) {
-                        Store.state.combos.add(Combo(name.trim(), list, strategy, routerModel.trim()))
-                        Store.save()
-                        name = ""; models = ""; strategy = "fallback"; routerModel = ""
-                        showDialog = false
-                        refresh()
-                    }
-                }) { Text("Save", color = NineRouterColors.Brand) }
-            },
-            dismissButton = { TextButton(onClick = { showDialog = false }) { Text("Cancel") } },
-        )
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Usage
 // ---------------------------------------------------------------------------
 
@@ -548,7 +378,6 @@ fun CombosScreen(refresh: () -> Unit) {
 @Composable
 fun UpdatePanel(state: UpdateManager.State) {
     val context = LocalContext.current
-    val current = remember { UpdateManager.currentVersion(context) }
 
     fun openReleasePage() {
         runCatching {
@@ -557,19 +386,11 @@ fun UpdatePanel(state: UpdateManager.State) {
     }
 
     Panel {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "App updates",
-                style = MaterialTheme.typography.titleMedium,
-                color = NineRouterColors.TextMain,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                "v$current",
-                style = MaterialTheme.typography.labelSmall,
-                color = NineRouterColors.TextMuted,
-            )
-        }
+        Text(
+            "Release channel",
+            style = MaterialTheme.typography.titleMedium,
+            color = NineRouterColors.TextMain,
+        )
         Spacer(Modifier.height(6.dp))
 
         when (state) {
@@ -749,7 +570,7 @@ fun ChatScreen() {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val running by GatewayState.running.collectAsState()
-    @Suppress("UNUSED_VARIABLE") val revision = Store.revision
+    val revision = storeRevision()
 
     val options = remember(revision) {
         buildList {
@@ -927,6 +748,7 @@ fun ChatScreen() {
         runStartedAt = startedAt
         liveElapsed = 0L
         val history = messages + UiMessage(role = "user", content = text, images = images)
+        val chatSessionId = currentSession()?.id.orEmpty()
         val placeholder = UiMessage(role = "assistant", content = "", model = model)
         val inputTokens = (history.sumOf { it.content.length + it.images.size * 256 } / 4).coerceAtLeast(1)
         messages = history + placeholder
@@ -935,6 +757,7 @@ fun ChatScreen() {
                 put("model", model)
                 put("messages", buildJsonArray { history.forEach { add(chatMessageJson(it)) } })
                 put("stream", true)
+                if (chatSessionId.isNotBlank()) put("session_id", chatSessionId)
             }
             try {
                 when (val out = engine.handle(request.toString(), Formats.OPENAI, Formats.OPENAI, "chat")) {
@@ -1288,6 +1111,7 @@ private fun ChatSessionsDialog(
     onDelete: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val now = liveNow(30_000L)
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = NineRouterColors.Surface,
@@ -1316,11 +1140,11 @@ private fun ChatSessionsDialog(
                                     session.title,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = if (selected) NineRouterColors.BrandOrange else NineRouterColors.TextMain,
-                                    maxLines = 1,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
-                                    "${session.messages.size} messages · ${sessionAgo(session.updatedAt)}",
+                                    "${session.messages.size} messages · ${sessionAgo(session.updatedAt, now)}",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = NineRouterColors.TextSubtle,
                                     maxLines = 1,
@@ -1377,8 +1201,8 @@ private fun ChatThumbnail(image: ChatImage, size: Dp) {
     }
 }
 
-private fun sessionAgo(timestamp: Long): String {
-    val diff = (System.currentTimeMillis() - timestamp).coerceAtLeast(0L)
+private fun sessionAgo(timestamp: Long, now: Long = System.currentTimeMillis()): String {
+    val diff = (now - timestamp).coerceAtLeast(0L)
     return when {
         diff < 60_000L -> "just now"
         diff < 3_600_000L -> "${diff / 60_000L}m ago"

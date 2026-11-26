@@ -218,7 +218,7 @@ class Gateway(private val context: Context) {
                         else -> Formats.OPENAI
                     }
                     val responseFormat = source
-                    when (val result = engine.handle(body, source, responseFormat, path)) {
+                    when (val result = engine.handle(body, source, responseFormat, path, headers)) {
                         is ChatEngine.Outcome.Json -> writeJson(output, 200, result.body)
                         is ChatEngine.Outcome.Error -> writeJson(output, result.status, errorJson(result.status, result.message))
                         is ChatEngine.Outcome.Stream -> writeSse(output, result)
