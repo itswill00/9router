@@ -5,9 +5,9 @@
 #   ./scripts/android-build.sh fast    # Kotlin only
 #   ./scripts/android-build.sh check   # unit tests + fatal lint (no APK)
 #
-# Release (single R8 variant):
-#   ./scripts/android-build.sh release # R8 release APK + stage
-#   ./scripts/android-build.sh full    # tests + fatal lint + R8 release + stage
+# Release (single plain variant, no R8):
+#   ./scripts/android-build.sh release # release APK + stage
+#   ./scripts/android-build.sh full    # tests + fatal lint + release APK + stage
 #   ./scripts/android-build.sh lint    # full lintDebug only (slow, optional)
 #   ./scripts/android-build.sh dist    # alias for release
 #

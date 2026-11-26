@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Android release helper. Publishes ONE R8-minified APK per release.
+# Android release helper. Publishes ONE plain release APK per release.
 #
 #   ./scripts/android-release.sh              # build + verify + print the plan (no publish)
 #   ./scripts/android-release.sh --yes        # publish the GitHub release
@@ -91,7 +91,7 @@ if [[ $SKIP_BUILD -eq 1 ]]; then
     exit 1
   }
 else
-  echo "==> building the release variant (R8; no debug APK, no full build)"
+  echo "==> building the release variant (no R8, no debug APK, no full build)"
   "$ROOT/scripts/android-build.sh" release
 fi
 
