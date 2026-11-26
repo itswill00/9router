@@ -18,7 +18,7 @@ import okhttp3.Response
 import java.util.concurrent.TimeUnit
 
 /** OkHttp replacement for the per-provider executors in open-sse/executors. */
-class Upstream {
+open class Upstream {
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
@@ -26,7 +26,7 @@ class Upstream {
     private val json = Json { ignoreUnknownKeys = true }
     private val mediaJson = "application/json; charset=utf-8".toMediaType()
 
-    fun execute(def: ProviderDef, conn: Connection, body: JsonObject, wantsStream: Boolean): Response {
+    open fun execute(def: ProviderDef, conn: Connection, body: JsonObject, wantsStream: Boolean): Response {
         var payload = JsonObject(body.toMap().filterKeys { it != "_stream" })
         // Claude OAuth tokens must carry the Claude Code identity prompt.
         if (def.id == "claude" && conn.accessToken.isNotBlank()) payload = withClaudeCodeIdentity(payload)

@@ -1,34 +1,39 @@
-# 9Router Android 0.1.15
+# 9Router Android 0.1.16
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.14
+## What changed since 0.1.15
 
-This fixes the OAuth return trip: the browser no longer strands you on the
-localhost callback page.
+- **Usage now includes streaming requests.** Most API clients stream by default;
+  those requests were previously absent from Usage because tracking only ran
+  after a non-stream JSON response. The gateway now records usage when the SSE
+  body is consumed, preferring upstream token metadata and estimating from the
+  request and streamed text when metadata is absent.
+- **Failures are logged too.** Upstream HTTP failures and request validation
+  errors now create failed entries with status, endpoint and error details.
+- **New Logs tab.** Browse recent requests with success/failure filters, stream
+  mode, status code, model/provider, token counts, latency and estimated cost.
+  Tap an entry for details or copy it. Clearing logs also clears Usage history,
+  because both screens use the same persisted request history.
+- **Richer local log API.** `/api/usage/request-logs` now returns endpoint,
+  stream mode, latency, cached tokens, estimated cost, status code and error.
+  `/api/usage/stats` adds stream count and average latency.
+- **Existing history stays compatible.** New log fields have safe defaults, so
+  older saved usage entries continue to load.
+- **SSE framing fixed for OpenAI-compatible clients.** Every streamed response
+  now ends with a terminal `finish_reason` chunk (`stop`, `length`,
+  `tool_calls`, or `content_filter`) before `data: [DONE]`, even when the
+  upstream omits it or the translator drops a content-less terminal frame.
+  This stops clients such as OpenCode from treating a finished answer as a
+  failed stream and retrying forever.
+- **Reasoning and tool-call deltas survive.** OpenAI-format streams now forward
+  `reasoning_content` / `reasoning`, `tool_calls` / `function_call`, and the
+  initial `role`, so reasoning-only turns and tool use are no longer blanked
+  out.
 
-- **Return to 9Router button.** The loopback callback page is now a branded
-  dark page with a large **Return to 9Router** button. Tapping it fires
-  `ninerouter://oauth/callback?status=done`, which brings the running app back
-  to the foreground.
-- **Automatic hand-back.** The page also tries the deep link by itself shortly
-  after it loads. If the browser blocks automatic custom-scheme navigation,
-  the button is the reliable fallback.
-- **`MainActivity` is `singleTask`.** Incoming deep links are delivered to the
-  existing activity via `onNewIntent` instead of stacking a second copy of the
-  app.
-- **The return signal never triggers a token exchange.** `status=done` is
-  consumed as a foreground nudge; only a real `code` + known `state` is
-  exchanged.
-- **Failure pages are honest.** If the provider returns `error`, the callback
-  page says the login failed and shows the provider's description instead of
-  “complete”.
-- **The OAuth dialog explains the new step** so it is clear that you must tap
-  the button (or switch back manually).
-
-## What changed in 0.1.14
+## What changed in 0.1.15
 
 This is the motion pass: the app is no longer stiff, and chat now reports the
 model that actually answered plus real usage figures.
@@ -376,11 +381,11 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.15-android` (version code 17)
+- Version: `0.1.16-android` (version code 18)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
 - SHA-256 of the attached APK:
-  `b2aa71764e9b0edcd12f924239f6a66fc16d42816a9e9091c383e8a748502bb9`
+  `9e78b08b65451a8299886d410c8c1141e65b33d284db7e2aa0108b967270823b`
 
 See `android/README.md` for the module layout and build instructions.

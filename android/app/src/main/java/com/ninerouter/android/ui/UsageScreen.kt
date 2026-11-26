@@ -41,6 +41,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -146,11 +147,15 @@ fun UsageScreen(refresh: () -> Unit) {
                     DetailRow("Time", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(entry.ts)))
                     DetailRow("Provider", entry.provider)
                     DetailRow("Model", entry.model)
-                    DetailRow("Status", if (entry.ok) "ok" else "failed")
+                    DetailRow("Status", "${if (entry.ok) "ok" else "failed"} · HTTP ${entry.status}")
+                    if (entry.endpoint.isNotBlank()) DetailRow("Endpoint", entry.endpoint)
+                    DetailRow("Mode", if (entry.stream) "stream" else "non-stream")
+                    if (entry.latencyMs > 0) DetailRow("Latency", "${entry.latencyMs} ms")
                     DetailRow("Input", fmt(entry.prompt))
                     DetailRow("Cached", fmt(entry.cached))
                     DetailRow("Output", fmt(entry.completion))
                     DetailRow("Est. cost", money(entry.cost))
+                    if (entry.error.isNotBlank()) DetailRow("Error", entry.error)
                 }
             },
             confirmButton = { TextButton(onClick = { selected = null }) { Text("Close") } },

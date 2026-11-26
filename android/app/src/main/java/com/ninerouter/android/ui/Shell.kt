@@ -72,6 +72,7 @@ private val navItems = listOf(
     NavItem("Providers", R.drawable.ic_nav_providers),
     NavItem("Combos", R.drawable.ic_nav_combos),
     NavItem("Usage", R.drawable.ic_nav_usage),
+    NavItem("Logs", R.drawable.ic_nav_logs),
     NavItem("Settings", R.drawable.ic_nav_settings),
 )
 
@@ -163,7 +164,7 @@ fun AppShell(refreshTrigger: () -> Unit) {
                         Surface(
                             color = NineRouterColors.BrandOrange.copy(alpha = 0.18f),
                             shape = RoundedCornerShape(999.dp),
-                            modifier = Modifier.clickable { showChat = false; tab = 4 },
+                            modifier = Modifier.clickable { showChat = false; tab = 5 },
                         ) {
                             Text(
                                 updateLabel,
@@ -278,7 +279,8 @@ fun AppShell(refreshTrigger: () -> Unit) {
                     1 -> ProvidersScreen(refreshTrigger)
                     2 -> CombosScreen(refreshTrigger)
                     3 -> UsageScreen(refreshTrigger)
-                    4 -> SettingsScreen(refreshTrigger)
+                    4 -> LogsScreen()
+                    5 -> SettingsScreen(refreshTrigger)
                 }
             }
         }
@@ -314,7 +316,7 @@ fun AppShell(refreshTrigger: () -> Unit) {
                     UpdateManager.markAnnounced(context, release.version)
                     updatePrompt = null
                     showChat = false
-                    tab = 4
+                    tab = 5
                 }) { Text("Update", color = NineRouterColors.BrandOrange) }
             },
             dismissButton = {

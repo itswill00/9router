@@ -11,6 +11,12 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import okhttp3.Response
+import okhttp3.ResponseBody
+import okio.Buffer
+import okio.BufferedSource
+import okio.ForwardingSource
+import okio.buffer
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Android counterpart of src/sse/handlers/chat.js + open-sse/handlers/chatCore.js.
@@ -35,10 +41,19 @@ class ChatEngine(
         data class Error(val status: Int, val message: String) : Outcome()
     }
 
-    fun handle(clientBody: String, sourceFormat: String, responseFormat: String): Outcome {
-        val body = parseObject(clientBody) ?: return Outcome.Error(400, "Invalid JSON body")
+    fun handle(
+        clientBody: String,
+        sourceFormat: String,
+        responseFormat: String,
+        endpoint: String = "/v1/chat/completions",
+    ): Outcome {
+        val startedAt = System.currentTimeMillis()
+        val body = parseObject(clientBody)
+            ?: return fail(400, "Invalid JSON body", "", "", endpoint, startedAt)
         val requestedModel = text(body["model"], "")
-        if (requestedModel.isBlank()) return Outcome.Error(400, "Missing model")
+        if (requestedModel.isBlank()) {
+            return fail(400, "Missing model", "", "", endpoint, startedAt)
+        }
 
         val wantsStream = (body["stream"] as? JsonPrimitive)?.content?.toBoolean() ?: false
         val combo = Store.state.combos.firstOrNull { it.name == requestedModel }
@@ -51,9 +66,11 @@ class ChatEngine(
         } else scored
         val strategy = combo?.strategy ?: Store.state.settings.fallbackStrategy
         var lastError: Outcome.Error? = null
+        var lastProvider = ""
 
         for (member in members) {
             val target = ModelResolver.resolve(member) ?: continue
+            lastProvider = target.provider
             val def = Catalog.find(target.provider) ?: nodeDef(target.provider)
             val providerFormat = Formats.normalize(def?.format ?: Formats.OPENAI)
             val upstreamModel = ModelResolver.upstreamModel(target.provider, target.model)
@@ -102,13 +119,33 @@ class ChatEngine(
                     markSuccess(conn)
                     val cliEnvelope = isCliEnvelope(def ?: emptyDef(target.provider))
                     if (wantsStream) {
-                        return Outcome.Stream(response, providerFormat, responseFormat, requestedModel, cliEnvelope, member)
+                        val tracked = trackStream(
+                            response = response,
+                            provider = target.provider,
+                            model = member,
+                            requestBody = clientBody,
+                            providerFormat = providerFormat,
+                            cliEnvelope = cliEnvelope,
+                            endpoint = endpoint,
+                            startedAt = startedAt,
+                        )
+                        return Outcome.Stream(tracked, providerFormat, responseFormat, requestedModel, cliEnvelope, member)
                     }
                     val raw = response.body?.string().orEmpty()
                     val parsed = parseObject(raw) ?: JsonObject(emptyMap())
                     val upstreamJson = if (cliEnvelope) Translator.unwrapEnvelope(parsed) else parsed
                     val finalJson = Translator.responseBody(providerFormat, responseFormat, upstreamJson, requestedModel)
-                    trackUsage(target.provider, member, upstreamJson, true, clientBody, raw)
+                    trackUsage(
+                        provider = target.provider,
+                        model = member,
+                        upstreamJson = upstreamJson,
+                        ok = true,
+                        requestBody = clientBody,
+                        responseBody = raw,
+                        latencyMs = System.currentTimeMillis() - startedAt,
+                        endpoint = endpoint,
+                        stream = false,
+                    )
                     return Outcome.Json(json.encodeToString(finalJson), member)
                 }
 
@@ -122,11 +159,14 @@ class ChatEngine(
                 Store.save()
                 lastError = Outcome.Error(code, errorText.ifBlank { "Upstream HTTP $code" })
                 response.close()
-                if (!decision.shouldFallback && !decision.requestScoped) return lastError!!
+                if (!decision.shouldFallback && !decision.requestScoped) {
+                    return fail(code, lastError!!.message, target.provider, requestedModel, endpoint, startedAt)
+                }
                 if (decision.requestScoped) break // member rejected the request, try next member
             }
         }
-        return lastError ?: Outcome.Error(503, "All models unavailable")
+        val error = lastError ?: Outcome.Error(503, "All models unavailable")
+        return fail(error.status, error.message, lastProvider, requestedModel, endpoint, startedAt)
     }
 
     private fun emptyDef(id: String) = com.ninerouter.android.data.ProviderDef(id = id, alias = id)
@@ -281,23 +321,166 @@ class ChatEngine(
         ok: Boolean,
         requestBody: String = "",
         responseBody: String = "",
+        latencyMs: Long = 0L,
+        endpoint: String = "",
+        stream: Boolean = false,
     ) {
         val usage = upstreamJson["usage"] as? JsonObject ?: upstreamJson["usageMetadata"] as? JsonObject
-        fun n(key: String, alt: String) = (usage?.get(key) as? JsonPrimitive)?.content?.toLongOrNull()
-            ?: (usage?.get(alt) as? JsonPrimitive)?.content?.toLongOrNull() ?: 0L
         // Upstream parity: when a provider omits usage metadata, estimate from
         // the wire bodies rather than recording a misleading zero.
-        val prompt = n("prompt_tokens", "input_tokens").toInt()
-            .takeIf { it > 0 } ?: estimateTokens(requestBody)
-        val completion = n("completion_tokens", "output_tokens").toInt()
-            .takeIf { it > 0 } ?: estimateTokens(responseBody)
+        val prompt = (
+            int(usage?.get("prompt_tokens"))
+                ?: int(usage?.get("input_tokens"))
+                ?: int(usage?.get("promptTokenCount"))
+                ?: 0
+            ).takeIf { it > 0 } ?: estimateTokens(requestBody)
+        val completion = (
+            int(usage?.get("completion_tokens"))
+                ?: int(usage?.get("output_tokens"))
+                ?: int(usage?.get("candidatesTokenCount"))
+                ?: 0
+            ).takeIf { it > 0 } ?: estimateTokens(responseBody)
         val details = usage?.get("prompt_tokens_details") as? JsonObject
-        val cached = ((details?.get("cached_tokens") as? JsonPrimitive)?.content?.toIntOrNull()
-            ?: (usage?.get("cache_read_input_tokens") as? JsonPrimitive)?.content?.toIntOrNull()
-            ?: 0).coerceAtMost(prompt)
-        val cost = com.ninerouter.android.data.Pricing.cost(model, prompt, completion, cached)
+        val cached = (
+            int(details?.get("cached_tokens"))
+                ?: int(usage?.get("cache_read_input_tokens"))
+                ?: int(usage?.get("cachedContentTokenCount"))
+                ?: 0
+            ).coerceAtMost(prompt)
+        recordUsage(
+            provider = provider,
+            model = model,
+            prompt = prompt,
+            completion = completion,
+            cached = cached,
+            ok = ok,
+            status = if (ok) 200 else 502,
+            latencyMs = latencyMs,
+            stream = stream,
+            endpoint = endpoint,
+        )
+    }
+
+    /**
+     * Wrap a successful streaming response so usage is recorded even though
+     * the body is consumed lazily by the HTTP writer or the in-app chat.
+     * Without this, every streamed request vanished from Usage & Logs.
+     */
+    private fun trackStream(
+        response: Response,
+        provider: String,
+        model: String,
+        requestBody: String,
+        providerFormat: String,
+        cliEnvelope: Boolean,
+        endpoint: String,
+        startedAt: Long,
+    ): Response {
+        val original = response.body ?: return response
+        val tracked = StreamUsageBody(original) { raw, error ->
+            val tokens = streamTokens(providerFormat, cliEnvelope, raw, requestBody)
+            recordUsage(
+                provider = provider,
+                model = model,
+                prompt = tokens.prompt,
+                completion = tokens.completion,
+                cached = tokens.cached,
+                ok = error == null,
+                status = if (error == null) 200 else 502,
+                latencyMs = System.currentTimeMillis() - startedAt,
+                stream = true,
+                endpoint = endpoint,
+                error = error?.message?.take(300).orEmpty(),
+            )
+        }
+        return response.newBuilder().body(tracked).build()
+    }
+
+    private data class StreamTokens(val prompt: Int, val completion: Int, val cached: Int)
+
+    /** Pull real token counts out of SSE frames when the provider sends them,
+     * and estimate from the streamed text when it does not. */
+    private fun streamTokens(
+        providerFormat: String,
+        cliEnvelope: Boolean,
+        raw: String,
+        requestBody: String,
+    ): StreamTokens {
+        var prompt = 0
+        var completion = 0
+        var cached = 0
+        val text = StringBuilder()
+        for (line in raw.lineSequence()) {
+            if (!line.startsWith("data:")) continue
+            val data = line.removePrefix("data:").trim()
+            if (data.isEmpty() || data == "[DONE]") continue
+            val obj = parseObject(data) ?: continue
+            val inner = if (cliEnvelope) Translator.unwrapEnvelope(obj) else obj
+
+            (inner["usage"] as? JsonObject)?.let { usage ->
+                prompt = maxOf(prompt, int(usage["prompt_tokens"]) ?: int(usage["input_tokens"]) ?: 0)
+                completion = maxOf(completion, int(usage["completion_tokens"]) ?: int(usage["output_tokens"]) ?: 0)
+                val details = usage["prompt_tokens_details"] as? JsonObject
+                cached = maxOf(
+                    cached,
+                    int(details?.get("cached_tokens")) ?: int(usage["cache_read_input_tokens"]) ?: 0,
+                )
+            }
+
+            // Claude reports input tokens on message_start and output on message_delta.
+            when (text(inner["type"], "")) {
+                "message_start" -> {
+                    val usage = (inner["message"] as? JsonObject)?.get("usage") as? JsonObject
+                    prompt = maxOf(prompt, int(usage?.get("input_tokens")) ?: 0)
+                    cached = maxOf(cached, int(usage?.get("cache_read_input_tokens")) ?: 0)
+                }
+                "message_delta" -> {
+                    val usage = inner["usage"] as? JsonObject
+                    completion = maxOf(completion, int(usage?.get("output_tokens")) ?: 0)
+                }
+            }
+
+            // Gemini repeats cumulative usageMetadata on each chunk.
+            (inner["usageMetadata"] as? JsonObject)?.let { meta ->
+                prompt = maxOf(prompt, int(meta["promptTokenCount"]) ?: 0)
+                completion = maxOf(completion, int(meta["candidatesTokenCount"]) ?: 0)
+                cached = maxOf(cached, int(meta["cachedContentTokenCount"]) ?: 0)
+            }
+
+            // Responses API sends usage inside the completed event.
+            ((inner["response"] as? JsonObject)?.get("usage") as? JsonObject)?.let { usage ->
+                prompt = maxOf(prompt, int(usage["input_tokens"]) ?: 0)
+                completion = maxOf(completion, int(usage["output_tokens"]) ?: 0)
+            }
+
+            // Reuse the translator so every upstream dialect contributes text.
+            val converted = Translator.sseDelta(providerFormat, line, "", cliEnvelope) ?: continue
+            val chunk = parseObject(converted.removePrefix("data:").trim()) ?: continue
+            val choices = chunk["choices"] as? JsonArray
+            val delta = (choices?.firstOrNull() as? JsonObject)?.get("delta") as? JsonObject
+            (delta?.get("content") as? JsonPrimitive)?.content?.let { text.append(it) }
+        }
+        val finalPrompt = prompt.takeIf { it > 0 } ?: estimateTokens(requestBody)
+        val finalCompletion = completion.takeIf { it > 0 } ?: estimateTokens(text.toString())
+        return StreamTokens(finalPrompt, finalCompletion, cached.coerceAtMost(finalPrompt))
+    }
+
+    private fun recordUsage(
+        provider: String,
+        model: String,
+        prompt: Int,
+        completion: Int,
+        cached: Int,
+        ok: Boolean,
+        status: Int,
+        latencyMs: Long,
+        stream: Boolean,
+        endpoint: String,
+        error: String = "",
+    ) {
+        val cost = if (ok) com.ninerouter.android.data.Pricing.cost(model, prompt, completion, cached) else 0.0
         Store.mutate {
-            this.usage.add(
+            usage.add(
                 com.ninerouter.android.data.UsageEntry(
                     ts = System.currentTimeMillis(),
                     provider = provider,
@@ -307,13 +490,45 @@ class ChatEngine(
                     cached = cached,
                     cost = cost,
                     ok = ok,
+                    latencyMs = latencyMs,
+                    status = status,
+                    stream = stream,
+                    endpoint = endpoint,
+                    error = error,
                 )
             )
-            if (this.usage.size > 500) this.usage.removeAt(0)
+            if (usage.size > 500) usage.removeAt(0)
         }
     }
 
+    private fun fail(
+        status: Int,
+        message: String,
+        provider: String,
+        model: String,
+        endpoint: String,
+        startedAt: Long,
+    ): Outcome.Error {
+        recordUsage(
+            provider = provider,
+            model = model,
+            prompt = 0,
+            completion = 0,
+            cached = 0,
+            ok = false,
+            status = status,
+            latencyMs = System.currentTimeMillis() - startedAt,
+            stream = false,
+            endpoint = endpoint,
+            error = message.take(300),
+        )
+        return Outcome.Error(status, message)
+    }
+
     private fun estimateTokens(text: String): Int = (text.length / 4).coerceAtLeast(1)
+
+    private fun int(el: kotlinx.serialization.json.JsonElement?): Int? =
+        (el as? JsonPrimitive)?.content?.toIntOrNull()
 
     private fun parseObject(raw: String): JsonObject? =
         try { json.parseToJsonElement(raw) as? JsonObject } catch (_: Exception) { null }
@@ -322,4 +537,66 @@ class ChatEngine(
 
     private fun text(el: kotlinx.serialization.json.JsonElement?, fallback: String) =
         (el as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() } ?: fallback
+}
+
+/**
+ * Delegating response body that captures SSE bytes while they are read and
+ * reports them once, at EOF or close. Keeps streaming zero-copy-ish for the
+ * client while making usage accounting possible.
+ */
+private class StreamUsageBody(
+    private val delegate: ResponseBody,
+    private val onDone: (String, Throwable?) -> Unit,
+) : ResponseBody() {
+    private val finished = AtomicBoolean(false)
+    private val capture = Buffer()
+    private var buffered: BufferedSource? = null
+
+    override fun contentType() = delegate.contentType()
+
+    override fun contentLength() = delegate.contentLength()
+
+    override fun source(): BufferedSource {
+        buffered?.let { return it }
+        val forwarding = object : ForwardingSource(delegate.source()) {
+            override fun read(sink: Buffer, byteCount: Long): Long {
+                val read = try {
+                    super.read(sink, byteCount)
+                } catch (t: Throwable) {
+                    finish(t)
+                    throw t
+                }
+                if (read == -1L) {
+                    finish(null)
+                } else if (read > 0) {
+                    synchronized(this@StreamUsageBody) {
+                        val room = MAX_CAPTURE - capture.size
+                        if (room > 0) sink.copyTo(capture, sink.size - read, minOf(read, room))
+                    }
+                }
+                return read
+            }
+        }
+        return forwarding.buffer().also { buffered = it }
+    }
+
+    override fun close() {
+        try {
+            delegate.close()
+        } finally {
+            finish(null)
+        }
+    }
+
+    private fun finish(error: Throwable?) {
+        val raw = synchronized(this) {
+            if (!finished.compareAndSet(false, true)) return
+            try { capture.readUtf8() } catch (_: Exception) { "" }
+        }
+        onDone(raw, error)
+    }
+
+    private companion object {
+        const val MAX_CAPTURE = 512L * 1024L
+    }
 }

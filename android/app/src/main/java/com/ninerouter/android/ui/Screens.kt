@@ -785,7 +785,7 @@ fun ChatScreen() {
                 put("stream", true)
             }
             try {
-                when (val out = engine.handle(request.toString(), Formats.OPENAI, Formats.OPENAI)) {
+                when (val out = engine.handle(request.toString(), Formats.OPENAI, Formats.OPENAI, "chat")) {
                     is ChatEngine.Outcome.Json -> {
                         val answer = contentOf(parser, out.body).ifBlank { "(empty response)" }
                         val elapsed = System.currentTimeMillis() - startedAt

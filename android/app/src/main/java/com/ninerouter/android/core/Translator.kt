@@ -459,11 +459,13 @@ object Translator {
     // ---------- streaming ----------
 
     fun sseDelta(target: String, rawLine: String, requestedModel: String, cliEnvelope: Boolean = false): String? {
-        if (rawLine.startsWith("data:")) {
-            val data = rawLine.removePrefix("data:").trim()
-            if (data == "[DONE]") return "data: [DONE]"
-            var obj = try { json.parseToJsonElement(data) as? JsonObject } catch (_: Exception) { null } ?: return null
-            if (cliEnvelope) obj = unwrapEnvelope(obj)
+        if (!rawLine.startsWith("data:")) return null
+        val data = rawLine.removePrefix("data:").trim()
+        if (data == "[DONE]") return "data: [DONE]"
+        var obj = try { json.parseToJsonElement(data) as? JsonObject } catch (_: Exception) { null } ?: return null
+        if (cliEnvelope) obj = unwrapEnvelope(obj)
+
+        val delta = buildJsonObject {
             val piece = when (target) {
                 Formats.GEMINI -> {
                     val cand = (obj["candidates"] as? JsonArray)?.firstOrNull() as? JsonObject
@@ -477,34 +479,105 @@ object Translator {
                 }
                 Formats.CLAUDE -> when (text(obj["type"], "")) {
                     "content_block_delta" -> text((obj["delta"] as? JsonObject)?.get("text"), "")
-                    "content_block_start" ->
-                        text(((obj["content_block"] as? JsonObject)?.get("text")), "")
+                    "content_block_start" -> text(((obj["content_block"] as? JsonObject)?.get("text")), "")
                     else -> ""
                 }
                 else -> {
                     val choices = obj["choices"] as? JsonArray
                     val first = choices?.firstOrNull() as? JsonObject
-                    val delta = first?.get("delta") as? JsonObject
+                    val sourceDelta = first?.get("delta") as? JsonObject
                     val msg = first?.get("message") as? JsonObject
-                    text(delta?.get("content"), text(msg?.get("content"), ""))
+                    sourceDelta?.get("reasoning_content")?.let { put("reasoning_content", it) }
+                    sourceDelta?.get("reasoning")?.let { put("reasoning", it) }
+                    sourceDelta?.get("tool_calls")?.let { put("tool_calls", it) }
+                    sourceDelta?.get("function_call")?.let { put("function_call", it) }
+                    sourceDelta?.get("role")?.let { put("role", it) }
+                    text(sourceDelta?.get("content"), text(msg?.get("content"), ""))
                 }
             }
-            if (piece.isEmpty()) return null
-            return json.encodeToString(buildJsonObject {
-                put("id", "chatcmpl-stream")
-                put("object", "chat.completion.chunk")
-                put("created", System.currentTimeMillis() / 1000)
-                put("model", requestedModel)
-                put("choices", buildJsonArray {
-                    add(buildJsonObject {
-                        put("index", 0)
-                        put("delta", buildJsonObject { put("content", piece) })
-                        put("finish_reason", JsonNull)
-                    })
-                })
-            }).let { "data: $it" }
+            if (piece.isNotEmpty()) put("content", piece)
         }
-        return null
+        if (delta.isEmpty()) return null
+        return json.encodeToString(buildJsonObject {
+            put("id", "chatcmpl-stream")
+            put("object", "chat.completion.chunk")
+            put("created", System.currentTimeMillis() / 1000)
+            put("model", requestedModel)
+            put("choices", buildJsonArray {
+                add(buildJsonObject {
+                    put("index", 0)
+                    put("delta", delta)
+                    put("finish_reason", JsonNull)
+                })
+            })
+        }).let { "data: $it" }
+    }
+
+    /** Returns the upstream terminal reason normalized to OpenAI chat semantics. */
+    fun sseFinishReason(target: String, rawLine: String, cliEnvelope: Boolean = false): String? {
+        if (!rawLine.startsWith("data:")) return null
+        val data = rawLine.removePrefix("data:").trim()
+        if (data.isEmpty() || data == "[DONE]") return null
+        var obj = try { json.parseToJsonElement(data) as? JsonObject } catch (_: Exception) { null } ?: return null
+        if (cliEnvelope) obj = unwrapEnvelope(obj)
+        val choice = (obj["choices"] as? JsonArray)?.firstOrNull() as? JsonObject
+        val finishValue = choice?.get("finish_reason")
+        val direct = if (finishValue == null || finishValue == JsonNull) "" else text(finishValue, "")
+        if (direct.isNotBlank()) return normalizeFinishReason(direct)
+
+        return when (target) {
+            Formats.GEMINI -> {
+                val candidate = (obj["candidates"] as? JsonArray)?.firstOrNull() as? JsonObject
+                when (text(candidate?.get("finishReason"), "").uppercase()) {
+                    "MAX_TOKENS" -> "length"
+                    "SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT" -> "content_filter"
+                    "STOP" -> "stop"
+                    else -> null
+                }
+            }
+            Formats.CLAUDE -> {
+                val reason = text((obj["delta"] as? JsonObject)?.get("stop_reason"), "")
+                when (reason) {
+                    "end_turn", "stop_sequence" -> "stop"
+                    "max_tokens" -> "length"
+                    "tool_use" -> "tool_calls"
+                    "refusal" -> "content_filter"
+                    else -> null
+                }
+            }
+            Formats.OPENAI_RESPONSES -> when (text(obj["type"], "")) {
+                "response.completed" -> "stop"
+                "response.incomplete" -> {
+                    val response = obj["response"] as? JsonObject
+                    val reason = text((response?.get("incomplete_details") as? JsonObject)?.get("reason"), "")
+                    if (reason == "max_output_tokens") "length" else "stop"
+                }
+                else -> null
+            }
+            else -> null
+        }
+    }
+
+    fun terminalSseChunk(model: String, finishReason: String): String =
+        json.encodeToString(buildJsonObject {
+            put("id", "chatcmpl-stream")
+            put("object", "chat.completion.chunk")
+            put("created", System.currentTimeMillis() / 1000)
+            put("model", model)
+            put("choices", buildJsonArray {
+                add(buildJsonObject {
+                    put("index", 0)
+                    put("delta", buildJsonObject {})
+                    put("finish_reason", normalizeFinishReason(finishReason))
+                })
+            })
+        }).let { "data: $it" }
+
+    private fun normalizeFinishReason(reason: String): String = when (reason) {
+        "max_tokens", "max_output_tokens", "MAX_TOKENS" -> "length"
+        "tool_use", "tool-calls" -> "tool_calls"
+        "refusal" -> "content_filter"
+        else -> reason.ifBlank { "stop" }
     }
 
     // ---------- helpers ----------

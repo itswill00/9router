@@ -131,6 +131,11 @@ data class UsageEntry(
     val cached: Int = 0,
     val cost: Double = 0.0,
     val ok: Boolean = true,
+    val latencyMs: Long = 0L,
+    val status: Int = 200,
+    val stream: Boolean = false,
+    val endpoint: String = "",
+    val error: String = "",
 )
 
 @Serializable

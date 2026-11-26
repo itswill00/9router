@@ -164,7 +164,7 @@ class Gateway(private val context: Context) {
                         else -> Formats.OPENAI
                     }
                     val responseFormat = source
-                    when (val result = engine.handle(body, source, responseFormat)) {
+                    when (val result = engine.handle(body, source, responseFormat, path)) {
                         is ChatEngine.Outcome.Json -> writeJson(output, 200, result.body)
                         is ChatEngine.Outcome.Error -> writeJson(output, result.status, errorJson(result.status, result.message))
                         is ChatEngine.Outcome.Stream -> writeSse(output, result)
@@ -328,6 +328,7 @@ class Gateway(private val context: Context) {
 
     private fun usageStatsJson(): String {
         val usage = Store.state.usage
+        val timed = usage.filter { it.latencyMs > 0 }
         return buildJsonObject {
             put("requests", usage.size)
             put("prompt_tokens", usage.sumOf { it.prompt })
@@ -335,6 +336,8 @@ class Gateway(private val context: Context) {
             put("cached_tokens", usage.sumOf { it.cached })
             put("total_cost", usage.sumOf { it.cost })
             put("failed", usage.count { !it.ok })
+            put("streams", usage.count { it.stream })
+            put("avg_latency_ms", if (timed.isEmpty()) 0L else timed.sumOf { it.latencyMs } / timed.size)
             put("providers", buildJsonArray {
                 usage.groupBy { it.provider }.forEach { (provider, entries) ->
                     add(buildJsonObject {
@@ -354,8 +357,15 @@ class Gateway(private val context: Context) {
                 put("provider", u.provider)
                 put("model", u.model)
                 put("status", if (u.ok) "ok" else "failed")
+                put("code", u.status)
+                put("endpoint", u.endpoint)
+                put("stream", u.stream)
+                put("latency_ms", u.latencyMs)
                 put("prompt_tokens", u.prompt)
                 put("completion_tokens", u.completion)
+                put("cached_tokens", u.cached)
+                put("cost", u.cost)
+                put("error", u.error)
             })
         }
     })
@@ -749,23 +759,7 @@ class Gateway(private val context: Context) {
             "Transfer-Encoding: chunked\r\n" +
             "Connection: close\r\n\r\n"
         output.write(head.toByteArray(Charsets.UTF_8))
-        val source = result.response.body?.source()
-        var sawDone = false
-        try {
-            while (true) {
-                val line = source?.readUtf8Line() ?: break
-                var converted = Translator.sseDelta(result.targetFormat, line, result.model, result.cliEnvelope)
-                if (converted == null && line.contains("[DONE]")) converted = "data: [DONE]"
-                if (converted == null) continue
-                if (converted.contains("[DONE]")) sawDone = true
-                writeChunk(output, converted + "\n\n")
-            }
-            if (!sawDone) writeChunk(output, "data: [DONE]\n\n")
-            output.write("0\r\n\r\n".toByteArray(Charsets.UTF_8))
-            output.flush()
-        } finally {
-            result.response.close()
-        }
+        SseWriter.writeBody(output, result)
     }
 
     private fun writeChunk(output: OutputStream, data: String) {
