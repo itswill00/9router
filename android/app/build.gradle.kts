@@ -21,6 +21,10 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            // Reuse the debug signing identity so the published debug and release
+            // APKs are interchangeable: the in-app updater keeps installing in
+            // place, and switching variants never needs an uninstall.
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
