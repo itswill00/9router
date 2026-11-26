@@ -2,14 +2,17 @@
 
 ## Goal
 
-Maintain the native Android port of 9Router: a loopback-only Kotlin gateway
-with a Compose dashboard, upstream-parity navigation/UX, reliable live data,
-and one sideloadable release APK per version.
+Maintain the native Android port of 9Router: a Kotlin gateway that defaults to
+loopback with opt-in private-network access, a Compose dashboard,
+upstream-parity navigation/UX, reliable live data, and one sideloadable release
+APK per version.
 
 ## Current state
 
 - Branch: `master` — clean, synced with `origin/master`.
 - Version: `0.1.28-android` (version code 30).
+- Unreleased: remote access, public base URL and network-mode hardening are
+  committed on `master`; the next release should be `0.1.29-android`.
 - Latest release: https://github.com/itswill00/9router/releases/tag/android-v0.1.28
   - asset: `9Router-0.1.28-release.apk` (10,437,884 bytes)
   - SHA-256: `b862f298b92653055d755397f9f9c56309b186c0ad54b5d59e126e65e78b2794`
@@ -49,6 +52,14 @@ and one sideloadable release APK per version.
   and project links. **Written and compiled.**
 - README root and `android/README.md` document the lineage, issue routing and
   current limitations. **Written.**
+- Remote access: opt-in network mode in `data/Exposure.kt`,
+  `server/Gateway.kt`, `server/ApiAccess.kt`, `server/AuthThrottle.kt` and
+  `ui/Screens.kt`. Accepts loopback plus RFC1918/link-local/CGNAT/tailnet,
+  drops public sources, forces the key, key-gates management routes, removes
+  wildcard CORS, throttles failed keys, and adds a public base URL with a
+  health + authenticated models test. **Verified** by `ExposureTest`,
+  `ApiAccessTest`, `ApiCorsTest` and the fast check; not manually exercised on
+  a device in this session.
 
 ## Build/test
 
@@ -77,9 +88,10 @@ Nothing is blocked. There is no active bug or failing test.
    bump version/notes, run `./scripts/android-build.sh release` once, verify the
    APK, commit the release, push `master`, then run
    `./scripts/android-release.sh --skip-build --yes`.
-4. Likely next areas: media-provider backends, proxy-pool transport, non-image
-   attachments, session rename/search, full-screen image viewer, fusion
-   quorum-grace, adaptive tablet layouts, localization.
+4. Likely next areas: native tunnel/relay integration for one-tap public URLs,
+   media-provider backends, proxy-pool transport, non-image attachments, session
+   rename/search, full-screen image viewer, fusion quorum-grace, adaptive
+   tablet layouts, localization.
 
 ## Pitfalls — do not repeat
 
@@ -89,6 +101,9 @@ Nothing is blocked. There is no active bug or failing test.
   screen's own scope.
 - **Release rebuilds** → the user explicitly wants one build, then
   `android-release.sh --skip-build --yes`. Do not rebuild during publishing.
+- **Exposure shortcuts** → do not drop the peer allow-list, the forced key, the
+  management-route gate or the CORS removal to make a tunnel "just work".
+  Public source addresses are rejected on purpose; put a proxy in front.
 - **Duplicate page chrome** → the top bar already shows title/subtitle. Do not
   repeat the same title in content; only subsection headings are allowed.
 - **Founder confusion** → itswill00 is the Android port author, not the

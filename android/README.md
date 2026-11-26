@@ -30,7 +30,10 @@ project.
 
 ## What works in this slice
 
-- Foreground service + loopback HTTP/1.1 server (`Gateway.kt`).
+- Opt-in network mode for LAN and tunnel clients: a wildcard listener that
+  still drops public source addresses, accepts only loopback plus
+  RFC1918/link-local/CGNAT/tailnet peers, forces the API key, key-gates the
+  management routes, removes wildcard CORS, and throttles failed auth per peer.
 - `GET /api/health`, `GET /v1/models`, `GET|POST /api/settings`.
 - API-key auth plus per-key model/combo allow-lists, with CORS preflight for browsers.
 - `GET /v1/models`, `/v1/models/{kind}`, `/v1/models/{provider}/{model}`, `/v1/models/info`
@@ -198,13 +201,37 @@ Model:    openai/gpt-5-mini, claude/claude-sonnet-5, or a combo name
 On the same device, loopback is shared between apps. If a client cannot reach
 it, verify with `adb shell curl http://127.0.0.1:20128/api/health`.
 
+### LAN, tailnet and your own domain
+
+Open **Endpoint & Key → Remote access** and turn on *Allow LAN and tunnel
+clients*. The app lists the private URLs it is reachable on and requires an API
+key. Point a tunnel or reverse proxy (Cloudflare Tunnel, Tailscale, nginx on a
+VPS, WireGuard) at the phone, then save its HTTPS URL in **Public base URL**.
+The copy-config actions and the status page switch to that URL, and **Test URL**
+checks both `/api/health` and an authenticated `/v1/models` through the public
+path.
+
+The phone never terminates TLS and never trusts `X-Forwarded-For`. Only the
+private hop is plain HTTP; the public hop must end at your proxy. Public source
+addresses are rejected even in network mode, so exposing the raw port to the
+internet does not work by design.
+
 ## Security notes
 
-- Bind is `127.0.0.1` only. There is no `X-Forwarded-For` trust path.
+- Loopback is the default. Remote access is opt-in: the gateway may bind a
+  wildcard listener, but the accept loop drops every peer outside loopback,
+  RFC1918, link-local, CGNAT (`100.64.0.0/10`) and IPv6 ULA/link-local ranges.
+- Network mode always requires the API key even when the local toggle is off,
+  key-gates `/api/keys`, `/api/providers`, `/api/combos`, `/api/settings`,
+  `/api/usage/*` and shutdown, omits the wildcard CORS origin, and throttles
+  repeated failed keys per peer.
+- There is no `X-Forwarded-For` trust path and no in-app TLS. Terminate TLS in a
+  tunnel or reverse proxy; the phone keeps serving plain HTTP on the private hop.
 - API key comparison uses `MessageDigest.isEqual` (constant time).
-- `usesCleartextTraffic` is enabled only because the endpoint is HTTP loopback.
+- `usesCleartextTraffic` is enabled only because the endpoint is HTTP.
 - Provider tokens/keys never land in plaintext in `appstate.json`.
-- Do not add a `0.0.0.0` bind without reintroducing auth + TLS + SSRF review.
+- Do not remove the peer allow-list, forced key, or management gate when
+  touching the exposure code.
 
 ## Origin of the code
 

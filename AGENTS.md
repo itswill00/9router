@@ -22,7 +22,13 @@ This file is the durable working agreement for this repository. Read
 
 - Native Android only. Do not add a Node/Termux/root runtime or a bundled
   JavaScript engine.
-- The gateway binds loopback only. Do not expose `0.0.0.0`.
+- The gateway binds loopback by default. Network mode is opt-in and must keep
+  every guard: wildcard listener only to reach private interfaces, public
+  source addresses dropped at accept time, peers limited to loopback +
+  RFC1918/link-local/CGNAT/tailnet, API key mandatory, management routes
+  key-gated, wildcard CORS removed, per-peer auth throttle.
+- Never terminate TLS in the app and never trust `X-Forwarded-For`. A public
+  domain must end at a tunnel or reverse proxy.
 - Never log, print, or render provider tokens, API keys, cookies, or OAuth
   secrets. Mask existing keys. Newly created keys may be shown once for copying.
 - Preserve working routing, translation, auth, and usage logic when polishing
@@ -93,6 +99,10 @@ This file is the durable working agreement for this repository. Read
   composition scope with `val revision by storeRevision()` or
   `val revision by liveRevision(...)`; do not read it only inside a helper that
   returns a plain value.
+- Remote access lives on Endpoint & Key: one toggle, the private URLs the phone
+  is reachable on, and a Public base URL with a reachability test. Copy-config
+  and the status page use the public URL when set. Do not add a second exposure
+  control in Settings; Settings only reflects that the key is forced on.
 - Usage Overview has six stat cards (Total Requests, Input, Cached, Output,
   Estimated Cost, Success Rate), a vertical provider flow, recent requests,
   charts, and the per-model table. Keep the 2-column phone / 3-column wide grid.
@@ -113,8 +123,8 @@ This file is the durable working agreement for this repository. Read
 
 - `android/app/src/main/java/com/ninerouter/android/server/`
   `Gateway.kt`, `ApiHttp.kt`, `HttpRequestParser.kt`, `ApiAccess.kt`,
-  `CompatibilityRoutes.kt`, `ModelsApi.kt`, `EmbeddingsApi.kt`,
-  `SseEncoder.kt`, `SseWriter.kt`.
+  `AuthThrottle.kt`, `CompatibilityRoutes.kt`, `ModelsApi.kt`,
+  `EmbeddingsApi.kt`, `SseEncoder.kt`, `SseWriter.kt`.
 - `core/`
   `ChatEngine.kt` (routing, combo strategies/fusion, usage),
   `Upstream.kt`, `Translator.kt`, `ModelResolver.kt`, `Capabilities.kt`,
@@ -122,7 +132,8 @@ This file is the durable working agreement for this repository. Read
   `OAuthFlow.kt`, `ProviderProbe.kt`, `NodeProbe.kt`.
 - `data/`
   `Store.kt` (encrypted file state + `version: StateFlow<Int>`),
-  `Models.kt`, `Catalog.kt`, `Pricing.kt`, `Crypto.kt`, `ProviderAuth.kt`.
+  `Models.kt`, `Catalog.kt`, `Pricing.kt`, `Crypto.kt`, `ProviderAuth.kt`,
+  `Exposure.kt` (network mode, peer allow-list, public URL policy).
 - `ui/`
   `Shell.kt` (drawer/top bar), `Screens.kt` (Endpoint/Chat/Update),
   `ProvidersScreen.kt`, `CombosScreen.kt`, `UsageScreen.kt`,
@@ -155,6 +166,8 @@ This file is the durable working agreement for this repository. Read
 
 ## Known limitations
 
+- No in-app TLS and no `X-Forwarded-For` trust. Network mode is meant for a
+  private hop behind a tunnel or reverse proxy; raw public exposure is dropped.
 - No TLS/MITM interception, certificate injection, or Antigravity IDE
   impersonation.
 - Native Kiro/Cursor/commandcode binary envelopes are not implemented.

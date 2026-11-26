@@ -204,13 +204,20 @@ node scripts/export-android-config.mjs
 
 ## Security model
 
-- The gateway binds to `127.0.0.1` only. The app never binds `0.0.0.0`.
+- The gateway binds to `127.0.0.1` by default. Remote access is an explicit
+  opt-in for LAN and tunnel clients: it drops public source addresses, accepts
+  only loopback plus RFC1918/link-local/CGNAT/tailnet peers, and forces an API
+  key.
+- In network mode the management routes (`/api/keys`, `/api/providers`,
+  `/api/combos`, `/api/settings`, `/api/usage/*`, shutdown) require the key,
+  wildcard CORS is removed, and repeated failed keys are throttled per peer.
+- There is no in-app TLS and no `X-Forwarded-For` trust path. A public domain
+  must be terminated at a tunnel or reverse proxy in front of the phone.
 - Cleartext HTTP is allowed so user-added nodes can be local LAN servers; every
   built-in provider uses HTTPS and the UI warns about non-loopback HTTP URLs.
 - API keys are compared in constant time.
 - Provider secrets and custom-node API keys are AES-GCM encrypted with the
   Android Keystore before being written to `appstate.json`.
-- No `X-Forwarded-For` trust path exists in this gateway.
 - The debug APK is intended for sideloading. A Play Store release requires a
   dedicated release keystore and signing configuration.
 
