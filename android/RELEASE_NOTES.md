@@ -1,10 +1,33 @@
-# 9Router Android 0.1.31
+# 9Router Android 0.1.32
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.30
+## What changed since 0.1.31
+
+- **Language switching.** Settings → Language now offers the 35 locales from
+  the upstream 9Router dashboard. The app follows the system language until a
+  locale is chosen, and switching is immediate — no restart.
+- **Runtime dictionaries.** Copy is resolved from bundled JSON dictionaries
+  keyed by the English literal, with `{0}` templates for dynamic labels and an
+  English fallback when a locale has no entry. Chat text, logs, model ids, URLs
+  and credentials are never translated.
+- **Right-to-left.** Arabic, Hebrew, Farsi and Urdu flip the layout direction.
+- **Translation sources.** The upstream locale files and a hand-curated
+  Indonesian dictionary take priority; single-word labels are only translated
+  when curated, so ambiguous machine output cannot leak into buttons.
+- **Platform text.** Toasts, accessibility descriptions, the gateway
+  notification and updater errors follow the selected language too.
+- **Tooling.** `android/tools/i18n/` extracts UI strings, applies overrides and
+  rebuilds the assets; `I18nTest` covers exact lookup, template reordering and
+  RTL detection.
+
+This is the first localization pass: English and Indonesian are the most
+complete, while the other locales combine the upstream dictionaries with
+machine-assisted strings and fall back to English where needed.
+
+## What changed in 0.1.31
 
 - **Security hardening.** Management routes now require the primary gateway
   key in loopback mode too, scoped keys are inference-only, stored keys are
@@ -598,10 +621,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `9Router-0.1.31-release.apk` and sideload it:
+Download `9Router-0.1.32-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.1.31-release.apk
+adb install -r 9Router-0.1.32-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -667,7 +690,7 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.31-android` (version code 33)
+- Version: `0.1.32-android` (version code 34)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
