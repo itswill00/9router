@@ -202,7 +202,7 @@ class Translator private constructor(
             return Translator(tag, exact, templates)
         }
 
-        private val PLACEHOLDER = Regex("""\{\d+}""")
+        private val PLACEHOLDER = Regex("""\{\d+\}""")
 
         private fun compile(key: String, value: String): Template {
             val pattern = StringBuilder("^")
