@@ -44,8 +44,8 @@ class MainActivity : ComponentActivity() {
                     android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
         }
-        handleOAuthCallback()
-        if (Store.state.settings.autoStartGateway) {
+        if (savedInstanceState == null) handleOAuthCallback()
+        if (savedInstanceState == null && Store.state.settings.autoStartGateway) {
             GatewayService.start(this)
         }
         setContent {
@@ -83,22 +83,33 @@ class MainActivity : ComponentActivity() {
             val processed = withContext(Dispatchers.IO) {
                 OAuthFlow.postProcess(def, tokens).tokens ?: tokens
             }
-            Store.state.connections.add(
-                Connection(
-                    id = UUID.randomUUID().toString(),
-                    provider = def.id,
-                    name = def.name,
-                    authType = "oauth",
-                    accessToken = processed.access,
-                    refreshToken = processed.refresh,
-                    expiresAt = System.currentTimeMillis() + processed.expiresIn * 1000L,
-                    projectId = processed.projectId,
-                    email = processed.email,
-                    accountId = processed.accountId,
-                    deviceId = processed.deviceId,
-                )
+            val connection = Connection(
+                id = UUID.randomUUID().toString(),
+                provider = def.id,
+                name = def.name,
+                authType = "oauth",
+                accessToken = processed.access,
+                refreshToken = processed.refresh,
+                expiresAt = System.currentTimeMillis() + processed.expiresIn * 1000L,
+                projectId = processed.projectId,
+                email = processed.email,
+                accountId = processed.accountId,
+                deviceId = processed.deviceId,
             )
-            Store.save()
+            Store.mutate {
+                val index = connections.indexOfFirst {
+                    it.provider == def.id &&
+                        ((processed.email.isNotBlank() && it.email == processed.email) ||
+                            (processed.accountId.isNotBlank() && it.accountId == processed.accountId))
+                }
+                if (index >= 0) {
+                    // Reconnecting the same account replaces it instead of
+                    // creating a duplicate routing candidate.
+                    connections[index] = connection.copy(id = connections[index].id)
+                } else {
+                    connections.add(connection)
+                }
+            }
             Toast.makeText(this@MainActivity, "Connected ${def.name}", Toast.LENGTH_SHORT).show()
         }
     }

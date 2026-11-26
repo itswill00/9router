@@ -119,7 +119,7 @@ object OAuthFlow {
             onStatus("Waiting for browser authorization...")
             openBrowser(url)
 
-            val callback = awaitCallback(server, path, manualCode)
+            val callback = awaitCallback(server, path, state, manualCode)
                 ?: return@withContext LoginResult(null, "Authorization timed out. Try again.")
             if (callback.error != null) {
                 return@withContext LoginResult(null, "Provider returned: ${callback.error}")
@@ -127,10 +127,12 @@ object OAuthFlow {
             if (callback.code.isNullOrBlank()) {
                 return@withContext LoginResult(null, "No authorization code was returned.")
             }
-            if (!callback.state.isNullOrBlank() && callback.state != state) {
+            // Never accept a callback without the state we generated: a local
+            // app could otherwise inject its own authorization code.
+            if (callback.state.isNullOrBlank() || callback.state != state) {
                 return@withContext LoginResult(null, "OAuth state mismatch. Please retry.")
             }
-            val result = exchange(def, callback.code, callback.state ?: state, verifier, redirectUri)
+            val result = exchange(def, callback.code, callback.state, verifier, redirectUri)
             result
         } catch (e: Exception) {
             LoginResult(null, e.message ?: e.javaClass.simpleName)
@@ -639,11 +641,12 @@ object OAuthFlow {
     private fun awaitCallback(
         server: ServerSocket,
         expectedPath: String,
+        expectedState: String,
         manualCode: () -> String?,
     ): Callback? {
         val deadline = System.currentTimeMillis() + 300_000
         while (System.currentTimeMillis() < deadline) {
-            manualCode()?.trim()?.takeIf { it.isNotEmpty() }?.let { return parseManual(it) }
+            manualCode()?.trim()?.takeIf { it.isNotEmpty() }?.let { return parseManual(it, expectedState) }
             val socket = try {
                 server.accept()
             } catch (_: SocketTimeoutException) {
@@ -690,7 +693,7 @@ object OAuthFlow {
         return null
     }
 
-    private fun parseManual(raw: String): Callback {
+    private fun parseManual(raw: String, expectedState: String): Callback {
         val value = raw.trim()
         if (value.contains("code=") || value.startsWith("http")) {
             val uri = android.net.Uri.parse(value)
@@ -700,7 +703,9 @@ object OAuthFlow {
                 error = uri.getQueryParameter("error"),
             )
         }
-        return Callback(value, null, null)
+        // A bare code is typed by the user, not injected by a local socket, so
+        // it inherits the state this flow generated.
+        return Callback(value, expectedState, null)
     }
 
     /**

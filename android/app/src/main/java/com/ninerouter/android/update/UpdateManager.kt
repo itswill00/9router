@@ -56,6 +56,7 @@ object UpdateManager {
         val apkUrl: String,
         val size: Long,
         val pageUrl: String,
+        val sha256: String = "",
     )
 
     val state = MutableStateFlow<State>(State.Idle)
@@ -162,12 +163,17 @@ object UpdateManager {
                         tmp.outputStream().use { output ->
                             val buffer = ByteArray(64 * 1024)
                             var written = 0L
+                            var lastProgressAt = 0L
                             while (true) {
                                 val read = input.read(buffer)
                                 if (read < 0) break
                                 output.write(buffer, 0, read)
                                 written += read
-                                if (total > 0) {
+                                val now = System.currentTimeMillis()
+                                // GitHub progress arrives in 64 KiB chunks; do
+                                // not invalidate the whole shell 160 times.
+                                if (total > 0 && (now - lastProgressAt >= 250L || written >= total)) {
+                                    lastProgressAt = now
                                     state.value = State.Downloading(
                                         release,
                                         (written.toFloat() / total).coerceIn(0f, 1f),
@@ -176,6 +182,14 @@ object UpdateManager {
                             }
                         }
                     }
+                }
+                if (release.size > 0 && tmp.length() != release.size) {
+                    tmp.delete()
+                    throw IOException("The downloaded APK has the wrong size.")
+                }
+                if (release.sha256.isNotBlank() && !sha256Matches(tmp, release.sha256)) {
+                    tmp.delete()
+                    throw IOException("The downloaded APK failed its SHA-256 check.")
                 }
                 if (tmp.length() < 1_000_000L || !looksLikeApk(tmp)) {
                     tmp.delete()
@@ -245,6 +259,8 @@ object UpdateManager {
             val obj = element as? JsonObject ?: return@mapNotNull null
             val tag = text(obj["tag_name"]) ?: return@mapNotNull null
             if (!tag.startsWith("android-v")) return@mapNotNull null
+            if ((obj["prerelease"] as? JsonPrimitive)?.content == "true") return@mapNotNull null
+            if ((obj["draft"] as? JsonPrimitive)?.content == "true") return@mapNotNull null
             val assets = (obj["assets"] as? JsonArray).orEmpty()
             val apkObjects = assets.mapNotNull { it as? JsonObject }
             val chosenName = selectApkAsset(apkObjects.mapNotNull { text(it["name"]) })
@@ -260,6 +276,7 @@ object UpdateManager {
                 apkUrl = url,
                 size = (apk["size"] as? JsonPrimitive)?.content?.toLongOrNull() ?: 0L,
                 pageUrl = text(obj["html_url"]) ?: RELEASES_PAGE,
+                sha256 = text(apk["digest"]).orEmpty().substringAfter("sha256:", ""),
             )
         }
     }
@@ -300,16 +317,31 @@ object UpdateManager {
             a == 'P'.code && b == 'K'.code
         }
     }.getOrDefault(false)
+
+    private fun sha256Matches(file: File, expected: String): Boolean = runCatching {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        digest.digest().joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
+            .equals(expected.trim(), ignoreCase = true)
+    }.getOrDefault(false)
 }
 
 /**
- * Release pages carry two APKs. Prefer the R8-minified release variant, then
- * the debug variant, then any `.apk` — deterministic regardless of the order
- * GitHub returns the assets in.
+ * Release pages carry one release APK. Debug and unsigned artifacts are never
+ * installed by the updater, even if an old release still contains one.
  */
 internal fun selectApkAsset(names: List<String>): String? {
-    val apks = names.filter { it.endsWith(".apk", ignoreCase = true) }
+    val apks = names.filter {
+        it.endsWith(".apk", ignoreCase = true) &&
+            !it.contains("debug", ignoreCase = true) &&
+            !it.contains("unsigned", ignoreCase = true)
+    }
     return apks.firstOrNull { it.contains("-release", ignoreCase = true) }
-        ?: apks.firstOrNull { it.contains("-debug", ignoreCase = true) }
-        ?: apks.firstOrNull()
 }

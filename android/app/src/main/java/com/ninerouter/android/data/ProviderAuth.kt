@@ -32,10 +32,10 @@ object ProviderAuth {
 
     fun apiKey(def: ProviderDef): Boolean {
         val modes = def.authModes.map { it.lowercase() }
-        if (modes.any { it == "apikey" || it == "api_key" }) return true
-        if (modes.isNotEmpty() && !modes.any { it == "apikey" || it == "api_key" }) {
-            // Explicit modes win: OAuth-only entries stay OAuth-only.
-            if (modes.all { it == "oauth" }) return false
+        if (modes.isNotEmpty()) {
+            // Explicit modes are authoritative: none/cookie/oauth-only entries
+            // must not fall through to the free-category API-key default.
+            return modes.any { it == "apikey" || it == "api_key" }
         }
         return when (def.category.lowercase()) {
             "oauth" -> false

@@ -60,6 +60,15 @@ class ProviderAuthTest {
     }
 
     @Test
+    fun `explicit none or cookie modes do not expose an api key flow`() {
+        val keyless = ProviderDef(id = "opencode", category = "free", authModes = listOf("none"))
+        val cookieOnly = ProviderDef(id = "chatgpt-web", category = "webCookie", authModes = listOf("cookie"))
+
+        assertFalse(ProviderAuth.apiKey(keyless))
+        assertFalse(ProviderAuth.apiKey(cookieOnly))
+    }
+
+    @Test
     fun `oauth only provider rejects api keys`() {
         assertFalse(ProviderAuth.apiKey(def("claude")))
         assertTrue(ProviderAuth.customOAuth(def("claude").copy(authorizeUrl = "", tokenUrl = "")))

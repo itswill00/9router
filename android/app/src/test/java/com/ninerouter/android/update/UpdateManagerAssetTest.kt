@@ -14,15 +14,15 @@ class UpdateManagerAssetTest {
     }
 
     @Test
-    fun fallsBackToDebugWhenNoReleaseAsset() {
+    fun neverFallsBackToDebugWhenNoReleaseAsset() {
         val names = listOf("notes.txt", "9Router-0.1.16-debug.apk")
 
-        assertEquals("9Router-0.1.16-debug.apk", selectApkAsset(names))
+        assertNull(selectApkAsset(names))
     }
 
     @Test
-    fun fallsBackToAnyApkWhenUnlabelled() {
-        assertEquals("app-release-unsigned.apk", selectApkAsset(listOf("checksums.txt", "app-release-unsigned.apk")))
+    fun rejectsUnsignedApks() {
+        assertNull(selectApkAsset(listOf("app-release-unsigned.apk")))
     }
 
     @Test

@@ -41,8 +41,25 @@ class GatewayService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_REBIND && gateway != null) {
+            gateway?.stop()
+            gateway?.start()
+            if (GatewayState.running.value != true) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            return START_STICKY
+        }
         if (gateway == null) gateway = Gateway(applicationContext)
         gateway?.start()
+        if (GatewayState.running.value != true) {
+            // Port conflict or bind failure: do not keep a sticky foreground
+            // service that advertises an endpoint nobody can reach.
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
         return START_STICKY
     }
 
@@ -95,6 +112,7 @@ class GatewayService : Service() {
     companion object {
         private const val CHANNEL_ID = "ninerouter_gateway"
         private const val NOTIFICATION_ID = 20128
+        private const val ACTION_REBIND = "com.ninerouter.android.REBIND"
 
         /** Starts the gateway in the configured exposure mode. Safe to call repeatedly. */
         fun start(context: Context) {
@@ -120,6 +138,23 @@ class GatewayService : Service() {
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 start(context)
             }, 400)
+        }
+
+        /**
+         * Rebinds the listener inside the running service. Exposure changes must
+         * not restart the service from the background (Android 12+ blocks it).
+         */
+        fun rebind(context: Context) {
+            if (GatewayState.running.value != true) {
+                start(context)
+                return
+            }
+            val intent = Intent(context, GatewayService::class.java).setAction(ACTION_REBIND)
+            try {
+                context.startService(intent)
+            } catch (e: Exception) {
+                GatewayState.error.value = "Cannot rebind gateway: ${e.message ?: e.javaClass.simpleName}"
+            }
         }
     }
 }
