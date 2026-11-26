@@ -77,32 +77,52 @@ object NodeProbe {
     fun modelsUrl(node: ProviderNode): String = "${rootUrl(node)}/models"
 
     suspend fun fetchModels(node: ProviderNode): ModelsResult = withContext(Dispatchers.IO) {
-        runCatching {
-            val request = Request.Builder()
-                .url(modelsUrl(node))
-                .header("Accept", "application/json")
-                .apply { authHeaders(this, node) }
-                .build()
-            client.newCall(request).execute().use { response ->
-                val body = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
-                    ModelsResult(
-                        emptyList(),
-                        "HTTP ${response.code}: ${com.ninerouter.android.data.Redact.text(body, 180)}",
-                    )
-                } else {
-                    ModelsResult(parseModelIds(body))
-                }
-            }
-        }.getOrElse {
-            ModelsResult(emptyList(), com.ninerouter.android.data.Redact.text(it.message.orEmpty(), 220))
+        val keys = node.effectiveKeys().ifEmpty { listOf("") }
+        var last: ModelsResult? = null
+        for (key in keys) {
+            val result = fetchModelsWithKey(node, key)
+            if (result.error == null) return@withContext result
+            last = result
         }
+        last ?: ModelsResult(emptyList(), "No API key")
+    }
+
+    private fun fetchModelsWithKey(node: ProviderNode, key: String): ModelsResult = runCatching {
+        val request = Request.Builder()
+            .url(modelsUrl(node))
+            .header("Accept", "application/json")
+            .apply { authHeaders(this, node, key) }
+            .build()
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                ModelsResult(
+                    emptyList(),
+                    "HTTP ${response.code}: ${com.ninerouter.android.data.Redact.text(body, 180)}",
+                )
+            } else {
+                ModelsResult(parseModelIds(body))
+            }
+        }
+    }.getOrElse {
+        ModelsResult(emptyList(), com.ninerouter.android.data.Redact.text(it.message.orEmpty(), 220))
     }
 
     suspend fun testModel(node: ProviderNode, model: String): TestResult = withContext(Dispatchers.IO) {
         if (model.isBlank()) return@withContext TestResult(false, "Model id is empty")
+        val keys = node.effectiveKeys().ifEmpty { listOf("") }
+        var last: TestResult? = null
+        for (key in keys) {
+            val result = testModelWithKey(node, model, key)
+            if (result.ok) return@withContext result
+            last = result
+        }
+        last ?: TestResult(false, "No API key")
+    }
+
+    private fun testModelWithKey(node: ProviderNode, model: String, key: String): TestResult {
         val started = System.currentTimeMillis()
-        runCatching {
+        return runCatching {
             val payload = when {
                 isAnthropic(node) -> buildJsonObject {
                     put("model", model)
@@ -130,7 +150,7 @@ object NodeProbe {
                 .url(chatUrl(node))
                 .header("Accept", "application/json")
                 .header("Content-Type", "application/json")
-                .apply { authHeaders(this, node) }
+                .apply { authHeaders(this, node, key) }
                 .post(payload.toString().toRequestBody(mediaJson))
                 .build()
             client.newCall(request).execute().use { response ->
@@ -156,13 +176,13 @@ object NodeProbe {
         }
     }
 
-    private fun authHeaders(builder: Request.Builder, node: ProviderNode) {
-        if (node.apiKey.isBlank()) return
+    private fun authHeaders(builder: Request.Builder, node: ProviderNode, key: String) {
+        if (key.isBlank()) return
         if (isAnthropic(node)) {
-            builder.header("x-api-key", node.apiKey)
+            builder.header("x-api-key", key)
             builder.header("anthropic-version", "2023-06-01")
         } else {
-            builder.header("Authorization", "Bearer ${node.apiKey}")
+            builder.header("Authorization", "Bearer $key")
         }
     }
 

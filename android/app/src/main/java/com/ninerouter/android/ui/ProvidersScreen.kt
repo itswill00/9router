@@ -53,6 +53,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -189,12 +190,10 @@ private fun ProviderCatalog(
     var nodeType by remember { mutableStateOf("openai-compatible") }
     var nodePrefix by remember { mutableStateOf("") }
     var nodeName by remember { mutableStateOf("") }
-    var nodeKey by remember { mutableStateOf("") }
 
     fun clearNodeDraft() {
         nodePrefix = ""
         nodeName = ""
-        nodeKey = ""
     }
 
     val connections = Store.state.connections
@@ -385,6 +384,7 @@ private fun ProviderCatalog(
                 else "https://api.openai.com/v1"
             )
         }
+        val keys = remember { mutableStateListOf("") }
         fun defaultBase(forType: String) =
             if (forType.startsWith("anthropic")) "https://api.anthropic.com/v1"
             else "https://api.openai.com/v1"
@@ -419,7 +419,9 @@ private fun ProviderCatalog(
                         singleLine = true,
                     )
                     OutlinedTextField(nodeName, { nodeName = it }, label = { Text("Name") }, singleLine = true)
-                    OutlinedTextField(base, { base = it }, label = { Text("Base URL (ending in /v1)") }, singleLine = true)
+                    OutlinedTextField(
+                        base, { base = it }, label = { Text("Base URL (ending in /v1)") }, singleLine = true,
+                    )
                     if (base.trim().startsWith("http://") &&
                         !base.contains("127.0.0.1") && !base.contains("localhost") &&
                         !base.contains("[::1]")
@@ -430,12 +432,7 @@ private fun ProviderCatalog(
                             color = NineRouterColors.Warning,
                         )
                     }
-                    OutlinedTextField(
-                        nodeKey, { nodeKey = it },
-                        label = { Text("API key (optional)") },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                    )
+                    NodeKeysEditor(keys)
                     val conflict = Store.state.nodes.any {
                         it.prefix.equals(nodePrefix.trim(), ignoreCase = true)
                     }
@@ -469,8 +466,8 @@ private fun ProviderCatalog(
                                 type = type,
                                 apiType = if (type.startsWith("anthropic")) "chat" else apiType,
                                 baseUrl = base.trim().trimEnd('/'),
-                                apiKey = nodeKey.trim(),
                             )
+                            node.setKeys(keys)
                             Store.mutate { nodes.add(node) }
                             clearNodeDraft()
                             showNodeDialog = false
@@ -493,6 +490,7 @@ private fun ProviderCatalog(
 @Composable
 private fun NodeCard(node: ProviderNode, onClick: () -> Unit) {
     val accent = if (NodeProbe.isAnthropic(node)) NineRouterColors.Warning else NineRouterColors.BrandOrange
+    val keys = node.effectiveKeys()
     Surface(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         color = NineRouterColors.Surface,
@@ -531,7 +529,11 @@ private fun NodeCard(node: ProviderNode, onClick: () -> Unit) {
                 )
                 Text(
                     "${node.prefix}/ · ${node.models.size} models" +
-                        if (node.apiKey.isBlank()) " · no key" else "",
+                        when (keys.size) {
+                            0 -> " · no key"
+                            1 -> ""
+                            else -> " · ${keys.size} keys"
+                        },
                     style = MaterialTheme.typography.labelSmall,
                     color = NineRouterColors.TextSubtle,
                     maxLines = 1,
@@ -569,6 +571,7 @@ private fun NodeDetail(nodeId: String, onBack: () -> Unit, refresh: () -> Unit) 
         return
     }
     val scope = rememberCoroutineScope()
+    val keys = node.effectiveKeys()
     var showEdit by remember { mutableStateOf(false) }
     var showDelete by remember { mutableStateOf(false) }
     var newModel by remember { mutableStateOf("") }
@@ -674,7 +677,13 @@ private fun NodeDetail(nodeId: String, onBack: () -> Unit, refresh: () -> Unit) 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Endpoint", style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain)
                     Spacer(Modifier.weight(1f))
-                    Pill(if (node.apiKey.isBlank()) "no key" else "key saved")
+                    Pill(
+                        when (keys.size) {
+                            0 -> "no key"
+                            1 -> "key saved"
+                            else -> "${keys.size} keys"
+                        },
+                    )
                 }
                 Spacer(Modifier.height(NineRouterSpacing.sm))
                 Surface(
@@ -705,7 +714,7 @@ private fun NodeDetail(nodeId: String, onBack: () -> Unit, refresh: () -> Unit) 
                 Spacer(Modifier.height(6.dp))
                 NodeInfo("Model list", NodeProbe.modelsUrl(node))
                 Spacer(Modifier.height(6.dp))
-                NodeInfo("API key", if (node.apiKey.isBlank()) "Not set" else "••••••••••••")
+                NodeInfo("API keys", if (keys.isEmpty()) "Not set" else "${keys.size} saved")
                 Spacer(Modifier.height(NineRouterSpacing.md))
                 Row(horizontalArrangement = Arrangement.spacedBy(NineRouterSpacing.sm)) {
                     SecondaryButton(if (fetching) "Fetching…" else "Fetch models", onClick = { fetch() }, modifier = Modifier.weight(1f))
@@ -845,13 +854,51 @@ private fun NodeDetail(nodeId: String, onBack: () -> Unit, refresh: () -> Unit) 
 }
 
 @Composable
+private fun NodeKeysEditor(keys: MutableList<String>) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        keys.forEachIndexed { index, value ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { keys[index] = it },
+                    label = { Text(if (index == 0) "API key (optional)" else "API key ${index + 1}") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.weight(1f),
+                )
+                if (keys.size > 1) {
+                    IconButton(
+                        onClick = { keys.removeAt(index) },
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = t("Remove"),
+                            tint = NineRouterColors.TextMuted,
+                            modifier = Modifier.size(17.dp),
+                        )
+                    }
+                }
+            }
+        }
+        TextButton(onClick = { keys.add("") }) {
+            Text("Add key", color = NineRouterColors.BrandOrange)
+        }
+    }
+}
+
+@Composable
 private fun EditNodeDialog(node: ProviderNode, onDismiss: () -> Unit, onSaved: () -> Unit) {
     var name by remember { mutableStateOf(node.name) }
     var prefix by remember { mutableStateOf(node.prefix) }
     var type by remember { mutableStateOf(node.type) }
     var apiType by remember { mutableStateOf(node.apiType) }
     var base by remember { mutableStateOf(node.baseUrl) }
-    var key by remember { mutableStateOf(node.apiKey) }
+    val keys = remember(node.id) {
+        mutableStateListOf<String>().apply {
+            addAll(node.effectiveKeys().ifEmpty { listOf("") })
+        }
+    }
     val conflict = Store.state.nodes.any {
         it.id != node.id && it.prefix.equals(prefix.trim(), ignoreCase = true)
     }
@@ -890,12 +937,7 @@ private fun EditNodeDialog(node: ProviderNode, onDismiss: () -> Unit, onSaved: (
                         color = NineRouterColors.Warning,
                     )
                 }
-                OutlinedTextField(
-                    key, { key = it },
-                    label = { Text("API key (optional)") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                )
+                NodeKeysEditor(keys)
                 if (conflict) {
                     Text("Another endpoint already uses this prefix.", style = MaterialTheme.typography.labelSmall, color = NineRouterColors.Danger)
                 }
@@ -915,7 +957,7 @@ private fun EditNodeDialog(node: ProviderNode, onDismiss: () -> Unit, onSaved: (
                     node.type = type
                     node.apiType = if (type.startsWith("anthropic")) "chat" else apiType
                     node.baseUrl = base.trim().trimEnd('/')
-                    node.apiKey = key.trim()
+                    node.setKeys(keys)
                     Store.save()
                     onSaved()
                 },

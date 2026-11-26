@@ -122,8 +122,29 @@ data class ProviderNode(
     var apiType: String = "chat",
     var baseUrl: String,
     var apiKey: String = "",
+    var apiKeys: List<String> = emptyList(),
+    var keyCursor: Int = 0,
     var models: List<String> = emptyList(),
-)
+) {
+    /**
+     * Keys used for routing. `apiKeys` is the multi-key field; the legacy
+     * `apiKey` is kept so state written by older builds still routes and so an
+     * older build can still send the first key.
+     */
+    fun effectiveKeys(): List<String> {
+        val all = ArrayList<String>(apiKeys.size + 1)
+        apiKeys.forEach { key -> key.trim().takeIf { it.isNotEmpty() }?.let(all::add) }
+        apiKey.trim().takeIf { it.isNotEmpty() }?.let(all::add)
+        return all.distinct()
+    }
+
+    fun setKeys(keys: List<String>) {
+        val clean = keys.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        apiKeys = clean
+        apiKey = clean.firstOrNull().orEmpty()
+        keyCursor = 0
+    }
+}
 
 @Serializable
 data class Combo(

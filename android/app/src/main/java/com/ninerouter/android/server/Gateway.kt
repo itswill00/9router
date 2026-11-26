@@ -411,7 +411,7 @@ class Gateway(private val context: Context) {
 
         val conn = Store.state.connections.firstOrNull { it.enabled && it.provider == target.provider }
             ?: Store.state.nodes.firstOrNull { it.id == target.provider }?.let {
-                Connection(id = "node:${it.id}", provider = it.id, apiKey = it.apiKey)
+                Connection(id = "node:${it.id}", provider = it.id, apiKey = it.effectiveKeys().firstOrNull().orEmpty())
             }
         if (conn == null) return writeJson(output, 404, errorJson(404, "No credentials for ${target.provider}"))
 
@@ -690,7 +690,9 @@ class Gateway(private val context: Context) {
         put("apiType", n.apiType)
         put("baseUrl", n.baseUrl)
         put("models", buildJsonArray { n.models.forEach { add(JsonPrimitive(it)) } })
-        put("hasApiKey", n.apiKey.isNotBlank())
+        val keys = n.effectiveKeys()
+        put("hasApiKey", keys.isNotEmpty())
+        put("keyCount", keys.size)
     }
 
     private fun nodesJson(): String = json.encodeToString(buildJsonObject {
@@ -736,9 +738,14 @@ class Gateway(private val context: Context) {
             type = type,
             apiType = if (type == "openai-compatible") apiType else "chat",
             baseUrl = sanitizedNodeBase(type, textOf(incoming, "baseUrl").ifBlank { defaultBase }),
-            apiKey = textOf(incoming, "apiKey"),
+            apiKey = "",
             models = stringsOf(incoming, "models").map { it.trim() }.filter { it.isNotBlank() }.distinct(),
         )
+        val keys = (stringsOf(incoming, "apiKeys") + textOf(incoming, "apiKey"))
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+        node.setKeys(keys)
         Store.mutate { nodes.add(node) }
         writeJson(output, 201, json.encodeToString(buildJsonObject { put("node", nodeJson(node)) }))
     }
@@ -765,7 +772,11 @@ class Gateway(private val context: Context) {
         node.prefix = prefix
         node.baseUrl = sanitizedNodeBase(node.type, baseUrl)
         if (node.type == "openai-compatible") node.apiType = apiType
-        if (incoming?.containsKey("apiKey") == true) node.apiKey = textOf(incoming, "apiKey")
+        if (incoming?.containsKey("apiKeys") == true) {
+            node.setKeys(stringsOf(incoming, "apiKeys") + textOf(incoming, "apiKey"))
+        } else if (incoming?.containsKey("apiKey") == true) {
+            node.setKeys(listOf(textOf(incoming, "apiKey")))
+        }
         if (incoming?.containsKey("models") == true) {
             node.models = stringsOf(incoming, "models").map { it.trim() }.filter { it.isNotBlank() }.distinct()
         }

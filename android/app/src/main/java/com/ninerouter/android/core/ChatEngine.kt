@@ -663,18 +663,37 @@ class ChatEngine(
             it.enabled && it.provider == provider && it.id !in excluded && it.unavailableUntil <= now
         }
         if (available.isEmpty()) {
-            // A provider node is a synthetic account. Check the id we actually
-            // put in `excluded`, otherwise a failing node is picked forever.
-            val node = Store.state.nodes.firstOrNull { it.id == provider && "node:${it.id}" !in excluded }
-            if (node != null) {
-                return Connection(
-                    id = "node:${node.id}",
-                    provider = provider,
-                    name = node.name,
-                    apiKey = node.apiKey,
-                )
+            // A provider node is a synthetic account. Custom nodes can carry
+            // several keys; each key gets its own synthetic connection so the
+            // existing retry loop falls through to the next key on failure.
+            val node = Store.state.nodes.firstOrNull { it.id == provider } ?: return null
+            val keys = node.effectiveKeys()
+            if (keys.isEmpty()) {
+                val id = "node:${node.id}"
+                if (id in excluded) return null
+                return Connection(id = id, provider = provider, name = node.name)
             }
-            return null
+            val candidates = keys.mapIndexed { index, key ->
+                index to Connection(
+                    id = "node:${node.id}#$index",
+                    provider = provider,
+                    name = if (keys.size == 1) node.name else "${node.name} · ${index + 1}",
+                    apiKey = key,
+                    priority = index,
+                )
+            }.filter { it.second.id !in excluded }
+            if (candidates.isEmpty()) return null
+            val chosen = if (strategy == "round-robin") {
+                val start = node.keyCursor.coerceAtLeast(0) % keys.size
+                candidates.firstOrNull { it.first >= start } ?: candidates.first()
+            } else {
+                candidates.minByOrNull { it.first }!!
+            }
+            if (strategy == "round-robin") {
+                node.keyCursor = (chosen.first + 1) % keys.size
+                Store.save()
+            }
+            return chosen.second
         }
         if (strategy == "round-robin") {
             val current = available.maxByOrNull { it.lastUsedAt }
