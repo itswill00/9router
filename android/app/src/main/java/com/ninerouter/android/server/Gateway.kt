@@ -144,7 +144,10 @@ class Gateway(private val context: Context) {
                     put("models", Catalog.modelIds().size + Store.state.nodes.sumOf { it.models.size })
                 }.let { json.encodeToString(it) })
 
-                path == "/v1/models" || path == "/api/v1/models" -> writeJson(output, 200, modelsJson())
+                path == "/v1/models" || path == "/api/v1/models" -> {
+                    if (!authorized) return writeJson(output, 401, errorJson(401, "Invalid API key"))
+                    writeJson(output, 200, modelsJson(headers))
+                }
 
                 method == "POST" && path in setOf(
                     "/v1/chat/completions", "/api/v1/chat/completions",
@@ -169,6 +172,8 @@ class Gateway(private val context: Context) {
 
                 method == "POST" && path in setOf("/v1/embeddings", "/api/v1/embeddings") -> {
                     if (!authorized) return writeJson(output, 401, errorJson(401, "Invalid API key"))
+                    val deny = keyAccessDenied(headers, body)
+                    if (deny != null) return writeJson(output, 403, errorJson(403, deny))
                     handleEmbeddings(body, output)
                 }
 
@@ -239,30 +244,25 @@ class Gateway(private val context: Context) {
     }
 
     private fun presentedKey(headers: Map<String, String>): String =
-        headers["authorization"]?.removePrefix("Bearer ")?.trim()
-            ?: headers["x-api-key"]?.trim().orEmpty()
+        headers.entries.associate { it.key.lowercase() to it.value.trim() }.let { normalized ->
+            val authorization = normalized["authorization"].orEmpty()
+            val bearer = if (authorization.startsWith("Bearer ", ignoreCase = true)) {
+                authorization.substringAfter(' ').trim()
+            } else ""
+            bearer.ifBlank { normalized["x-api-key"].orEmpty().ifBlank { normalized["api-key"].orEmpty() } }
+        }
 
     private fun same(a: String, b: String): Boolean =
         MessageDigest.isEqual(a.toByteArray(), b.toByteArray())
 
-    private fun authorized(headers: Map<String, String>): Boolean {
-        val settings = Store.state.settings
-        if (!settings.requireApiKey || settings.apiKey.isBlank()) return true
-        val presented = presentedKey(headers)
-        if (same(presented, settings.apiKey)) return true
-        return Store.state.apiKeys.any { it.active && same(presented, it.key) }
-    }
+    private fun authorized(headers: Map<String, String>): Boolean = ApiAccess.isAuthorized(headers, Store.state)
 
     private fun keyAccessDenied(headers: Map<String, String>, rawBody: String): String? {
-        val presented = presentedKey(headers)
-        val key = Store.state.apiKeys.firstOrNull { it.active && same(presented, it.key) } ?: return null
-        if (key.allowedModels.isEmpty()) return null
-        val body = try { json.parseToJsonElement(rawBody) as? JsonObject } catch (_: Exception) { null } ?: return null
-        val model = (body["model"] as? JsonPrimitive)?.content ?: return null
-        val allowed = key.allowedModels.any { entry ->
-            entry == model || Store.state.combos.firstOrNull { it.name == entry }?.models?.contains(model) == true
-        }
-        return if (allowed) null else "Key '${key.name.ifBlank { key.id }}' cannot use model $model"
+        val body = try { json.parseToJsonElement(rawBody) as? JsonObject } catch (_: Exception) { null }
+            ?: return if (presentedKey(headers).let { key ->
+                Store.state.apiKeys.any { it.active && same(key, it.key) && it.allowedModels.isNotEmpty() }
+            }) "Missing or invalid request body" else null
+        return ApiAccess.deniedModel(headers, body, Store.state)
     }
 
     private fun handleEmbeddings(raw: String, output: OutputStream) {
@@ -640,17 +640,17 @@ class Gateway(private val context: Context) {
         return "$base/embeddings"
     }
 
-    private fun modelsJson(): String = json.encodeToString(buildJsonObject {
-        put("object", "list")
-        put("data", buildJsonArray {
-            Catalog.providers().forEach { p ->
-                p.models.take(12).forEach { m ->
-                    add(buildJsonObject {
-                        put("id", "${p.id}/$m")
-                        put("object", "model")
-                        put("created", 0L)
-                        put("owned_by", p.id)
-                    })
+    private fun modelsJson(headers: Map<String, String> = emptyMap()): String {
+        val models = buildList {
+            Catalog.providers().forEach { provider ->
+                if (Store.state.connections.isEmpty() || Store.state.connections.any { it.enabled && it.provider == provider.id }) {
+                    provider.models.forEach { model ->
+                        add(buildJsonObject {
+                            put("id", "${provider.alias}/$model")
+                            put("object", "model")
+                            put("owned_by", provider.alias)
+                        })
+                    }
                 }
             }
             Store.state.nodes.forEach { node ->
@@ -658,21 +658,24 @@ class Gateway(private val context: Context) {
                     add(buildJsonObject {
                         put("id", "${node.prefix}/$model")
                         put("object", "model")
-                        put("created", 0L)
-                        put("owned_by", node.id)
+                        put("owned_by", node.prefix)
                     })
                 }
             }
-            Store.state.combos.forEach { c ->
+            Store.state.combos.forEach { combo ->
                 add(buildJsonObject {
-                    put("id", c.name)
+                    put("id", combo.name)
                     put("object", "model")
-                    put("created", 0L)
                     put("owned_by", "combo")
                 })
             }
+        }.distinctBy { (it["id"] as? JsonPrimitive)?.content }
+        val permitted = ApiAccess.filterModels(headers, models, Store.state)
+        return json.encodeToString(buildJsonObject {
+            put("object", "list")
+            put("data", JsonArray(permitted))
         })
-    })
+    }
 
     private fun settingsJson(): JsonObject = buildJsonObject {
         val s = Store.state.settings
