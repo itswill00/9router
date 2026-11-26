@@ -1,10 +1,32 @@
-# 9Router Android 0.1.18
+# 9Router Android 0.1.19
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.17
+## What changed since 0.1.18
+
+- **Hamburger navigation drawer.** The top-bar hamburger opens a labelled
+  drawer with Basic Chat, Endpoint, Providers, Combos, Usage, Logs and
+  Settings; choosing an item closes it. Predictive back closes the drawer
+  first, then chat, then returns to Endpoint.
+- **Provider detail rebuilt.** Each connection is its own card: account and
+  toggle, email/project with ellipsis, priority controls and a delete action
+  behind a confirmation dialog. OAuth stays the primary action; pasting a
+  token is now an outlined secondary action.
+- **Model testing for every provider.** Every model row has Test and the
+  Models header has Test all (max 3 in parallel, cancellable), including OAuth
+  providers such as Antigravity. Probes reuse the real Upstream and Translator
+  path, so OAuth headers, CLI envelopes and expired-token refresh apply; the
+  request is "hi" with a tiny token budget and a 20 s timeout. Success shows a
+  green check and latency, failure opens a copyable error. All / Working /
+  Failed filters make results scannable. Tokens are never displayed or logged.
+- **Single, faster release artifact.** Releases attach only the release APK.
+  R8 is disabled because it dominated build time on the 2-core machine; the
+  release build is plain, keeps the sideloading signature for in-place
+  updates, and is larger. Debug APKs stay local and are never published.
+
+## What changed in 0.1.18
 
 This is the navigation pass: the bottom bar is gone and every destination lives
 in a persistent left sidebar.
@@ -351,7 +373,7 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 - **In-app streaming chat**, so the APK is useful without any external CLI.
 - **Compact mobile-first UI built from the upstream design system**: the exact
   dark palette from `src/app/globals.css`, brand orange, grouped provider cards,
-  a persistent left navigation sidebar, and edge-to-edge
+  a hamburger navigation drawer, and edge-to-edge
   status/navigation bars that blend into the app surfaces.
 - **Original brand assets**: the orange `hub` brand mark from the dashboard
   sidebar is used as the launcher icon and in the app header; the upstream
@@ -380,12 +402,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download either APK from this release and sideload it. Both share the same
-signature, so they replace each other in place:
+Download `9Router-0.1.19-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.1.18-release.apk   # R8-minified, recommended
-adb install -r 9Router-0.1.18-debug.apk     # verbose debug build
+adb install -r 9Router-0.1.19-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -415,10 +435,9 @@ persistent foreground service notification.
   node API keys.
 - Forwarded-header spoofing is avoided: there is no `X-Forwarded-For` trust
   path in this gateway.
-- Both published variants are intentionally signed with the same sideloading
-  identity so they replace each other in place and the in-app updater keeps
-  working. A Play Store build would need a dedicated release keystore and
-  signing configuration.
+- The published release APK keeps the sideloading signing identity so in-app
+  updates install in place. A Play Store build would need a dedicated release
+  keystore and signing configuration.
 
 ## Known limitations
 
@@ -443,10 +462,10 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.18-android` (version code 20)
+- Version: `0.1.19-android` (version code 21)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
-- SHA-256 for both attached APKs is recorded in the artifact footer below.
+- SHA-256 for the attached APK is recorded in the artifact footer below.
 
 See `android/README.md` for the module layout and build instructions.
