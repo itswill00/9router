@@ -70,13 +70,14 @@ bundles a Linux userland.
 
 ## Install
 
-Download the debug APK from the latest GitHub release and sideload it:
+Download the release APK from the latest GitHub release and sideload it:
 
 ```bash
-adb install -r app-debug.apk
+adb install -r 9Router-<version>-release.apk
 ```
 
-Or open **Releases** on GitHub and install the APK on the device. Android 13+
+Or open **Releases** on GitHub and install the APK on the device. Debug APKs
+are built locally only and are never attached to a release. Android 13+
 asks for notification permission; it is used only by the persistent foreground
 service notification.
 

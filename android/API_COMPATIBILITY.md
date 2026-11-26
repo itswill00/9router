@@ -2,13 +2,17 @@
 
 The native Android gateway (`android/`) intentionally implements a **subset** of
 the desktop 9Router `/v1` surface. Every route below is marked `supported`,
-`partial`, or `unsupported`, with the JVM contract test that pins its behavior.
-Nothing here claims full `/v1` parity.
+`partial`, or `unsupported`, with the JVM contract test that pins its behavior
+where one exists. Nothing here claims full `/v1` parity.
 
-- Base URL: `http://127.0.0.1:20128/v1` (loopback only).
+- Base URL: `http://127.0.0.1:20128/v1` by default. Remote access is opt-in:
+  network mode binds private interfaces, still drops public source addresses,
+  and expects a tunnel or reverse proxy for a public domain.
 - Auth: when `requireApiKey` is on, send the gateway key as `Authorization: Bearer …`,
-  `X-API-Key`, or `api-key`. Restricted keys only see/call their allow-listed models.
-- CORS: browser preflight (`OPTIONS`) returns `204` with wildcard origin, no credentials.
+  `X-API-Key`, or `api-key`. Restricted keys only see/call their allow-listed
+  models and cannot use management routes.
+- CORS: no wildcard origin. The bundled status page and the Android UI are
+  same-origin/local, so cross-origin JSON management calls are not supported.
 - Request framing: `Content-Length` and `chunked` bodies, bounded at 8 MiB.
 
 ## Route matrix
@@ -17,16 +21,17 @@ Nothing here claims full `/v1` parity.
 | --- | --- | --- | --- |
 | `GET /v1` | supported | Model list, key-filtered. | `ModelsApiTest` |
 | `GET /v1/models` | supported | `kind` slug/capability filtering; key-filtered. | `ModelsApiTest`, `ApiAccessTest` |
-| `GET /v1/models/{kind}` | supported | e.g. `llm`, `web`, `embedding`. | `ModelsApiTest` |
+| `GET /v1/models/{kind}` | partial | Slugs: `image`, `tts`, `stt`, `embedding`, `image-to-text`, `web`, `video`. No `llm` slug (use `/v1/models`). | `ModelsApiTest` |
 | `GET /v1/models/{provider}/{model}` | supported | Single-model lookup, 404 when filtered out. | `ModelsApiTest` |
-| `GET /v1/models/info?id=…&kind=…` | supported | Model metadata lookup. | `ModelsApiTest` |
+| `GET /v1/models/info?id=…&kind=…` | partial | Android shape: list entry plus a `capabilities` string array; upstream also returns endpoint/params/dimensions. | `ModelsApiTest` |
 | `POST /v1/chat/completions` | supported | JSON and OpenAI SSE; terminal finish chunk then `[DONE]`. | `SseEncoderTest`, `SseWriterTest` |
 | `POST /v1/messages` | supported | Anthropic Messages JSON and native SSE (`message_start` … `message_stop`, no `[DONE]`). | `SseEncoderTest` |
 | `POST /v1/responses` | supported | Responses JSON and native SSE (`response.created` … `response.completed`/`incomplete`, no `[DONE]`). | `SseEncoderTest` |
 | `POST /v1/messages/count_tokens` | partial | Approximate Anthropic character/4 estimator, not a real tokenizer. | `CoreCompatibilityRoutesTest` |
 | `POST /v1/embeddings` | partial | Forwards `input`, `dimensions`, `encoding_format`, `user`; returns upstream status/body. | `CoreCompatibilityRoutesTest` |
 | `POST /v1/responses/compact` | unsupported | Structured `501 unsupported_operation`; never runs a normal completion. | `CoreCompatibilityRoutesTest` |
-| `GET /v1/api/chat` | unsupported | Dashboard-only thread API; not exposed. | — |
+| `POST /v1/api/chat` | unsupported | Upstream's Ollama-compatible chat route; Android returns 404. | — |
+| `GET|POST /v1beta/models/{model}:*` | unsupported | No native Gemini route; returns 404. | — |
 | `/v1/audio/*` (speech, transcriptions, voices) | unsupported | No audio pipeline in the native gateway. | — |
 | `/v1/images/generations` | unsupported | — | — |
 | `/v1/search` | unsupported | — | — |
@@ -51,8 +56,14 @@ counts are captured through EOF for every format (`ChatEngineStreamUsageTest`).
 
 ## Security notes
 
-- Gateway stays loopback-bound; no Node, Termux, root, or bundled runtime.
-- API-key compare is constant-time; restricted keys cannot reach combo members as directly callable models (`ApiAccessTest`).
+- Loopback is the default. Network mode is opt-in and binds private
+  interfaces only after dropping public source addresses; use a tunnel or
+  reverse proxy for a public domain.
+- API-key compare is constant-time. Management routes require the primary key;
+  scoped keys are inference-only and cannot mint keys or read settings.
+- Stored keys are masked in management responses. A newly created key is
+  returned exactly once.
+- No wildcard CORS: cross-origin JSON management calls are not supported.
 - Errors never echo credentials, conversation bodies, or stack traces; unknown routes return generic JSON errors.
 - Request bodies are bounded before parsing (`HttpRequestParserTest`).
 

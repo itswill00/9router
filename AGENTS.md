@@ -26,7 +26,8 @@ This file is the durable working agreement for this repository. Read
   every guard: wildcard listener only to reach private interfaces, public
   source addresses dropped at accept time, peers limited to loopback +
   RFC1918/link-local/CGNAT/tailnet, API key mandatory, management routes
-  key-gated, wildcard CORS removed, per-peer auth throttle.
+  requiring the primary key whenever auth is on (loopback too), no wildcard
+  CORS in any mode, per-peer auth throttle, and masked key listings.
 - Never terminate TLS in the app and never trust `X-Forwarded-For`. A public
   domain must end at a tunnel or reverse proxy.
 - Never log, print, or render provider tokens, API keys, cookies, or OAuth
@@ -161,7 +162,7 @@ This file is the durable working agreement for this repository. Read
   (normally with `by`). A helper that returns a plain value only recomposes
   itself and leaves the screen stale — this was the cause of Console Log and
   Usage needing an app restart.
-- Current release: `0.1.28-android` (code 30). See `HANDOFF.md` for the exact
+- Current release: `0.1.30-android` (code 32). See `HANDOFF.md` for the exact
   tag, SHA, and latest-release URL.
 
 ## Known limitations

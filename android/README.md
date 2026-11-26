@@ -4,11 +4,17 @@ A first, deliberately small slice of 9Router rewritten as a **pure Android app**
 Kotlin + Jetpack Compose + OkHttp + Android Keystore. **No Termux, no Node.js,
 no shell, no root, no bundled userland.**
 
-The gateway runs as a foreground service and listens on loopback only:
+The gateway runs as a foreground service on loopback by default:
 
 ```
 http://127.0.0.1:20128/v1
 ```
+
+Remote access is opt-in on **Endpoint & Key**. It binds a wildcard listener so
+private interfaces are reachable, but still drops public source addresses and
+accepts only loopback plus RFC1918, link-local, CGNAT and IPv6 ULA peers. The
+API key is mandatory in that mode, management routes are key-gated, wildcard
+CORS is removed, and failed auth is throttled per peer.
 
 ## Project lineage and credits
 
@@ -35,7 +41,8 @@ project.
   RFC1918/link-local/CGNAT/tailnet peers, forces the API key, key-gates the
   management routes, removes wildcard CORS, and throttles failed auth per peer.
 - `GET /api/health`, `GET /v1/models`, `GET|POST /api/settings`.
-- API-key auth plus per-key model/combo allow-lists, with CORS preflight for browsers.
+- API-key auth plus per-key model/combo allow-lists. Management routes require
+  the primary key when auth is on; scoped keys are inference-only.
 - `GET /v1/models`, `/v1/models/{kind}`, `/v1/models/{provider}/{model}`, `/v1/models/info`
   model discovery filtered by key access.
 - `POST /v1/chat/completions` — JSON **and** OpenAI SSE streaming.
@@ -139,8 +146,8 @@ project.
 - Native Kiro / Cursor / Antigravity / commandcode binary envelopes.
 - MITM certificate handling, cloud sync, image/TTS/STT/video endpoints.
 - Full translator parity for thinking blocks, tool-id edge cases, `is_error`.
-- LAN exposure. The app never binds `0.0.0.0`; use `adb reverse` or an explicit
-  tunnel if another device must reach it.
+- In-app TLS. A public domain must end at a tunnel or reverse proxy; the app
+  never trusts `X-Forwarded-For`.
 
 ## Build / install
 
