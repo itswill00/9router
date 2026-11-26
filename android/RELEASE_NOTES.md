@@ -1,10 +1,36 @@
-# 9Router Android 0.1.21
+# 9Router Android 0.1.22
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.20
+## What changed since 0.1.21
+
+- **Combo parity.** Each combo now has its own strategy: Fallback, Round
+  Robin, Smart Router or Fusion. Create and edit only the name and ordered
+  models; the strategy is changed on the combo card.
+- **Smart Router policies.** Smart Switch keeps a session-sticky model and
+  only switches at 80% confidence or higher; Strict Lock picks once;
+  Per-Turn re-evaluates every request; Custom sets the threshold.
+- **Fusion.** Panel models run in parallel without tools, then a judge
+  synthesizes one answer. Pick a judge or let the first model do it.
+- **Capacity Adapter.** Global Vision and Audio pools switch in a capable
+  model when no combo member can read the input. Optional round-robin.
+- **Provider-grouped model picker.** Long model ids wrap instead of being
+  truncated; group headers show the provider prefix; custom ids can be added;
+  multi-select is used by combos and adapter pools.
+- **Live screens.** Usage, Console Log, Quota Tracker, Providers, Settings,
+  Combos, Media, Endpoint and Chat subscribe to a StateFlow store version.
+  Usage and Console Log have a Live indicator and heartbeat; Quota countdowns
+  tick every second. New usage appears without restarting the app.
+- **Settings rebuilt.** Accented sections, a max-width tablet layout, account
+  and combo stickiness steppers, combo/token-saver shortcuts, per-key copy
+  and confirmed delete, build information, usage count and confirmed clear.
+- **Less duplicate UI.** Repeated page titles and notes were removed; Endpoint
+  has one Copy config action instead of a second configuration panel; combo
+  cards no longer repeat the strategy label.
+
+## What changed in 0.1.21
 
 - **Sidebar parity.** The drawer now matches the full 9Router navigation:
   Endpoint & Key, Providers, Combo & Vision Adapter, Usage, Quota Tracker,
@@ -447,10 +473,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `9Router-0.1.21-release.apk` and sideload it:
+Download `9Router-0.1.22-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.1.21-release.apk
+adb install -r 9Router-0.1.22-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -504,12 +530,15 @@ This is a native slice, not full parity with the Node gateway:
 - `/v1/responses/compact` is explicitly unsupported (`501 unsupported_operation`)
   because it needs Codex server-side compaction. Native streaming itself is
   supported for `/v1/messages` and `/v1/responses`.
-- Combo strategies `fallback`, `round-robin`, and `smart` are available;
-  `fusion` (parallel panel + judge) is not yet ported.
+- Combo strategies `fallback`, `round-robin`, `smart` and `fusion` are
+  available. Fusion waits for the full panel; the upstream quorum-grace
+  window is not ported.
+- Live pages update on store changes and a 1-2s heartbeat while visible;
+  there is no websocket push channel.
 
 ## Build information
 
-- Version: `0.1.21-android` (version code 23)
+- Version: `0.1.22-android` (version code 24)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
