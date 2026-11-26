@@ -1,10 +1,29 @@
-# 9Router Android 0.1.17
+# 9Router Android 0.1.18
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.16
+## What changed since 0.1.17
+
+This is the navigation pass: the bottom bar is gone and every destination lives
+in a persistent left sidebar.
+
+- **Sidebar navigation.** Basic Chat sits at the top, separated from Endpoint,
+  Providers, Combos, Usage, Logs and Settings. Compact widths show a 76 dp
+  icon+label rail; windows 600 dp and wider get a 232 dp labelled sidebar that
+  collapses with one tap. The brand and gateway state stay visible, and the top
+  bar keeps the section name, status and update pill.
+- **Predictable back.** Predictive Back still closes Basic Chat first, then
+  returns any other section to Endpoint, and only then leaves the app.
+- **Visible interaction feedback on dark surfaces.** The theme now provides a
+  light content colour, so ripples and focus rings are legible instead of
+  painting a dark scrim. The update pill uses the clipped clickable surface so
+  its feedback follows the rounded shape.
+- **Larger touch targets.** Sidebar items, the collapse control and the chat
+  back button are at least 48 dp, with the rail's compact items at 52 dp.
+
+## What changed in 0.1.17
 
 This is the local API-parity pass: the loopback gateway is now safer for real
 clients, and streaming speaks the client's own protocol.
@@ -332,7 +351,7 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 - **In-app streaming chat**, so the APK is useful without any external CLI.
 - **Compact mobile-first UI built from the upstream design system**: the exact
   dark palette from `src/app/globals.css`, brand orange, grouped provider cards,
-  a dense 54 dp bottom navigation, a top-bar chat action, and edge-to-edge
+  a persistent left navigation sidebar, and edge-to-edge
   status/navigation bars that blend into the app surfaces.
 - **Original brand assets**: the orange `hub` brand mark from the dashboard
   sidebar is used as the launcher icon and in the app header; the upstream
@@ -365,8 +384,8 @@ Download either APK from this release and sideload it. Both share the same
 signature, so they replace each other in place:
 
 ```bash
-adb install -r 9Router-0.1.17-release.apk   # R8-minified, recommended
-adb install -r 9Router-0.1.17-debug.apk     # verbose debug build
+adb install -r 9Router-0.1.18-release.apk   # R8-minified, recommended
+adb install -r 9Router-0.1.18-debug.apk     # verbose debug build
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -424,7 +443,7 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.17-android` (version code 19)
+- Version: `0.1.18-android` (version code 20)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
