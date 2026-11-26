@@ -44,12 +44,14 @@ http://127.0.0.1:20128/v1
 - **Compact mobile-first dashboard** using the upstream visual language: exact
   dark palette from `src/app/globals.css`, brand orange, the original `hub`
   brand mark, provider icon set bundled from `public/providers`, grouped
-  provider cards, a persistent left navigation sidebar, and edge-to-edge system
-  bars.
-- **Adaptive sidebar navigation.** Compact widths show a 76 dp icon+label rail;
-  wider windows get a 232 dp labelled sidebar that collapses. Dashboard screens
-  (Endpoint, Providers, Combos, Usage, Logs, Settings, Basic Chat) are reached
-  from the sidebar, with predictive back returning to Endpoint.
+  provider cards, a hamburger navigation drawer, and edge-to-edge system bars.
+- **Navigation drawer.** The top-bar hamburger opens a labelled drawer (Basic
+  Chat, Endpoint, Providers, Combos, Usage, Logs, Settings); selecting an item
+  closes it. Predictive back closes the drawer first, then chat, then returns
+  to Endpoint.
+- **Provider detail polish.** Connections render as individual cards with
+  ellipsis-safe account rows, confirmed delete, and per-model Test / Test all
+  (OAuth and API key, 20 s timeout, 3 parallel) with Working/Failed filters.
 - **Usage & Analytics**: Overview/Details tabs, Today/24h/7D/30D/60D/All
   periods, overview cards, recent requests, an area chart, provider/model
   breakdowns, and a per-model table with expandable provider detail.
