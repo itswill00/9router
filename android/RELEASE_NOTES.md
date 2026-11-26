@@ -1,10 +1,24 @@
-# 9Router Android 0.1.28
+# 9Router Android 0.1.29
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.27
+## What changed since 0.1.28
+
+- **Remote access, opt-in.** Endpoint & Key can now open the gateway to private
+  Wi-Fi, link-local, CGNAT and tailnet peers. Loopback stays the default.
+- **Your own domain.** A new Public base URL feeds copy-config and the status
+  page; Test URL checks `/api/health` and an authenticated `/v1/models` through
+  the tunnel, so routing, TLS and auth are verified end to end.
+- **Hardened exposure.** Public sources are dropped at accept, the API key is
+  forced, management routes (`/api/keys`, `/api/providers`, `/api/combos`,
+  `/api/settings`, `/api/usage/*`, shutdown) are key-gated, wildcard CORS is
+  removed and repeated failed keys are throttled per peer.
+- **Reachable URLs.** The app lists the private addresses it is bound to, with
+  copy buttons, and the browser-access card explains the proxy path.
+
+## What changed in 0.1.28
 
 - **Vertical provider flow.** The radial topology is replaced by a mobile-first
   route tree: 9Router at the top, providers branching down, and a proportional
@@ -537,10 +551,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `9Router-0.1.28-release.apk` and sideload it:
+Download `9Router-0.1.29-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.1.28-release.apk
+adb install -r 9Router-0.1.29-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -568,8 +582,11 @@ persistent foreground service notification.
   app warns when a non-loopback HTTP endpoint is entered.
 - Secrets are never stored as plaintext in `appstate.json`, including custom
   node API keys.
+- Remote access is opt-in: only loopback plus private, link-local, CGNAT and
+  tailnet peers are accepted; the API key is forced, management routes are
+  key-gated, wildcard CORS is removed and failed keys are throttled per peer.
 - Forwarded-header spoofing is avoided: there is no `X-Forwarded-For` trust
-  path in this gateway.
+  path in this gateway, and TLS must terminate in your tunnel or reverse proxy.
 - The published release APK keeps the sideloading signing identity so in-app
   updates install in place. A Play Store build would need a dedicated release
   keystore and signing configuration.
@@ -578,8 +595,9 @@ persistent foreground service notification.
 
 This is a native slice, not full parity with the Node gateway:
 
-- No TLS/MITM interception, certificate injection, or Antigravity IDE
-  impersonation.
+- No in-app TLS: public hosting must go through a tunnel or reverse proxy.
+  No TLS/MITM interception, certificate injection, or Antigravity IDE
+  impersonation either.
 - Native binary/protobuf envelopes (Kiro EventStream, Cursor protobuf,
   commandcode NDJSON) are not implemented.
 - OAuth flows that need provider-specific cryptography (Xiaomi MiMo ECDH) or a
@@ -602,7 +620,7 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.28-android` (version code 30)
+- Version: `0.1.29-android` (version code 31)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`

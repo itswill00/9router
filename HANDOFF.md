@@ -9,17 +9,15 @@ APK per version.
 
 ## Current state
 
-- Branch: `master` — clean, synced with `origin/master`.
-- Version: `0.1.28-android` (version code 30).
-- Unreleased: remote access, public base URL and network-mode hardening are
-  committed on `master`; the next release should be `0.1.29-android`.
-- Latest release: https://github.com/itswill00/9router/releases/tag/android-v0.1.28
-  - asset: `9Router-0.1.28-release.apk` (10,437,884 bytes)
-  - SHA-256: `b862f298b92653055d755397f9f9c56309b186c0ad54b5d59e126e65e78b2794`
+- Branch: `master` — clean after the release commit.
+- Version: `0.1.29-android` (version code 31).
+- Latest release: https://github.com/itswill00/9router/releases/tag/android-v0.1.29
+  - asset: `9Router-0.1.29-release.apk` (10,454,268 bytes)
+  - SHA-256: `ae0922db81130b71ccba1c434fdb86000797521f9e9acf0c7d97b517fe558b06`
 - Latest commits:
-  - `92fcb6ae chore(android): release 0.1.28`
-  - `df156955 refactor(android): replace the radial topology with a vertical flow`
-  - `c7262f2c chore(android): release 0.1.27`
+  - `3d10573f test(android): cover the network auth throttle`
+  - `770760b7 docs: document remote access and the exposure policy`
+  - `6e8ea6d9 feat(android): add opt-in network access with public URL`
 - Working tree: no modified or untracked files.
 
 ## Done so far
@@ -68,10 +66,10 @@ APK per version.
 ```
 
 Last result: `BUILD SUCCESSFUL` (unit tests + fatal lint). The release build
-for 0.1.28 also succeeded and the APK metadata was verified:
+for 0.1.29 also succeeded and the APK metadata was verified:
 
 ```text
-package: com.ninerouter.android  versionCode=30  versionName=0.1.28-android
+package: com.ninerouter.android  versionCode=31  versionName=0.1.29-android
 ```
 
 ## Stuck on
@@ -80,8 +78,8 @@ Nothing is blocked. There is no active bug or failing test.
 
 ## Next steps
 
-1. Read `AGENTS.md`; verify `git status` is clean and `versionName` is
-   `0.1.28-android` before touching code.
+1. Read `AGENTS.md`; verify the tree is clean and `versionName` is
+   `0.1.29-android` before touching code.
 2. Ask the user which backlog item to take. Do not invent a release or push
    without an explicit request.
 3. If a release is requested, follow the release procedure in `AGENTS.md`:
