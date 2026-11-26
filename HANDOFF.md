@@ -9,15 +9,18 @@ APK per version.
 
 ## Current state
 
-- Branch: `master` — clean after the release commit.
-- Version: `0.1.30-android` (version code 32).
+- Branch: `master` — clean; 5 unreleased commits ahead of `origin/master`.
+- Version: `0.1.30-android` (version code 32) on disk. The audit fixes below
+  are not released yet; 0.1.30 is still the latest GitHub release.
 - Latest release: https://github.com/itswill00/9router/releases/tag/android-v0.1.30
   - asset: `9Router-0.1.30-release.apk` (10,454,268 bytes)
   - SHA-256: `52d57b0ce17a11c58a38fd575e3fd055636bcc69c557cb565585e705c245fabb`
-- Latest commits:
-  - `c749a3f6 fix(android): keep remote access toggle in sync`
-  - `3d10573f test(android): cover the network auth throttle`
-  - `770760b7 docs: document remote access and the exposure policy`
+- Unreleased audit commits:
+  - `0d5d3407 fix(gateway): harden auth, keys and stream failures`
+  - `a3d9ae20 fix(core): preserve native tool calls and stream usage`
+  - `931d26ad fix(android): harden oauth, updates and background lifecycle`
+  - `0cbddaca fix(ui): keep state live and remove interaction traps`
+  - `bad5faa3 docs: align the security model and install instructions`
 - Working tree: no modified or untracked files.
 
 ## Done so far
@@ -58,6 +61,15 @@ APK per version.
   health + authenticated models test. **Verified** by `ExposureTest`,
   `ApiAccessTest`, `ApiCorsTest` and the fast check; not manually exercised on
   a device in this session.
+- Full front/back audit pass (unreleased): management routes now require the
+  primary key in loopback too, stored keys are masked, CORS is gone, SSE
+  failures cannot write a second HTTP response, connections are capped, and
+  state writes are atomic with a backup. Native Claude/Responses translation,
+  tool calls, images, Gemini URLs, Anthropic auth, stream usage and cache
+  accounting were fixed. OAuth requires state, the updater rejects debug or
+  unsigned APKs and verifies SHA-256, and the UI no longer loses drafts,
+  auto-scrolls while the user reads, or exposes stale test results. **Verified**
+  by the fast check and new `TranslatorNativeTest` cases.
 
 ## Build/test
 
@@ -90,6 +102,13 @@ Nothing is blocked. There is no active bug or failing test.
    media-provider backends, proxy-pool transport, non-image attachments, session
    rename/search, full-screen image viewer, fusion quorum-grace, adaptive
    tablet layouts, localization.
+5. Known audit leftovers, deliberately not forced in this pass:
+   GitHub Claude models still use the Chat Completions endpoint; registry
+   `upstreamModelId` rewrites are not exported; keyless/noAuth and
+   provider-specific executors (opencode, qoder, kiro, cursor, commandcode,
+   Ollama, web-cookie) still need either a port or a structured 501; per-account
+   quota cards are provider-wide; and the UI has not been exercised on a
+   physical device since these changes.
 
 ## Pitfalls — do not repeat
 
