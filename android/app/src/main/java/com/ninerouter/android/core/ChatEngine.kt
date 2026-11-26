@@ -119,6 +119,27 @@ class ChatEngine(
                     markSuccess(conn)
                     val cliEnvelope = isCliEnvelope(def ?: emptyDef(target.provider))
                     if (wantsStream) {
+                        // Some OAuth upstreams ignore stream=true and return a normal
+                        // JSON body. Consume it instead of reading zero SSE lines.
+                        val contentType = response.body?.contentType()?.toString().orEmpty()
+                        if (contentType.contains("application/json", ignoreCase = true)) {
+                            val raw = response.body?.string().orEmpty()
+                            val parsed = parseObject(raw) ?: JsonObject(emptyMap())
+                            val upstreamJson = if (cliEnvelope) Translator.unwrapEnvelope(parsed) else parsed
+                            val finalJson = Translator.responseBody(providerFormat, responseFormat, upstreamJson, requestedModel)
+                            trackUsage(
+                                provider = target.provider,
+                                model = member,
+                                upstreamJson = upstreamJson,
+                                ok = true,
+                                requestBody = clientBody,
+                                responseBody = raw,
+                                latencyMs = System.currentTimeMillis() - startedAt,
+                                endpoint = endpoint,
+                                stream = false,
+                            )
+                            return Outcome.Json(json.encodeToString(finalJson), member)
+                        }
                         val tracked = trackStream(
                             response = response,
                             provider = target.provider,
