@@ -126,30 +126,32 @@ def looks_like_code(value: str) -> bool:
         return True
     if len(value) > 600:
         return True
-    if re.match(r"^(https?://|git@|Bearer |sk-|sk_|ghp_)", value):
+    # Interpolations are `{n}` templates at runtime, not code braces.
+    probe = INTERP.sub(" ", value)
+    if re.match(r"^(https?://|git@|Bearer |sk-|sk_|ghp_)", probe):
         return True
-    if re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", value):
+    if re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", probe):
         return True
-    if re.search(r"^(\.{0,2}/|~/)", value) or value.startswith("/v1"):
+    if re.search(r"^(\.{0,2}/|~/)", probe) or probe.startswith("/v1"):
         return True
-    if re.search(r"[<>{}]", value):
+    if re.search(r"[<>{}]", probe):
         return True
-    if re.search(r"\\u[0-9a-fA-F]{4}", value):
+    if re.search(r"\\u[0-9a-fA-F]{4}", probe):
         return True
-    if re.match(r"^[A-Za-z0-9_.:/@#-]+$", value) and not re.match(r"^[A-Z][a-z]{2,}$", value):
+    if re.match(r"^[A-Za-z0-9_.:/@#-]+$", probe) and not re.match(r"^[A-Z][a-z]{2,}$", probe):
         return True
-    if value.startswith("[") or value.startswith("^"):
+    if probe.startswith("[") or probe.startswith("^"):
         return True
-    if re.match(r"^[A-Za-z-]+/[A-Za-z0-9.*+-]+$", value):
+    if re.match(r"^[A-Za-z-]+/[A-Za-z0-9.*+-]+$", probe):
         return True
-    if re.match(r"^(MMM|EEE|HH|mm|ss|yyyy|dd)\b", value):
+    if re.match(r"^(MMM|EEE|HH|mm|ss|yyyy|dd)\b", probe):
         return True
-    if value.strip() == "else":
+    if probe.strip() == "else":
         return True
     # Shell / config / code fragments.
-    if re.search(r"\b(export|curl|npm|npx|adb|gradlew|fun |val |var |class |import |package |println)\b", value):
+    if re.search(r"\b(export|curl|npm|npx|adb|gradlew|fun |val |var |class |import |package |println)\b", probe):
         return True
-    if "::" in value or "--" in value:
+    if "::" in probe or "--" in probe:
         return True
     return False
 
@@ -190,11 +192,22 @@ def main() -> int:
             if not is_translatable(value):
                 continue
             template = to_template(value)
+            if template in {"9router-{0}.apk", "9router-{0}.apk.part", "data:{0};base64,"}:
+                continue
+            if re.fullmatch(r"(bar|lift|typing)\{0\}", template):
+                continue
+            if re.fullmatch(r"[a-z]+:\{0\}", template):
+                continue
+            if re.fullmatch(r"\{0\}\.[A-Za-z0-9]+", template):
+                continue
             if "{" in template:
                 # A template needs a real phrase around its holes, otherwise it
                 # would match unrelated dynamic strings.
                 literal = re.sub(r"\{\d+\}", " ", template)
-                if " " not in literal.strip() or len(re.sub(r"[^A-Za-z]", "", literal)) < 4:
+                letters = len(re.sub(r"[^A-Za-z]", "", literal))
+                if letters < 3:
+                    continue
+                if "/" in template and " " not in template:
                     continue
             strings[value] = template
 
