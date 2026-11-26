@@ -132,6 +132,7 @@ class Gateway(private val context: Context) {
             val authorized = authorized(headers)
 
             when {
+                method == "OPTIONS" && isApiCorsRoute(path) -> writePreflight(output, ApiHttp.preflight(headers))
                 path == "/" || path == "/index.html" -> writeHtml(output, statusPage())
 
                 path == "/api/health" || path == "/health" -> writeJson(output, 200, buildJsonObject {
@@ -808,21 +809,33 @@ class Gateway(private val context: Context) {
     private fun writeJson(output: OutputStream, status: Int, body: String) {
         val bytes = body.toByteArray(Charsets.UTF_8)
         val reason = when (status) {
-            200 -> "OK"; 400 -> "Bad Request"; 401 -> "Unauthorized"; 404 -> "Not Found"
-            500 -> "Internal Server Error"; 502 -> "Bad Gateway"; 503 -> "Service Unavailable"
+            200 -> "OK"; 201 -> "Created"; 204 -> "No Content"
+            400 -> "Bad Request"; 401 -> "Unauthorized"; 403 -> "Forbidden"; 404 -> "Not Found"
+            413 -> "Payload Too Large"; 500 -> "Internal Server Error"; 501 -> "Not Implemented"
+            502 -> "Bad Gateway"; 503 -> "Service Unavailable"
             else -> "Error"
         }
-        output.write((
-            "HTTP/1.1 $status $reason\r\n" +
-                "Content-Type: application/json; charset=utf-8\r\n" +
-                "Content-Length: ${bytes.size}\r\n" +
-                "Access-Control-Allow-Origin: *\r\n" +
-                "Access-Control-Allow-Headers: *\r\n" +
-                "Connection: close\r\n\r\n"
-            ).toByteArray(Charsets.UTF_8))
+        val headers = ApiHttp.jsonHeaders(bytes)
+        output.write((buildString {
+            append("HTTP/1.1 $status $reason\r\n")
+            headers.forEach { (name, value) -> append("$name: $value\r\n") }
+            append("\r\n")
+        }).toByteArray(Charsets.UTF_8))
         output.write(bytes)
         output.flush()
     }
+
+    private fun writePreflight(output: OutputStream, response: ApiHttpResponse) {
+        output.write((buildString {
+            append("HTTP/1.1 ${response.status} No Content\r\n")
+            response.headers.forEach { (name, value) -> append("$name: $value\r\n") }
+            append("\r\n")
+        }).toByteArray(Charsets.UTF_8))
+        output.flush()
+    }
+
+    private fun isApiCorsRoute(path: String): Boolean =
+        path == "/v1" || path.startsWith("/v1/") || path.startsWith("/api/") || path == "/health"
 
     private fun errorJson(status: Int, message: String): String = buildJsonObject {
         put("error", buildJsonObject {
