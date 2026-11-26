@@ -123,7 +123,10 @@ fun LogsScreen() {
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    itemsIndexed(entries, key = { index, entry -> "${entry.ts}-$index" }) { _, entry ->
+                    itemsIndexed(
+                        entries,
+                        key = { _, entry -> "${entry.ts}-${entry.provider}-${entry.model}-${entry.latencyMs}" },
+                    ) { _, entry ->
                         LogRow(entry, modifier = Modifier.animateItem()) { selected = entry }
                     }
                 }

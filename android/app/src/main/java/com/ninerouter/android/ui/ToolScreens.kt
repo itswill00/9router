@@ -68,6 +68,7 @@ import com.ninerouter.android.core.Translator
 import com.ninerouter.android.data.Catalog
 import com.ninerouter.android.data.Connection
 import com.ninerouter.android.data.Settings
+import com.ninerouter.android.data.Exposure
 import com.ninerouter.android.data.Store
 import com.ninerouter.android.data.UsageEntry
 import com.ninerouter.android.server.GatewayState
@@ -117,7 +118,7 @@ private fun CopyChip(value: String, label: String = "Copy", modifier: Modifier =
     }
     TextButton(
         onClick = {
-            clipboard.setText(AnnotatedString(value))
+            copySensitive(context, "Value", value)
             copied = true
             Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
         },
@@ -585,9 +586,11 @@ fun CliToolsScreen() {
     val revision = storeRevision().value
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
-    val base = GatewayState.BASE_URL
-    val apiKey = Store.state.settings.apiKey
-    val tools = cliTools(base)
+    val settings = Store.state.settings
+    val base = Exposure.publicRoot(settings) ?: GatewayState.BASE_URL
+    val apiRoot = Exposure.apiRoot(settings, GatewayState.BASE_URL)
+    val apiKey = settings.apiKey
+    val tools = cliTools(apiRoot)
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -599,10 +602,10 @@ fun CliToolsScreen() {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Gateway endpoint", style = MaterialTheme.typography.titleSmall, color = NineRouterColors.TextMain)
                     Spacer(Modifier.weight(1f))
-                    Pill(if (Store.state.settings.requireApiKey) "key required" else "open")
+                    Pill(if (settings.requireApiKey || Exposure.enabled(settings)) "key required" else "open")
                 }
                 Spacer(Modifier.height(6.dp))
-                KeyValueRow("OpenAI base URL", "$base/v1")
+                KeyValueRow("OpenAI base URL", apiRoot)
                 Spacer(Modifier.height(4.dp))
                 KeyValueRow("Anthropic base URL", base)
                 Spacer(Modifier.height(4.dp))
@@ -613,7 +616,7 @@ fun CliToolsScreen() {
                         MonoText(if (apiKey.isBlank()) "(gateway has no key)" else apiKey.take(10) + "…")
                     }
                     TextButton(onClick = {
-                        clipboard.setText(AnnotatedString(apiKey))
+                        copySensitive(context, "API key", apiKey)
                         Toast.makeText(context, "API key copied", Toast.LENGTH_SHORT).show()
                     }) { Text("Copy key", color = NineRouterColors.TextMuted) }
                 }
@@ -633,7 +636,11 @@ fun CliToolsScreen() {
                 Text("Using a computer", style = MaterialTheme.typography.titleSmall, color = NineRouterColors.TextMain)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "The gateway listens on loopback only. On a connected computer run adb reverse tcp:${GatewayState.PORT} tcp:${GatewayState.PORT}, then use the same localhost URLs shown above.",
+                    if (Exposure.publicRoot(settings) != null) {
+                        "Open that base URL from any device that can reach your tunnel or reverse proxy. Terminate TLS there; the last hop to the phone is private."
+                    } else {
+                        "The gateway listens on loopback by default. On a connected computer run adb reverse tcp:${GatewayState.PORT} tcp:${GatewayState.PORT}, then use the same localhost URLs shown above."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = NineRouterColors.TextMuted,
                 )

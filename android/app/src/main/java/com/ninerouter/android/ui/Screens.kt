@@ -59,6 +59,11 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -145,6 +150,7 @@ fun EndpointScreen(refresh: () -> Unit) {
     var testing by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf("") }
     var revealKey by remember { mutableStateOf(false) }
+    var confirmRegenerate by remember { mutableStateOf(false) }
     var publicUrlDraft by remember { mutableStateOf(Store.state.settings.publicBaseUrl) }
     var testingPublic by remember { mutableStateOf(false) }
     var publicResult by remember { mutableStateOf("") }
@@ -152,8 +158,11 @@ fun EndpointScreen(refresh: () -> Unit) {
     val exposed = Exposure.enabled(current)
     val apiRoot = Exposure.apiRoot(current, GatewayState.BASE_URL)
 
+    LaunchedEffect(running) { testResult = "" }
+    LaunchedEffect(publicUrlDraft, exposed) { publicResult = "" }
+
     fun copy(label: String, value: String) {
-        clipboard.setText(AnnotatedString(value))
+        copySensitive(context, label, value)
         Toast.makeText(context, "$label copied", Toast.LENGTH_SHORT).show()
     }
 
@@ -321,6 +330,7 @@ fun EndpointScreen(refresh: () -> Unit) {
                         MonoText(
                             if (revealed) Store.state.settings.apiKey else "••••••••••••••••••••••",
                             color = NineRouterColors.Brand,
+                            maxLines = 3,
                         )
                     }
                     TextButton(onClick = { revealKey = !revealKey }) {
@@ -337,8 +347,7 @@ fun EndpointScreen(refresh: () -> Unit) {
             Spacer(Modifier.height(NineRouterSpacing.sm))
             Row(horizontalArrangement = Arrangement.spacedBy(NineRouterSpacing.sm)) {
                 SecondaryButton("Regenerate key", modifier = Modifier.weight(1f)) {
-                    Store.mutate { settings = settings.copy(apiKey = Store.newKey()) }
-                    refresh()
+                    confirmRegenerate = true
                 }
                 SecondaryButton("Copy config", modifier = Modifier.weight(1f)) {
                     copy(
@@ -367,7 +376,7 @@ fun EndpointScreen(refresh: () -> Unit) {
             ) { enable ->
                 if (!enable) {
                     Store.mutate { settings = settings.copy(exposure = Exposure.LOOPBACK) }
-                    if (running) GatewayService.restart(context)
+                    if (running) GatewayService.rebind(context)
                     Toast.makeText(context, "Back to loopback only", Toast.LENGTH_SHORT).show()
                     refresh()
                 } else {
@@ -380,7 +389,7 @@ fun EndpointScreen(refresh: () -> Unit) {
                             apiKey = settings.apiKey.ifBlank { Store.newKey() },
                         )
                     }
-                    if (running) GatewayService.restart(context)
+                    if (running) GatewayService.rebind(context)
                     Toast.makeText(
                         context,
                         if (running) "Restarting with network access…" else "Network mode saved",
@@ -506,6 +515,30 @@ fun EndpointScreen(refresh: () -> Unit) {
             }
         }
     }
+
+    if (confirmRegenerate) {
+        AlertDialog(
+            onDismissRequest = { confirmRegenerate = false },
+            containerColor = NineRouterColors.Surface,
+            title = { Text("Regenerate the gateway key?", color = NineRouterColors.TextMain) },
+            text = {
+                Text(
+                    "Every client using the current key will stop working until it is updated.",
+                    color = NineRouterColors.TextMuted,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    Store.mutate { settings = settings.copy(apiKey = Store.newKey()) }
+                    confirmRegenerate = false
+                    refresh()
+                }) { Text("Regenerate", color = NineRouterColors.Danger) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRegenerate = false }) { Text("Cancel") }
+            },
+        )
+    }
 }
 
 private fun localEndpoints(): List<String> = runCatching {
@@ -526,7 +559,8 @@ private fun httpProbe(url: String, apiKey: String?): String {
     return try {
         connection.connectTimeout = 8000
         connection.readTimeout = 8000
-        connection.instanceFollowRedirects = true
+        // Never forward the gateway key to a redirect target.
+        connection.instanceFollowRedirects = false
         if (!apiKey.isNullOrBlank()) connection.setRequestProperty("Authorization", "Bearer $apiKey")
         val code = connection.responseCode
         if (code in 200..299) code.toString() else "HTTP $code"
@@ -781,7 +815,11 @@ fun ChatScreen() {
     val running by GatewayState.running.collectAsState()
     val revision by storeRevision()
 
-    val options = remember(revision) {
+    val optionsKey = Store.state.combos.map { it.name } +
+        Store.state.connections.filter { it.enabled }.map { it.provider } +
+        Store.state.nodes.flatMap { n -> n.models.map { "${n.prefix}/$it" } } +
+        Store.state.aliases.keys.toList()
+    val options = remember(optionsKey) {
         buildList {
             Store.state.combos.forEach { add(it.name) }
             Store.state.connections.forEach { c ->
@@ -794,8 +832,8 @@ fun ChatScreen() {
 
     var sessionId by remember { mutableStateOf("") }
     var messages by remember { mutableStateOf(listOf<UiMessage>()) }
-    var model by remember { mutableStateOf("") }
-    var input by remember { mutableStateOf("") }
+    var model by rememberSaveable { mutableStateOf("") }
+    var input by rememberSaveable { mutableStateOf("") }
     var pendingImages by remember { mutableStateOf(listOf<ChatImage>()) }
     var imageBusy by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -817,40 +855,43 @@ fun ChatScreen() {
         Store.state.chatSessions.firstOrNull { it.id == sessionId }
 
     fun persist(msgs: List<UiMessage>) {
-        val session = currentSession() ?: return
-        val cleaned = msgs.filterNot { it.role == "assistant" && it.content.isBlank() }
-        session.model = model
-        session.messages.clear()
-        session.messages.addAll(cleaned.map { it.toChat() })
-        session.updatedAt = System.currentTimeMillis()
-        if (session.title == "New chat") {
-            val first = cleaned.firstOrNull { it.role == "user" }
-            if (first != null) {
-                val text = first.content.lineSequence().firstOrNull().orEmpty().trim()
+        val cleaned = msgs.filterNot {
+            it.role == "assistant" && (it.content.isBlank() || it.content.startsWith("[error"))
+        }
+        val prepared = cleaned.map { it.toChat() }
+        val firstUser = cleaned.firstOrNull { it.role == "user" }
+        val now = System.currentTimeMillis()
+        if (Store.state.chatSessions.none { it.id == sessionId }) return
+        Store.mutate {
+            val session = chatSessions.firstOrNull { it.id == sessionId } ?: return@mutate
+            session.model = model
+            session.messages.clear()
+            session.messages.addAll(prepared)
+            session.updatedAt = now
+            if (session.title == "New chat" && firstUser != null) {
+                val text = firstUser.content.lineSequence().firstOrNull().orEmpty().trim()
                 session.title = when {
                     text.isNotBlank() -> text.take(48)
-                    first.images.isNotEmpty() -> "Image"
+                    firstUser.images.isNotEmpty() -> "Image"
                     else -> "New chat"
                 }
             }
+            chatSessions.sortByDescending { it.updatedAt }
+            while (chatSessions.size > 40) {
+                val removed = chatSessions.removeAt(chatSessions.lastIndex)
+                removed.messages.flatMap { it.images }.forEach { runCatching { File(it.path).delete() } }
+            }
         }
-        Store.state.chatSessions.sortByDescending { it.updatedAt }
-        while (Store.state.chatSessions.size > 40) {
-            val removed = Store.state.chatSessions.removeAt(Store.state.chatSessions.lastIndex)
-            removed.messages.flatMap { it.images }.forEach { runCatching { File(it.path).delete() } }
-        }
-        Store.save()
     }
 
     fun loadSession(id: String) {
         val session = Store.state.chatSessions.firstOrNull { it.id == id } ?: return
         sessionId = id
-        Store.state.activeChatSessionId = id
+        Store.mutate { activeChatSessionId = id }
         messages = session.messages.map { it.toUi() }
         model = session.model.ifBlank { defaultModel() }
         input = ""
         pendingImages = emptyList()
-        Store.save()
     }
 
     fun stop() {
@@ -867,9 +908,10 @@ fun ChatScreen() {
     fun newChat() {
         stop()
         val session = ChatSession(id = UUID.randomUUID().toString(), model = model.ifBlank { defaultModel() })
-        Store.state.chatSessions.add(0, session)
-        Store.state.activeChatSessionId = session.id
-        Store.save()
+        Store.mutate {
+            chatSessions.add(0, session)
+            activeChatSessionId = session.id
+        }
         sessionId = session.id
         messages = emptyList()
         input = ""
@@ -879,7 +921,7 @@ fun ChatScreen() {
     fun deleteSession(id: String) {
         if (Store.state.activeChatSessionId == id) stop()
         val removed = Store.state.chatSessions.firstOrNull { it.id == id }
-        Store.state.chatSessions.removeAll { it.id == id }
+        Store.mutate { chatSessions.removeAll { it.id == id } }
         removed?.messages?.flatMap { it.images }?.forEach { runCatching { File(it.path).delete() } }
         if (Store.state.activeChatSessionId == id) {
             val next = Store.state.chatSessions.firstOrNull()
@@ -891,7 +933,6 @@ fun ChatScreen() {
                 newChat()
             }
         }
-        Store.save()
     }
 
     LaunchedEffect(Unit) {
@@ -901,9 +942,10 @@ fun ChatScreen() {
             loadSession(existing.id)
         } else {
             val session = ChatSession(id = UUID.randomUUID().toString(), model = defaultModel())
-            Store.state.chatSessions.add(0, session)
-            Store.state.activeChatSessionId = session.id
-            Store.save()
+            Store.mutate {
+                chatSessions.add(0, session)
+                activeChatSessionId = session.id
+            }
             sessionId = session.id
             model = session.model
         }
@@ -913,11 +955,18 @@ fun ChatScreen() {
     // Persist the latest transcript (including a partial streamed answer) when
     // the user leaves the chat tab.
     DisposableEffect(Unit) {
-        onDispose { persist(messages) }
+        onDispose {
+            runCatching { activeResponse.value?.close() }
+            activeResponse.value = null
+            persist(messages)
+        }
     }
 
     LaunchedEffect(messages.size, messages.lastOrNull()?.content?.length) {
-        if (messages.isNotEmpty()) listState.scrollToItem(messages.lastIndex)
+        if (messages.isEmpty()) return@LaunchedEffect
+        val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+        // Only follow the stream when the user is already near the bottom.
+        if (last >= messages.lastIndex - 1) listState.scrollToItem(messages.lastIndex)
     }
 
     LaunchedEffect(busy) {
@@ -957,11 +1006,16 @@ fun ChatScreen() {
         val startedAt = System.currentTimeMillis()
         runStartedAt = startedAt
         liveElapsed = 0L
-        val history = messages + UiMessage(role = "user", content = text, images = images)
+        val history = messages.filterNot {
+            it.role == "assistant" && it.content.startsWith("[error")
+        } + UiMessage(role = "user", content = text, images = images)
         val chatSessionId = currentSession()?.id.orEmpty()
         val placeholder = UiMessage(role = "assistant", content = "", model = model)
         val inputTokens = (history.sumOf { it.content.length + it.images.size * 256 } / 4).coerceAtLeast(1)
         messages = history + placeholder
+        // Save the user turn immediately; a long stream or a process kill must
+        // not lose the question (and its generated chat title).
+        persist(messages)
         streamJob = scope.launch(Dispatchers.IO) {
             val request = buildJsonObject {
                 put("model", model)
@@ -996,6 +1050,7 @@ fun ChatScreen() {
                             if (generation == requestId) patch(placeholder.id) { it.copy(model = resolved) }
                         }
                         val answer = StringBuilder()
+                        var lastUiAt = 0L
                         try {
                             out.response.body?.source()?.use { src ->
                                 while (true) {
@@ -1012,10 +1067,16 @@ fun ChatScreen() {
                                     val piece = deltaOf(parser, delta.removePrefix("data:").trim())
                                     if (piece.isNotBlank()) {
                                         answer.append(piece)
-                                        val snapshot = answer.toString()
-                                        withContext(Dispatchers.Main) {
-                                            if (generation == requestId) {
-                                                patch(placeholder.id) { it.copy(content = snapshot) }
+                                        val now = System.currentTimeMillis()
+                                        // Batch UI patches; a fast provider can
+                                        // emit 100+ tokens per second.
+                                        if (now - lastUiAt >= 50L) {
+                                            lastUiAt = now
+                                            val snapshot = answer.toString()
+                                            withContext(Dispatchers.Main) {
+                                                if (generation == requestId) {
+                                                    patch(placeholder.id) { it.copy(content = snapshot) }
+                                                }
                                             }
                                         }
                                     }
@@ -1231,7 +1292,7 @@ fun ChatScreen() {
                     IconButton(
                         onClick = { imagePicker.launch("image/*") },
                         enabled = pendingImages.size < 4 && !imageBusy,
-                        modifier = Modifier.size(40.dp),
+                        modifier = Modifier.size(48.dp),
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.ic_attach),
@@ -1246,7 +1307,10 @@ fun ChatScreen() {
                         textStyle = MaterialTheme.typography.bodyMedium.copy(color = NineRouterColors.TextMain),
                         cursorBrush = SolidColor(NineRouterColors.BrandOrange),
                         maxLines = 5,
-                        modifier = Modifier.weight(1f).padding(vertical = 10.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(vertical = 10.dp)
+                            .semantics { contentDescription = "Message" },
                         decorationBox = { inner ->
                             Box {
                                 if (input.isBlank()) {
@@ -1254,6 +1318,8 @@ fun ChatScreen() {
                                         "Message ${model.substringAfter('/').ifBlank { "…" }}",
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = NineRouterColors.TextSubtle,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
                                     )
                                 }
                                 inner()
@@ -1273,9 +1339,13 @@ fun ChatScreen() {
                     )
                     Box(
                         Modifier
-                            .size(40.dp)
+                            .size(48.dp)
                             .background(sendColor, CircleShape)
-                            .clickable(enabled = busy || canSend) { if (busy) stop() else send() },
+                            .clickable(enabled = busy || canSend) { if (busy) stop() else send() }
+                            .semantics(mergeDescendants = true) {
+                                contentDescription = if (busy) "Stop generating" else "Send message"
+                                role = Role.Button
+                            },
                         contentAlignment = Alignment.Center,
                     ) {
                         if (busy) {
@@ -1283,7 +1353,7 @@ fun ChatScreen() {
                         } else {
                             Icon(
                                 Icons.Default.Send,
-                                contentDescription = "Send",
+                                contentDescription = null,
                                 tint = if (canSend) NineRouterColors.Bg else NineRouterColors.TextSubtle,
                                 modifier = Modifier.size(18.dp),
                             )
@@ -1334,6 +1404,7 @@ private fun ChatSessionsDialog(
     onDismiss: () -> Unit,
 ) {
     val now by liveNow(30_000L)
+    var pendingDelete by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = NineRouterColors.Surface,
@@ -1373,7 +1444,10 @@ private fun ChatSessionsDialog(
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                            IconButton(onClick = { onDelete(session.id) }, modifier = Modifier.size(36.dp)) {
+                            IconButton(
+                                onClick = { pendingDelete = session.id },
+                                modifier = Modifier.size(48.dp),
+                            ) {
                                 Icon(
                                     Icons.Default.Delete,
                                     contentDescription = "Delete session",
@@ -1393,6 +1467,24 @@ private fun ChatSessionsDialog(
             TextButton(onClick = onDismiss) { Text("Close", color = NineRouterColors.TextMuted) }
         },
     )
+
+    pendingDelete?.let { id ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            containerColor = NineRouterColors.Surface,
+            title = { Text("Delete this chat?", color = NineRouterColors.TextMain) },
+            text = { Text("The whole transcript and its images will be removed.", color = NineRouterColors.TextMuted) },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDelete(id)
+                    pendingDelete = null
+                }) { Text("Delete", color = NineRouterColors.Danger) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
+            },
+        )
+    }
 }
 
 @Composable
@@ -1644,7 +1736,10 @@ private fun MessageBubble(
             border = BorderStroke(1.dp, accent.copy(alpha = 0.22f)),
             modifier = Modifier
                 .widthIn(max = 520.dp)
-                .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessLow)),
+                .then(
+                    if (streaming) Modifier
+                    else Modifier.animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessLow)),
+                ),
         ) {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

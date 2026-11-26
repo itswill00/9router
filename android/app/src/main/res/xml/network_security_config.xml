@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
     <!--
-      The gateway itself only listens on loopback. Cleartext is allowed because
-      users can add OpenAI-compatible endpoints on their own LAN (for example a
-      local Ollama or LM Studio server). Every built-in provider uses HTTPS; the
-      add/edit endpoint dialogs warn when a plain-HTTP URL is entered.
+      Loopback is the default. When remote access is enabled the gateway binds
+      private interfaces too, but drops public source addresses at accept time.
+      Cleartext is allowed because users can add OpenAI-compatible endpoints on
+      their own LAN (for example a local Ollama or LM Studio server). Every
+      built-in provider uses HTTPS; the add/edit endpoint dialogs warn when a
+      plain-HTTP URL is entered.
     -->
     <base-config cleartextTrafficPermitted="true">
         <trust-anchors>

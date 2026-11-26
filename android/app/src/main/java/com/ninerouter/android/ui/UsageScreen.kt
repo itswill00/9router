@@ -416,7 +416,7 @@ private fun DetailsList(filtered: List<UsageEntry>, onSelect: (UsageEntry) -> Un
     ) {
         itemsIndexed(
             items = filtered.takeLast(200).asReversed(),
-            key = { index, entry -> "${entry.ts}-$index" },
+            key = { _, entry -> "${entry.ts}-${entry.provider}-${entry.model}-${entry.latencyMs}" },
             contentType = { _, _ -> "usage-entry" },
         ) { _, entry ->
             Surface(
@@ -612,8 +612,11 @@ private fun UsageAreaChart(buckets: List<Bucket>, mode: String) {
             points.forEach { drawCircle(color, radius = 2.4f, center = it) }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            buckets.forEach { b ->
-                Text(b.label, style = MaterialTheme.typography.labelSmall, color = NineRouterColors.TextSubtle)
+            val step = if (buckets.size > 6) 3 else 1
+            buckets.forEachIndexed { index, b ->
+                if (index % step == 0 || index == buckets.lastIndex) {
+                    Text(b.label, style = MaterialTheme.typography.labelSmall, color = NineRouterColors.TextSubtle)
+                }
             }
         }
     }
@@ -681,11 +684,13 @@ private fun buildBuckets(usage: List<UsageEntry>): List<Bucket> {
     val span = (now - minTs).coerceAtLeast(60 * 60 * 1000L)
     val count = 12
     val width = span / count
+    // Clock times are meaningless beyond a day; show dates for week/month views.
+    val formatter = SimpleDateFormat(if (span > 24 * 60 * 60 * 1000L) "MMM d" else "HH:mm", Locale.US)
     return (0 until count).map { i ->
         val from = minTs + i * width
         val to = from + width
         val entries = usage.filter { it.ts >= from && it.ts < to }
-        val label = SimpleDateFormat("HH:mm", Locale.US).format(Date(from))
+        val label = formatter.format(Date(from))
         Bucket(
             label = label,
             tokens = entries.sumOf { (it.prompt + it.completion).toLong() },
@@ -697,7 +702,9 @@ private fun buildBuckets(usage: List<UsageEntry>): List<Bucket> {
 
 private val numberFormat: NumberFormat = NumberFormat.getIntegerInstance(Locale.US)
 private fun fmt(n: Int): String = numberFormat.format(n)
-private fun money(n: Double): String = "$" + String.format(Locale.US, "%.2f", n)
+private fun money(n: Double): String =
+    if (n > 0.0 && n < 1.0) "$" + String.format(Locale.US, "%.4f", n)
+    else "$" + String.format(Locale.US, "%.2f", n)
 private fun compact(n: Long): String = when {
     n >= 1_000_000 -> String.format(Locale.US, "%.1fM", n / 1_000_000.0)
     n >= 1_000 -> String.format(Locale.US, "%.1fK", n / 1_000.0)

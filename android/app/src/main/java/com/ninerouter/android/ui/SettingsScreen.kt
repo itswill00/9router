@@ -340,10 +340,6 @@ fun SettingsScreen(
                     }
                     Spacer(Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        TextButton(onClick = {
-                            clipboard.setText(AnnotatedString(key.key))
-                            Toast.makeText(context, "API key copied", Toast.LENGTH_SHORT).show()
-                        }) { Text("Copy key") }
                         TextButton(onClick = { pendingKeyDelete = key }) {
                             Text("Delete", color = NineRouterColors.Danger)
                         }
@@ -376,7 +372,7 @@ fun SettingsScreen(
                         Spacer(Modifier.height(6.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             TextButton(onClick = {
-                                clipboard.setText(AnnotatedString(createdKey))
+                                copySensitive(context, "API key", createdKey)
                                 Toast.makeText(context, "API key copied", Toast.LENGTH_SHORT).show()
                             }) { Text("Copy") }
                             TextButton(onClick = { createdKey = "" }) { Text("Dismiss") }
@@ -491,15 +487,16 @@ fun SettingsScreen(
                 TextButton(onClick = {
                     val value = Store.newKey()
                     val allowed = keyAllowed.split(",").map { it.trim() }.filter { it.isNotBlank() }
-                    Store.state.apiKeys.add(
-                        ApiKey(
-                            id = UUID.randomUUID().toString(),
-                            name = keyName.trim(),
-                            key = value,
-                            allowedModels = allowed,
+                    Store.mutate {
+                        apiKeys.add(
+                            ApiKey(
+                                id = UUID.randomUUID().toString(),
+                                name = keyName.trim(),
+                                key = value,
+                                allowedModels = allowed,
+                            )
                         )
-                    )
-                    Store.save()
+                    }
                     createdKey = value
                     keyName = ""
                     keyAllowed = ""

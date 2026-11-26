@@ -28,8 +28,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -167,8 +174,6 @@ private fun Screen.mediaKind(): MediaKind? = when (this) {
 
 @Composable
 fun AppShell(refreshTrigger: () -> Unit) {
-    @Suppress("UNUSED_VARIABLE")
-    val revision = storeRevision().value
     var screenName by rememberSaveable { mutableStateOf(Screen.Endpoint.name) }
     val screen = Screen.from(screenName)
     var showChat by rememberSaveable { mutableStateOf(false) }
@@ -180,10 +185,10 @@ fun AppShell(refreshTrigger: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) { UpdateManager.autoCheck(context) }
-    LaunchedEffect(updateState) {
-        val available = updateState as? UpdateManager.State.Available ?: return@LaunchedEffect
-        if (UpdateManager.shouldAnnounce(context, available.release.version)) {
-            updatePrompt = available.release
+    val availableUpdate = (updateState as? UpdateManager.State.Available)?.release
+    LaunchedEffect(availableUpdate?.version) {
+        if (availableUpdate != null && UpdateManager.shouldAnnounce(context, availableUpdate.version)) {
+            updatePrompt = availableUpdate
         }
     }
 
@@ -257,8 +262,10 @@ fun AppShell(refreshTrigger: () -> Unit) {
                     .weight(1f)
                     .fillMaxWidth()
                     .clipToBounds()
-                    .navigationBarsPadding()
-                    .imePadding(),
+                    .windowInsetsPadding(
+                        WindowInsets.navigationBars.union(WindowInsets.ime)
+                            .only(WindowInsetsSides.Bottom),
+                    ),
             ) {
                 val target = if (showChat) "chat" else screen.name
                 AnimatedContent(

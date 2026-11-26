@@ -246,8 +246,7 @@ fun CombosScreen(refresh: () -> Unit) {
             allModels = allModels,
             onDismiss = { showCreate = false },
             onSave = { name, models ->
-                Store.state.combos.add(Combo(name = name, models = models))
-                Store.save()
+                Store.mutate { this.combos.add(Combo(name = name, models = models)) }
                 showCreate = false
                 refresh()
             },
@@ -338,8 +337,7 @@ fun CombosScreen(refresh: () -> Unit) {
             },
             confirmButton = {
                 TextButton(onClick = {
-                    Store.state.combos.removeAll { it.name == combo.name }
-                    Store.save()
+                    Store.mutate { this.combos.removeAll { it.name == combo.name } }
                     resetComboState(combo.name)
                     pendingDelete = null
                     refresh()
@@ -1241,6 +1239,8 @@ private fun PolicyRow(title: String, desc: String, selected: Boolean, onClick: (
 
 @Composable
 private fun CapacityAdapterSection(refresh: () -> Unit, allModels: List<String>) {
+    // Subscribe in this leaf: the parent's revision is not passed down.
+    val revision = storeRevision().value
     val adapter = Store.state.settings.capacityAdapter
 
     fun update(key: String, pool: CapacityPool) {
@@ -1399,7 +1399,7 @@ private fun CapacityPoolCard(
             multi = true,
             onDismiss = { showPicker = false },
             onConfirm = { picked ->
-                onChange(pool.copy(models = (pool.models + picked).distinct()))
+                onChange(pool.copy(models = picked.distinct()))
                 showPicker = false
             },
         )

@@ -15,6 +15,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -44,7 +46,10 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -163,7 +168,13 @@ fun ToggleRow(
     trailing: (@Composable () -> Unit)? = null,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyMedium, color = NineRouterColors.TextMain)
             if (description != null) {
@@ -173,7 +184,7 @@ fun ToggleRow(
         }
         trailing?.invoke()
         if (trailing != null) Spacer(Modifier.width(6.dp))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 
@@ -365,16 +376,19 @@ fun EmptyState(
 @Composable
 fun ProviderIcon(id: String, name: String, size: Dp = 40.dp) {
     val context = LocalContext.current
-    val bitmap = remember(id) {
-        try {
-            context.assets.open("providers/$id.png").use { BitmapFactory.decodeStream(it)?.asImageBitmap() }
-        } catch (_: Exception) {
-            null
+    val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, id) {
+        value = withContext(Dispatchers.IO) {
+            try {
+                context.assets.open("providers/$id.png").use { BitmapFactory.decodeStream(it)?.asImageBitmap() }
+            } catch (_: Exception) {
+                null
+            }
         }
     }
-    if (bitmap != null) {
+    val image = bitmap
+    if (image != null) {
         Image(
-            bitmap = bitmap,
+            bitmap = image,
             contentDescription = name,
             modifier = Modifier.size(size).clip(RoundedCornerShape(10.dp)),
             contentScale = ContentScale.Fit,

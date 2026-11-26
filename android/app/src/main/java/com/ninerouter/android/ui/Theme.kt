@@ -35,13 +35,13 @@ object NineRouterColors {
     val BorderStrong = Color(0xFF454545)
 
     val TextMain = Color(0xFFEDEDED)
-    val TextMuted = Color(0xFF9CA3AF)
-    val TextSubtle = Color(0xFF6B7280)
-    val TextFaint = Color(0xFF52525B)
+    val TextMuted = Color(0xFFA1A8B3)
+    val TextSubtle = Color(0xFF8B93A1)
+    val TextFaint = Color(0xFF717A88)
 
     val Success = Color(0xFF22C55E)
     val Warning = Color(0xFFFBBF24)
-    val Danger = Color(0xFFEF4444)
+    val Danger = Color(0xFFF87171)
     val Info = Color(0xFF60A5FA)
 }
 
@@ -145,7 +145,7 @@ private val NineRouterTypography = Typography(
 @Composable
 fun NineRouterTheme(content: @Composable () -> Unit) {
     val scheme = darkColorScheme(
-        primary = NineRouterColors.Brand,
+        primary = NineRouterColors.BrandOrange,
         onPrimary = Color.White,
         secondary = NineRouterColors.BrandOrange,
         onSecondary = Color.White,

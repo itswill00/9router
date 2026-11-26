@@ -1,5 +1,5 @@
 <resources>
-    <style name="Theme.NineRouter" parent="android:Theme.Material.Light.NoActionBar">
+    <style name="Theme.NineRouter" parent="android:Theme.Material.NoActionBar">
         <item name="android:colorBackground">#1A1A1A</item>
         <item name="android:windowBackground">#1A1A1A</item>
         <item name="android:textColorPrimary">#FFEDEDED</item>

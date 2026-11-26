@@ -222,6 +222,8 @@ private fun LineageCard(
                 badgeBackground = NineRouterColors.Surface2,
                 onOpen = onUpstream,
             )
+            Spacer(Modifier.height(12.dp))
+            ContributorStrip()
             LineageConnector()
             CreditProfileRow(
                 avatar = R.drawable.itswill00,
@@ -235,10 +237,6 @@ private fun LineageCard(
                 badgeBackground = NineRouterColors.BrandOrange.copy(alpha = 0.14f),
                 onOpen = onPort,
             )
-            Spacer(Modifier.height(14.dp))
-            DividerLine()
-            Spacer(Modifier.height(10.dp))
-            ContributorStrip()
         }
     }
 }

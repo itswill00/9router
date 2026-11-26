@@ -178,6 +178,9 @@ private fun ProviderCatalog(
     onOpenNode: (ProviderNode) -> Unit,
     refresh: () -> Unit,
 ) {
+    // Subscribe the catalog itself: the parent's AnimatedContent scope is not
+    // enough when only a provider switch or a connection error changes.
+    val revision = storeRevision().value
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
@@ -189,13 +192,24 @@ private fun ProviderCatalog(
     var nodeName by remember { mutableStateOf("") }
     var nodeKey by remember { mutableStateOf("") }
 
-    val connections = Store.state.connections
-    fun stats(def: ProviderDef): Triple<Int, Int, Int> {
-        val list = connections.filter { it.provider == def.id }
-        val active = list.count { it.enabled }
-        val errors = list.count { it.enabled && it.lastError.isNotBlank() }
-        return Triple(active, errors, list.size)
+    fun clearNodeDraft() {
+        nodePrefix = ""
+        nodeName = ""
+        nodeKey = ""
     }
+
+    val connections = Store.state.connections
+    val statsByProvider = remember(revision) {
+        connections.groupBy { it.provider }.mapValues { (_, list) ->
+            Triple(
+                list.count { it.enabled },
+                list.count { it.enabled && it.lastError.isNotBlank() },
+                list.size,
+            )
+        }
+    }
+    fun stats(def: ProviderDef): Triple<Int, Int, Int> =
+        statsByProvider[def.id] ?: Triple(0, 0, 0)
 
     val providers = Catalog.providers()
         .filter { !it.hidden }
@@ -458,9 +472,8 @@ private fun ProviderCatalog(
                                 baseUrl = base.trim().trimEnd('/'),
                                 apiKey = nodeKey.trim(),
                             )
-                            Store.state.nodes.add(node)
-                            Store.save()
-                            nodePrefix = ""; nodeName = ""; nodeKey = ""
+                            Store.mutate { nodes.add(node) }
+                            clearNodeDraft()
                             showNodeDialog = false
                             refresh()
                             onOpenNode(node)
@@ -468,7 +481,12 @@ private fun ProviderCatalog(
                     },
                 ) { Text("Save", color = NineRouterColors.Brand) }
             },
-            dismissButton = { TextButton(onClick = { showNodeDialog = false }) { Text("Cancel") } },
+            dismissButton = {
+                TextButton(onClick = {
+                    clearNodeDraft()
+                    showNodeDialog = false
+                }) { Text("Cancel") }
+            },
         )
     }
 }
@@ -815,7 +833,7 @@ private fun NodeDetail(nodeId: String, onBack: () -> Unit, refresh: () -> Unit) 
             },
             confirmButton = {
                 TextButton(onClick = {
-                    Store.state.nodes.removeAll { it.id == node.id }
+                    Store.removeNode(node.id)
                     Store.save()
                     showDelete = false
                     refresh()
@@ -1004,7 +1022,7 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
     var errorModel by remember { mutableStateOf<String?>(null) }
     var pendingDelete by remember { mutableStateOf<Connection?>(null) }
 
-    val connections = Store.state.connections.filter { it.provider == def.id }
+    val connections = Store.state.connections.filter { it.provider == def.id }.sortedBy { it.priority }
     // Prefer the active account; fall back to a disabled one so the user still
     // gets an explicit "connection is disabled" error instead of a silent no-op.
     val activeConnection = connections.firstOrNull { it.enabled } ?: connections.firstOrNull()
@@ -1361,7 +1379,7 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
             },
             confirmButton = {
                 TextButton(onClick = {
-                    Store.state.connections.removeAll { it.id == conn.id }
+                    Store.removeConnection(conn.id)
                     Store.save()
                     pendingDelete = null
                     refresh()
@@ -1734,7 +1752,7 @@ private fun ApiKeyDialog(def: ProviderDef, onDismiss: () -> Unit, onSaved: () ->
             TextButton(
                 enabled = key.isNotBlank(),
                 onClick = {
-                    Store.state.connections.add(
+                    Store.addConnection(
                         Connection(
                             id = UUID.randomUUID().toString(),
                             provider = def.id,
@@ -1791,7 +1809,7 @@ private fun TokenDialog(def: ProviderDef, onDismiss: () -> Unit, onSaved: () -> 
                 enabled = access.isNotBlank(),
                 onClick = {
                     val mins = minutes.toLongOrNull() ?: 0L
-                    Store.state.connections.add(
+                    Store.addConnection(
                         Connection(
                             id = UUID.randomUUID().toString(),
                             provider = def.id,
@@ -1834,7 +1852,7 @@ private fun CookieDialog(def: ProviderDef, onDismiss: () -> Unit, onSaved: () ->
             TextButton(
                 enabled = cookie.isNotBlank(),
                 onClick = {
-                    Store.state.connections.add(
+                    Store.addConnection(
                         Connection(
                             id = UUID.randomUUID().toString(),
                             provider = def.id,
@@ -1892,7 +1910,7 @@ private fun OAuthDialog(def: ProviderDef, onDismiss: () -> Unit, onSaved: () -> 
                 busy = false
                 val tokens = processed.tokens
                 if (tokens != null) {
-                    Store.state.connections.add(
+                    Store.addConnection(
                         Connection(
                             id = UUID.randomUUID().toString(),
                             provider = def.id,
@@ -1990,7 +2008,7 @@ private fun DeviceDialog(def: ProviderDef, onDismiss: () -> Unit, onSaved: () ->
                 val processed = withContext(Dispatchers.IO) { OAuthFlow.postProcess(def, provenanced) }
                 withContext(Dispatchers.Main) {
                     if (processed.tokens != null) {
-                        Store.state.connections.add(
+                        Store.addConnection(
                             Connection(
                                 id = UUID.randomUUID().toString(),
                                 provider = def.id,
