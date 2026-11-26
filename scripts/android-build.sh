@@ -37,6 +37,8 @@ stage_apks() {
   version="$(artifact_version)"
   out="$ROOT/android/dist"
   mkdir -p "$out"
+  # Drop stale artifacts so dist/ never mixes versions.
+  rm -f "$out"/9Router-*.apk
   for variant in debug release; do
     local built="app/build/outputs/apk/$variant/app-$variant.apk"
     if [[ -f "$built" ]]; then
