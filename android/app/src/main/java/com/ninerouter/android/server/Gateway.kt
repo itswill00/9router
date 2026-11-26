@@ -186,6 +186,24 @@ class Gateway(private val context: Context) {
                     writeJson(output, 200, model.toString())
                 }
 
+                method == "POST" && path in setOf("/v1/messages/count_tokens", "/api/v1/messages/count_tokens") -> {
+                    if (!authorized) return writeJson(output, 401, errorJson(401, "Invalid API key"))
+                    val result = CompatibilityRoutes.countTokens(body)
+                    if (result.status != 200) return writeJson(output, result.status, result.body)
+                    val model = result.model
+                    if (!model.isNullOrBlank()) {
+                        val deny = ApiAccess.deniedModel(headers, buildJsonObject { put("model", model) }, Store.state)
+                        if (deny != null) return writeJson(output, 403, errorJson(403, deny))
+                    }
+                    writeJson(output, 200, result.body)
+                }
+
+                method == "POST" && path in setOf("/v1/responses/compact", "/api/v1/responses/compact") -> {
+                    if (!authorized) return writeJson(output, 401, errorJson(401, "Invalid API key"))
+                    val result = CompatibilityRoutes.compact()
+                    writeJson(output, result.status, result.body)
+                }
+
                 method == "POST" && path in setOf(
                     "/v1/chat/completions", "/api/v1/chat/completions",
                     "/v1/messages", "/api/v1/messages",
@@ -321,10 +339,7 @@ class Gateway(private val context: Context) {
         if (conn == null) return writeJson(output, 404, errorJson(404, "No credentials for ${target.provider}"))
 
         val url = embeddingsUrl(def)
-        val payload = buildJsonObject {
-            put("model", target.model)
-            put("input", body["input"] ?: JsonPrimitive(""))
-        }
+        val payload = EmbeddingsApi.payload(body, target.model)
         try {
             Upstream().executeUrl(url, def, conn, payload).use { res ->
                 writeJson(output, res.code, res.body?.string().orEmpty().ifBlank { "{}" })
