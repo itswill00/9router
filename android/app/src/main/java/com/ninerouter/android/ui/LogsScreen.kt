@@ -74,8 +74,8 @@ fun LogsScreen() {
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             SectionHeader(
-                "Request Logs",
-                "Every request handled by the router and Basic Chat",
+                "Console Log",
+                "Live request output from the router and Basic Chat",
                 action = {
                     if (all.isNotEmpty()) {
                         Text(

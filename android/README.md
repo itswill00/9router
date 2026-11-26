@@ -45,10 +45,27 @@ http://127.0.0.1:20128/v1
   dark palette from `src/app/globals.css`, brand orange, the original `hub`
   brand mark, provider icon set bundled from `public/providers`, grouped
   provider cards, a hamburger navigation drawer, and edge-to-edge system bars.
-- **Navigation drawer.** The top-bar hamburger opens a labelled drawer (Basic
-  Chat, Endpoint, Providers, Combos, Usage, Logs, Settings); selecting an item
-  closes it. Predictive back closes the drawer first, then chat, then returns
-  to Endpoint.
+- **Navigation drawer.** The top-bar hamburger opens a drawer that mirrors the
+  full 9Router sidebar: Endpoint & Key, Providers, Combo & Vision Adapter,
+  Usage, Quota Tracker, Token Saver, CLI Tools, then a System group with
+  Media Providers (Embedding, Text to Image, Video, Text To Speech, Speech To
+  Text, System One, Web Fetch & Search), Proxy Pools, Skills, Console Log,
+  Translator, 9Remote, 9English and Settings. Basic Chat stays out of the
+  drawer, as it does upstream, and opens from the top-bar chat button.
+  Predictive back closes the drawer first, then chat, then returns to Endpoint.
+- **Quota Tracker.** Per-account availability, cooldown countdown, local
+  seven-day request/token/cost totals, last error, and an enable switch.
+- **Token Saver page.** RTK compression, caveman and Ponytail prompts, and a
+  custom system prompt now live on their own page instead of inside Settings.
+- **CLI Tools.** Copy-ready Claude Code, Codex, Cline/Roo, Cursor, Continue and
+  OpenCode snippets for the loopback gateway, with the API key kept masked.
+- **Media Providers.** Each visible media kind shows its gateway route and the
+  providers that advertise it in the bundled registry; unsupported routes are
+  labelled instead of pretending to work.
+- **Skills, Translator and Proxy Pools.** Skill links can be copied or opened
+  on GitHub, the Translator page previews request bodies between OpenAI,
+  Claude, Gemini and Responses formats, and Proxy Pools explains why the
+  native build connects directly.
 - **Provider detail polish.** Connections render as individual cards with
   ellipsis-safe account rows, confirmed delete, and per-model Test / Test all
   (OAuth and API key, 20 s timeout, 3 parallel) with Working/Failed filters.

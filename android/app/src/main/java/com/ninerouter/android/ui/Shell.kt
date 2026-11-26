@@ -1,19 +1,24 @@
 package com.ninerouter.android.ui
 
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +40,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
@@ -51,7 +57,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -60,14 +65,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
@@ -78,21 +86,86 @@ import com.ninerouter.android.server.GatewayState
 import com.ninerouter.android.update.UpdateManager
 import kotlinx.coroutines.launch
 
-private data class NavItem(val title: String, val icon: Int)
+/**
+ * Navigation mirrors the full 9Router dashboard sidebar: the same groups,
+ * labels, order and destinations, with Basic Chat moved to the top bar because
+ * the upstream sidebar keeps it hidden.
+ */
+private enum class Screen(
+    val label: String,
+    val title: String,
+    val subtitle: String,
+    val icon: Int,
+) {
+    Endpoint("Endpoint & Key", "Endpoint & Key", "API endpoint configuration", R.drawable.ic_nav_endpoint),
+    Providers("Providers", "Providers", "Manage your AI provider connections", R.drawable.ic_nav_providers),
+    Combos("Combo & Vision Adapter", "Combos", "Model combos with fallback", R.drawable.ic_nav_combos),
+    Usage("Usage", "Usage & Analytics", "Monitor your API usage, token consumption, and request logs", R.drawable.ic_nav_usage),
+    Quota("Quota Tracker", "Quota Tracker", "Track and manage your API quota limits", R.drawable.ic_nav_quota),
+    TokenSaver("Token Saver", "Token Saver", "Compress prompts and outputs to save tokens", R.drawable.ic_nav_savings),
+    CliTools("CLI Tools", "CLI Tools", "Configure CLI tools", R.drawable.ic_nav_terminal),
+    MediaEmbedding("Embedding", "Embedding", "Manage your Embedding providers", R.drawable.ic_nav_embedding),
+    MediaImage("Text to Image", "Text to Image", "Manage your Text to Image providers", R.drawable.ic_nav_image),
+    MediaVideo("Video", "Video", "Manage your Video providers", R.drawable.ic_nav_video),
+    MediaTts("Text To Speech", "Text To Speech", "Manage your Text To Speech providers", R.drawable.ic_nav_tts),
+    MediaStt("Speech To Text", "Speech To Text", "Manage your Speech To Text providers", R.drawable.ic_nav_stt),
+    MediaSystemOne("System One", "System One", "Manage your System One providers", R.drawable.ic_nav_systemone),
+    MediaWeb("Web Fetch & Search", "Web Fetch & Search", "Manage your web search and fetch providers", R.drawable.ic_nav_web),
+    ProxyPools("Proxy Pools", "Proxy Pools", "Manage your proxy pool configurations", R.drawable.ic_nav_proxy),
+    Skills("Skills", "Agent Skills", "Copy a link and paste to your AI to use 9Router — no install needed", R.drawable.ic_nav_skills),
+    ConsoleLog("Console Log", "Console Log", "Live request output from the gateway", R.drawable.ic_nav_logs),
+    Translator("Translator", "Translator", "Debug translation flow between formats", R.drawable.ic_nav_translate),
+    Settings("Settings", "Settings", "Manage your preferences", R.drawable.ic_nav_settings),
+    ;
 
-private val navItems = listOf(
-    NavItem("Endpoint", R.drawable.ic_nav_endpoint),
-    NavItem("Providers", R.drawable.ic_nav_providers),
-    NavItem("Combos", R.drawable.ic_nav_combos),
-    NavItem("Usage", R.drawable.ic_nav_usage),
-    NavItem("Logs", R.drawable.ic_nav_logs),
-    NavItem("Settings", R.drawable.ic_nav_settings),
+    companion object {
+        fun from(name: String): Screen = values().firstOrNull { it.name == name } ?: Endpoint
+    }
+}
+
+private val mainScreens = listOf(
+    Screen.Endpoint,
+    Screen.Providers,
+    Screen.Combos,
+    Screen.Usage,
+    Screen.Quota,
+    Screen.TokenSaver,
+    Screen.CliTools,
 )
+
+private val mediaScreens = listOf(
+    Screen.MediaEmbedding,
+    Screen.MediaImage,
+    Screen.MediaVideo,
+    Screen.MediaTts,
+    Screen.MediaStt,
+    Screen.MediaSystemOne,
+    Screen.MediaWeb,
+)
+
+private val systemScreens = listOf(
+    Screen.ProxyPools,
+    Screen.Skills,
+    Screen.ConsoleLog,
+    Screen.Translator,
+)
+
+private fun Screen.mediaKind(): MediaKind? = when (this) {
+    Screen.MediaEmbedding -> MediaKind.Embedding
+    Screen.MediaImage -> MediaKind.TextToImage
+    Screen.MediaVideo -> MediaKind.Video
+    Screen.MediaTts -> MediaKind.TextToSpeech
+    Screen.MediaStt -> MediaKind.SpeechToText
+    Screen.MediaSystemOne -> MediaKind.SystemOne
+    Screen.MediaWeb -> MediaKind.Web
+    else -> null
+}
 
 @Composable
 fun AppShell(refreshTrigger: () -> Unit) {
     @Suppress("UNUSED_VARIABLE") val revision = Store.revision
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var screenName by rememberSaveable { mutableStateOf(Screen.Endpoint.name) }
+    val screen = Screen.from(screenName)
     var showChat by rememberSaveable { mutableStateOf(false) }
     val running by GatewayState.running.collectAsState()
     val updateState by UpdateManager.state.collectAsState()
@@ -113,16 +186,22 @@ fun AppShell(refreshTrigger: () -> Unit) {
         scope.launch { drawerState.close() }
     }
 
+    fun select(next: Screen) {
+        closeDrawer()
+        showChat = false
+        screenName = next.name
+    }
+
     // Predictive Back: close the drawer first, then chat, then return home.
     val backState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
     NavigationBackHandler(
         state = backState,
-        isBackEnabled = drawerState.isOpen || showChat || tab != 0,
+        isBackEnabled = drawerState.isOpen || showChat || screen != Screen.Endpoint,
         onBackCompleted = {
             when {
                 drawerState.isOpen -> closeDrawer()
                 showChat -> showChat = false
-                else -> tab = 0
+                else -> screenName = Screen.Endpoint.name
             }
         },
     )
@@ -134,20 +213,13 @@ fun AppShell(refreshTrigger: () -> Unit) {
             ModalDrawerSheet(
                 drawerContainerColor = NineRouterColors.BgAlt,
                 drawerContentColor = NineRouterColors.TextMain,
-                modifier = Modifier.width(292.dp),
+                modifier = Modifier.width(288.dp),
             ) {
                 DrawerContent(
-                    selectedTab = tab,
+                    selected = screen,
                     chatOpen = showChat,
-                    onSelectTab = { index ->
-                        closeDrawer()
-                        showChat = false
-                        tab = index
-                    },
-                    onOpenChat = {
-                        closeDrawer()
-                        showChat = true
-                    },
+                    onSelect = ::select,
+                    onClose = ::closeDrawer,
                 )
             }
         },
@@ -160,16 +232,19 @@ fun AppShell(refreshTrigger: () -> Unit) {
                 (updateState as? UpdateManager.State.Available)?.let { "Update ${it.release.version}" } ?: "Update"
             } else null
             TopBar(
-                title = if (showChat) "Basic Chat" else navItems[tab].title,
-                subtitle = if (running) "Gateway running" else "Gateway stopped",
+                title = if (showChat) "Basic Chat" else screen.title,
+                subtitle = if (showChat) "Chat through your configured providers" else screen.subtitle,
                 running = running,
                 showBack = showChat,
                 onBack = { showChat = false },
                 onMenu = { scope.launch { drawerState.open() } },
+                onOpenChat = {
+                    showChat = true
+                },
                 updateLabel = updateLabel,
                 onUpdateClick = {
                     showChat = false
-                    tab = 5
+                    screenName = Screen.Settings.name
                 },
             )
             Box(
@@ -179,15 +254,13 @@ fun AppShell(refreshTrigger: () -> Unit) {
                     .navigationBarsPadding()
                     .imePadding(),
             ) {
+                val target = if (showChat) "chat" else screen.name
                 AnimatedContent(
-                    targetState = if (showChat) -1 else tab,
+                    targetState = target,
                     modifier = Modifier.fillMaxSize(),
                     transitionSpec = {
-                        val forward = when {
-                            targetState == -1 -> true
-                            initialState == -1 -> false
-                            else -> targetState > initialState
-                        }
+                        fun order(key: String) = if (key == "chat") -1 else Screen.from(key).ordinal
+                        val forward = order(targetState) > order(initialState)
                         val enter = slideInHorizontally(tween(250)) { if (forward) it / 5 else -it / 5 } +
                             fadeIn(tween(220))
                         val exit = slideOutHorizontally(tween(200)) { if (forward) -it / 5 else it / 5 } +
@@ -195,15 +268,35 @@ fun AppShell(refreshTrigger: () -> Unit) {
                         enter togetherWith exit
                     },
                     label = "tabContent",
-                ) { target ->
-                    when (target) {
-                        -1 -> ChatScreen()
-                        0 -> EndpointScreen(refreshTrigger)
-                        1 -> ProvidersScreen(refreshTrigger)
-                        2 -> CombosScreen(refreshTrigger)
-                        3 -> UsageScreen(refreshTrigger)
-                        4 -> LogsScreen()
-                        5 -> SettingsScreen(refreshTrigger)
+                ) { key ->
+                    if (key == "chat") {
+                        ChatScreen()
+                    } else {
+                        when (Screen.from(key)) {
+                            Screen.Endpoint -> EndpointScreen(refreshTrigger)
+                            Screen.Providers -> ProvidersScreen(refreshTrigger)
+                            Screen.Combos -> CombosScreen(refreshTrigger)
+                            Screen.Usage -> UsageScreen(refreshTrigger)
+                            Screen.Quota -> QuotaScreen(refreshTrigger) { select(Screen.Providers) }
+                            Screen.TokenSaver -> TokenSaverScreen(refreshTrigger)
+                            Screen.CliTools -> CliToolsScreen()
+                            Screen.MediaEmbedding,
+                            Screen.MediaImage,
+                            Screen.MediaVideo,
+                            Screen.MediaTts,
+                            Screen.MediaStt,
+                            Screen.MediaSystemOne,
+                            Screen.MediaWeb,
+                            -> MediaProviderScreen(
+                                kind = Screen.from(key).mediaKind() ?: MediaKind.Embedding,
+                                onOpenProviders = { select(Screen.Providers) },
+                            )
+                            Screen.ProxyPools -> ProxyPoolsScreen()
+                            Screen.Skills -> SkillsScreen()
+                            Screen.ConsoleLog -> LogsScreen()
+                            Screen.Translator -> TranslatorScreen()
+                            Screen.Settings -> SettingsScreen(refreshTrigger)
+                        }
                     }
                 }
             }
@@ -240,7 +333,7 @@ fun AppShell(refreshTrigger: () -> Unit) {
                     UpdateManager.markAnnounced(context, release.version)
                     updatePrompt = null
                     showChat = false
-                    tab = 5
+                    screenName = Screen.Settings.name
                 }) { Text("Update", color = NineRouterColors.BrandOrange) }
             },
             dismissButton = {
@@ -255,63 +348,156 @@ fun AppShell(refreshTrigger: () -> Unit) {
 
 @Composable
 private fun DrawerContent(
-    selectedTab: Int,
+    selected: Screen,
     chatOpen: Boolean,
-    onSelectTab: (Int) -> Unit,
-    onOpenChat: () -> Unit,
+    onSelect: (Screen) -> Unit,
+    onClose: () -> Unit,
 ) {
+    val context = LocalContext.current
+    var mediaOpen by rememberSaveable { mutableStateOf(selected in mediaScreens) }
+    LaunchedEffect(selected) {
+        if (selected in mediaScreens) mediaOpen = true
+    }
+
+    fun openUrl(url: String) {
+        onClose()
+        runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        }.onFailure {
+            Toast.makeText(context, "No browser available", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     Column(
         Modifier
             .fillMaxSize()
             .statusBarsPadding()
             .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 12.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
+        TrafficLights()
+        Spacer(Modifier.height(2.dp))
         BrandHeader()
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(10.dp))
         Column(
             Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
                 .selectableGroup(),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            verticalArrangement = Arrangement.spacedBy(1.dp),
         ) {
-            SidebarItem(
-                icon = R.drawable.ic_chat,
-                label = "Basic Chat",
-                selected = chatOpen,
-                onClick = onOpenChat,
-            )
-            SidebarDivider()
-            navItems.forEachIndexed { index, item ->
+            mainScreens.forEach { item ->
                 SidebarItem(
                     icon = item.icon,
-                    label = item.title,
-                    selected = !chatOpen && selectedTab == index,
-                    onClick = { onSelectTab(index) },
+                    label = item.label,
+                    selected = !chatOpen && selected == item,
+                    onClick = { onSelect(item) },
                 )
             }
+
+            SidebarSectionLabel("System")
+            SidebarItem(
+                icon = R.drawable.ic_nav_media,
+                label = "Media Providers",
+                selected = selected in mediaScreens,
+                trailing = {
+                    val rotation by animateFloatAsState(
+                        targetValue = if (mediaOpen) 180f else 0f,
+                        animationSpec = tween(200),
+                        label = "mediaChevron",
+                    )
+                    Icon(
+                        Icons.Default.KeyboardArrowDown,
+                        contentDescription = if (mediaOpen) "Collapse media providers" else "Expand media providers",
+                        tint = if (selected in mediaScreens) NineRouterColors.BrandOrange else NineRouterColors.TextSubtle,
+                        modifier = Modifier.size(16.dp).rotate(rotation),
+                    )
+                },
+                onClick = { mediaOpen = !mediaOpen },
+            )
+            AnimatedVisibility(
+                visible = mediaOpen,
+                enter = fadeIn(tween(180)) + expandVertically(tween(220)),
+                exit = fadeOut(tween(120)) + shrinkVertically(tween(160)),
+            ) {
+                Column(Modifier.padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    mediaScreens.forEach { item ->
+                        SidebarSubItem(
+                            icon = item.icon,
+                            label = item.label,
+                            selected = !chatOpen && selected == item,
+                            onClick = { onSelect(item) },
+                        )
+                    }
+                }
+            }
+
+            systemScreens.forEach { item ->
+                SidebarItem(
+                    icon = item.icon,
+                    label = item.label,
+                    selected = !chatOpen && selected == item,
+                    onClick = { onSelect(item) },
+                )
+            }
+
+            SidebarItem(
+                icon = R.drawable.ic_nav_computer,
+                label = "9Remote",
+                selected = false,
+                trailing = {
+                    Surface(
+                        color = NineRouterColors.BrandOrange.copy(alpha = 0.16f),
+                        shape = RoundedCornerShape(4.dp),
+                    ) {
+                        Text(
+                            "HOT",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NineRouterColors.BrandOrange,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                        )
+                    }
+                },
+                onClick = { openUrl("https://9remote.cc") },
+            )
+            SidebarItem(
+                icon = R.drawable.ic_nav_translate,
+                label = "9English",
+                selected = false,
+                onClick = { openUrl("https://9english.net/") },
+            )
+            SidebarItem(
+                icon = Screen.Settings.icon,
+                label = "Settings",
+                selected = !chatOpen && selected == Screen.Settings,
+                onClick = { onSelect(Screen.Settings) },
+            )
         }
-        SidebarDivider()
-        Text(
-            "9Router ${AppInfo.VERSION}",
-            style = MaterialTheme.typography.labelSmall,
-            color = NineRouterColors.TextSubtle,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-        )
+    }
+}
+
+@Composable
+private fun TrafficLights() {
+    Row(
+        Modifier.fillMaxWidth().padding(start = 8.dp, top = 2.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        listOf(Color(0xFFFF5F56), Color(0xFFFFBD2E), Color(0xFF27C93F)).forEach { color ->
+            Box(Modifier.size(8.dp).background(color, RoundedCornerShape(50)))
+        }
     }
 }
 
 @Composable
 private fun BrandHeader() {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Image(
             painter = painterResource(R.drawable.brand_mark),
             contentDescription = null,
-            modifier = Modifier.size(30.dp),
+            modifier = Modifier.size(32.dp),
         )
         Spacer(Modifier.width(10.dp))
         Column {
@@ -322,7 +508,7 @@ private fun BrandHeader() {
                 color = NineRouterColors.TextMain,
             )
             Text(
-                "Android gateway",
+                "v${AppInfo.VERSION}",
                 style = MaterialTheme.typography.labelSmall,
                 color = NineRouterColors.TextSubtle,
             )
@@ -331,10 +517,22 @@ private fun BrandHeader() {
 }
 
 @Composable
+private fun SidebarSectionLabel(text: String) {
+    Text(
+        text.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        color = NineRouterColors.TextSubtle,
+        letterSpacing = 1.sp,
+        modifier = Modifier.padding(start = 10.dp, top = 14.dp, bottom = 5.dp),
+    )
+}
+
+@Composable
 private fun SidebarItem(
     icon: Int,
     label: String,
     selected: Boolean,
+    trailing: (@Composable () -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     val background by animateColorAsState(
@@ -352,9 +550,9 @@ private fun SidebarItem(
             .fillMaxWidth()
             .clip(NineRouterShapes.small)
             .background(background)
-            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
-            .heightIn(min = 48.dp)
-            .padding(horizontal = 10.dp, vertical = 9.dp),
+            .selectable(selected = selected, role = androidx.compose.ui.semantics.Role.Tab, onClick = onClick)
+            .heightIn(min = 44.dp)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -363,7 +561,7 @@ private fun SidebarItem(
             tint = tint,
             modifier = Modifier.size(19.dp),
         )
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(11.dp))
         Text(
             label,
             style = MaterialTheme.typography.bodyMedium,
@@ -371,19 +569,58 @@ private fun SidebarItem(
             color = tint,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
         )
+        if (trailing != null) {
+            Spacer(Modifier.width(6.dp))
+            trailing()
+        }
     }
 }
 
 @Composable
-private fun SidebarDivider() {
-    Box(
+private fun SidebarSubItem(
+    icon: Int,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val tint by animateColorAsState(
+        targetValue = if (selected) NineRouterColors.BrandOrange else NineRouterColors.TextMuted,
+        animationSpec = tween(200),
+        label = "subNavTint",
+    )
+    val background by animateColorAsState(
+        targetValue = if (selected) NineRouterColors.BrandOrange.copy(alpha = 0.12f) else Color.Transparent,
+        animationSpec = tween(200),
+        label = "subNavBackground",
+    )
+    Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 6.dp, vertical = 6.dp)
-            .height(1.dp)
-            .background(NineRouterColors.BorderSubtle),
-    )
+            .clip(NineRouterShapes.small)
+            .background(background)
+            .selectable(selected = selected, role = androidx.compose.ui.semantics.Role.Tab, onClick = onClick)
+            .heightIn(min = 40.dp)
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = tint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+    }
 }
 
 @Composable
@@ -394,6 +631,7 @@ private fun TopBar(
     showBack: Boolean,
     onBack: () -> Unit,
     onMenu: () -> Unit,
+    onOpenChat: () -> Unit,
     updateLabel: String?,
     onUpdateClick: () -> Unit,
 ) {
@@ -435,24 +673,48 @@ private fun TopBar(
             }
             Spacer(Modifier.width(4.dp))
             Column(Modifier.weight(1f)) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = NineRouterColors.TextMain,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = NineRouterColors.TextMain,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Box(
+                        Modifier
+                            .size(6.dp)
+                            .background(
+                                if (running) NineRouterColors.Success else NineRouterColors.TextSubtle,
+                                RoundedCornerShape(50),
+                            )
+                            .semantics {
+                                contentDescription = if (running) "Gateway running" else "Gateway stopped"
+                            },
+                    )
+                }
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (running) NineRouterColors.Success else NineRouterColors.TextSubtle,
+                    color = NineRouterColors.TextSubtle,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            if (!showBack) {
+                IconButton(onClick = onOpenChat, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_chat),
+                        contentDescription = "Open Basic Chat",
+                        tint = NineRouterColors.TextMuted,
+                        modifier = Modifier.size(19.dp),
+                    )
+                }
+            }
             if (updateLabel != null) {
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(4.dp))
                 Surface(
                     onClick = onUpdateClick,
                     color = NineRouterColors.BrandOrange.copy(alpha = 0.18f),
@@ -471,12 +733,17 @@ private fun TopBar(
     }
 }
 
-@Preview(name = "Drawer", widthDp = 292, heightDp = 720, showBackground = true, backgroundColor = 0xFF1F1F1E)
+@Preview(name = "Drawer", widthDp = 288, heightDp = 760, showBackground = true, backgroundColor = 0xFF1F1F1E)
 @Composable
 private fun DrawerPreview() {
     NineRouterTheme {
         Surface(color = NineRouterColors.BgAlt) {
-            DrawerContent(selectedTab = 1, chatOpen = false, onSelectTab = {}, onOpenChat = {})
+            DrawerContent(
+                selected = Screen.Providers,
+                chatOpen = false,
+                onSelect = {},
+                onClose = {},
+            )
         }
     }
 }
@@ -486,13 +753,14 @@ private fun DrawerPreview() {
 private fun TopBarPreview() {
     NineRouterTheme {
         TopBar(
-            title = "Endpoint",
-            subtitle = "Gateway running",
+            title = "Endpoint & Key",
+            subtitle = "API endpoint configuration",
             running = true,
             showBack = false,
             onBack = {},
             onMenu = {},
-            updateLabel = "Update 0.1.18",
+            onOpenChat = {},
+            updateLabel = "Update 0.1.21",
             onUpdateClick = {},
         )
     }
