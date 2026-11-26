@@ -1,0 +1,11 @@
+{
+ "API key": "API-sleutel",
+ "API Key Providers": "API-sleutelproviders",
+ "Claude Code": "Claude Code",
+ "Est. cost": "Geschatte kosten",
+ "Gemini 2.5 Pro": "Gemini 2.5 Pro",
+ "No Node.js": "Geen Node.js",
+ "OpenAI Codex CLI": "OpenAI Codex CLI",
+ "Round robin": "Round-robin",
+ "Anthropic Claude Code CLI": "Anthropic Claude Code CLI"
+}

@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.IBinder
 import com.ninerouter.android.data.Exposure
 import com.ninerouter.android.data.Store
+import com.ninerouter.android.ui.tr
 import com.ninerouter.android.server.Gateway
 import com.ninerouter.android.server.GatewayState
 
@@ -99,10 +100,10 @@ class GatewayService : Service() {
         }
         return builder
             .setSmallIcon(android.R.drawable.stat_sys_upload)
-            .setContentTitle("9Router gateway")
+            .setContentTitle(tr("9Router gateway"))
             .setContentText(
-                if (Exposure.enabled(Store.state.settings)) "Remote access on · port ${GatewayState.PORT}"
-                else "Local endpoint ${GatewayState.BASE_URL}",
+                if (Exposure.enabled(Store.state.settings)) tr("Remote access on · port ${GatewayState.PORT}")
+                else tr("Local endpoint ${GatewayState.BASE_URL}"),
             )
             .setContentIntent(open)
             .setOngoing(true)

@@ -44,7 +44,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -157,7 +156,7 @@ fun CombosScreen(refresh: () -> Unit) {
                         IconButton(onClick = { query = "" }, modifier = Modifier.size(32.dp)) {
                             Icon(
                                 Icons.Default.Close,
-                                contentDescription = "Clear search",
+                                contentDescription = t("Clear search"),
                                 tint = NineRouterColors.TextSubtle,
                                 modifier = Modifier.size(16.dp),
                             )
@@ -206,7 +205,7 @@ fun CombosScreen(refresh: () -> Unit) {
                         combo = combo,
                         onCopy = {
                             clipboard.setText(AnnotatedString(combo.name))
-                            Toast.makeText(context, "Combo name copied", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, tr("Combo name copied"), Toast.LENGTH_SHORT).show()
                         },
                         onEdit = { editing = combo },
                         onDelete = { pendingDelete = combo },
@@ -589,7 +588,7 @@ private fun ClearButton(onClick: () -> Unit) {
     IconButton(onClick = onClick, modifier = Modifier.size(28.dp)) {
         Icon(
             Icons.Default.Close,
-            contentDescription = "Clear",
+            contentDescription = t("Clear"),
             tint = NineRouterColors.TextSubtle,
             modifier = Modifier.size(14.dp),
         )
@@ -955,7 +954,7 @@ internal fun ModelPickerDialog(
                                 IconButton(onClick = { query = "" }, modifier = Modifier.size(32.dp)) {
                                     Icon(
                                         Icons.Default.Close,
-                                        contentDescription = "Clear search",
+                                        contentDescription = t("Clear search"),
                                         tint = NineRouterColors.TextSubtle,
                                         modifier = Modifier.size(16.dp),
                                     )

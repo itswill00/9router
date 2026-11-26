@@ -156,6 +156,7 @@ data class Settings(
     val apiKey: String = "",
     val exposure: String = Exposure.LOOPBACK,
     val publicBaseUrl: String = "",
+    val uiLocale: String = "",
     val autoStartGateway: Boolean = true,
     val rtkEnabled: Boolean = true,
     val fallbackStrategy: String = "fill-first",

@@ -41,7 +41,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -120,7 +119,7 @@ private fun CopyChip(value: String, label: String = "Copy", modifier: Modifier =
         onClick = {
             copySensitive(context, "Value", value)
             copied = true
-            Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, tr("Copied"), Toast.LENGTH_SHORT).show()
         },
         modifier = modifier,
     ) {
@@ -155,7 +154,7 @@ private fun openUrl(context: android.content.Context, url: String) {
     runCatching {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     }.onFailure {
-        Toast.makeText(context, "No browser available", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, tr("No browser available"), Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -617,7 +616,7 @@ fun CliToolsScreen() {
                     }
                     TextButton(onClick = {
                         copySensitive(context, "API key", apiKey)
-                        Toast.makeText(context, "API key copied", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, tr("API key copied"), Toast.LENGTH_SHORT).show()
                     }) { Text("Copy key", color = NineRouterColors.TextMuted) }
                 }
                 Spacer(Modifier.height(6.dp))

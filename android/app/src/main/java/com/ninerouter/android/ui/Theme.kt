@@ -176,7 +176,9 @@ fun NineRouterTheme(content: @Composable () -> Unit) {
         // Compose defaults LocalContentColor to black; on our dark surfaces that
         // paints dark ripples/focus overlays. Keep interaction feedback light.
         CompositionLocalProvider(LocalContentColor provides NineRouterColors.TextMain) {
-            content()
+            I18nProvider {
+                content()
+            }
         }
     }
 }

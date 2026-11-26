@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -32,7 +33,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -77,6 +77,7 @@ fun SettingsScreen(
     var showKeyDialog by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
     var showClearUsage by remember { mutableStateOf(false) }
+    var showLanguageDialog by remember { mutableStateOf(false) }
     var pendingKeyDelete by remember { mutableStateOf<ApiKey?>(null) }
     var keyName by remember { mutableStateOf("") }
     var keyAllowed by remember { mutableStateOf("") }
@@ -93,6 +94,30 @@ fun SettingsScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            // ---- Language --------------------------------------------------
+            item { SettingsSection("Language", "Display language") }
+            item {
+                Panel {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                localeDisplayName(resolveLocale(s.uiLocale, context)),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = NineRouterColors.TextMain,
+                            )
+                            Text(
+                                if (s.uiLocale.isBlank()) "Follow system" else "Language",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = NineRouterColors.TextMuted,
+                            )
+                        }
+                        TextButton(onClick = { showLanguageDialog = true }) {
+                            Text("Select", color = NineRouterColors.BrandOrange)
+                        }
+                    }
+                }
+            }
+
             // ---- Gateway ---------------------------------------------------
             item { SettingsSection("Gateway", "Local API server") }
             item {
@@ -140,7 +165,7 @@ fun SettingsScreen(
                             runCatching {
                                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(GatewayState.BASE_URL)))
                             }.onFailure {
-                                Toast.makeText(context, "No browser available", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, tr("No browser available"), Toast.LENGTH_SHORT).show()
                             }
                         }
                         SecondaryButton(if (running) "Shutdown" else "Start", modifier = Modifier.weight(1f)) {
@@ -152,7 +177,7 @@ fun SettingsScreen(
                     Spacer(Modifier.height(NineRouterSpacing.sm))
                     SecondaryButton("Restart gateway", modifier = Modifier.fillMaxWidth()) {
                         GatewayService.restart(context)
-                        Toast.makeText(context, "Restarting gateway…", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, tr("Restarting gateway…"), Toast.LENGTH_SHORT).show()
                         refresh()
                     }
                 }
@@ -373,7 +398,7 @@ fun SettingsScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             TextButton(onClick = {
                                 copySensitive(context, "API key", createdKey)
-                                Toast.makeText(context, "API key copied", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, tr("API key copied"), Toast.LENGTH_SHORT).show()
                             }) { Text("Copy") }
                             TextButton(onClick = { createdKey = "" }) { Text("Dismiss") }
                         }
@@ -453,6 +478,41 @@ fun SettingsScreen(
             }
             item { Spacer(Modifier.height(4.dp)) }
         }
+    }
+
+    if (showLanguageDialog) {
+        AlertDialog(
+            onDismissRequest = { showLanguageDialog = false },
+            containerColor = NineRouterColors.Surface,
+            title = { Text("Select Language", color = NineRouterColors.TextMain) },
+            text = {
+                LazyColumn(
+                    Modifier.heightIn(max = 360.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    item {
+                        LanguageRow("System default", s.uiLocale.isBlank()) {
+                            Store.mutate { settings = settings.copy(uiLocale = "") }
+                            showLanguageDialog = false
+                            refresh()
+                        }
+                    }
+                    items(SUPPORTED_LOCALES) { locale ->
+                        LanguageRow(
+                            "${locale.flag}  ${locale.name}",
+                            s.uiLocale == locale.tag,
+                        ) {
+                            Store.mutate { settings = settings.copy(uiLocale = locale.tag) }
+                            showLanguageDialog = false
+                            refresh()
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showLanguageDialog = false }) { Text("Close") }
+            },
+        )
     }
 
     if (showKeyDialog) {
@@ -570,7 +630,10 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(onClick = {
                     Store.mutate {
-                        settings = Settings(apiKey = settings.apiKey)
+                        settings = Settings(
+                            apiKey = settings.apiKey,
+                            uiLocale = settings.uiLocale,
+                        )
                     }
                     showResetDialog = false
                     refresh()
@@ -578,6 +641,35 @@ fun SettingsScreen(
             },
             dismissButton = { TextButton(onClick = { showResetDialog = false }) { Text("Cancel") } },
         )
+    }
+}
+
+@Composable
+private fun LanguageRow(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        color = if (selected) NineRouterColors.BrandOrange.copy(alpha = 0.12f) else NineRouterColors.Surface,
+        shape = NineRouterShapes.small,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 10.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (selected) NineRouterColors.BrandOrange else NineRouterColors.TextMain,
+                modifier = Modifier.weight(1f),
+            )
+            if (selected) {
+                Text("✓", color = NineRouterColors.BrandOrange, fontWeight = FontWeight.Bold)
+            }
+        }
     }
 }
 

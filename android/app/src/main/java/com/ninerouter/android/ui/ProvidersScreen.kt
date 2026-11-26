@@ -48,7 +48,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -259,7 +258,7 @@ private fun ProviderCatalog(
                         IconButton(onClick = { query = "" }, modifier = Modifier.size(32.dp)) {
                             Icon(
                                 Icons.Default.Close,
-                                contentDescription = "Clear search",
+                                contentDescription = t("Clear search"),
                                 tint = NineRouterColors.TextSubtle,
                                 modifier = Modifier.size(16.dp),
                             )
@@ -688,13 +687,13 @@ private fun NodeDetail(nodeId: String, onBack: () -> Unit, refresh: () -> Unit) 
                         IconButton(
                             onClick = {
                                 clipboard.setText(androidx.compose.ui.text.AnnotatedString(NodeProbe.chatUrl(node)))
-                                Toast.makeText(context, "Endpoint copied", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, tr("Endpoint copied"), Toast.LENGTH_SHORT).show()
                             },
                             modifier = Modifier.size(34.dp),
                         ) {
                             Icon(
                                 CopyIcon,
-                                contentDescription = "Copy endpoint",
+                                contentDescription = t("Copy endpoint"),
                                 tint = NineRouterColors.TextSubtle,
                                 modifier = Modifier.size(16.dp),
                             )
@@ -1042,7 +1041,7 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
 
     fun copyModel(model: String) {
         clipboard.setText(AnnotatedString(model))
-        Toast.makeText(context, "Model id copied", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, tr("Model id copied"), Toast.LENGTH_SHORT).show()
     }
 
     fun testOne(model: String) {
@@ -1356,7 +1355,7 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
             confirmButton = {
                 TextButton(onClick = {
                     clipboard.setText(AnnotatedString(state?.error.orEmpty()))
-                    Toast.makeText(context, "Error copied", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, tr("Error copied"), Toast.LENGTH_SHORT).show()
                 }) { Text("Copy error", color = NineRouterColors.BrandOrange) }
             },
             dismissButton = {
@@ -1395,35 +1394,35 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
         ApiKeyDialog(def, onDismiss = { showApiKey = false }, onSaved = {
             showApiKey = false
             refresh()
-            Toast.makeText(context, "Connection added", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, tr("Connection added"), Toast.LENGTH_SHORT).show()
         })
     }
     if (showToken) {
         TokenDialog(def, onDismiss = { showToken = false }, onSaved = {
             showToken = false
             refresh()
-            Toast.makeText(context, "Connection added", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, tr("Connection added"), Toast.LENGTH_SHORT).show()
         })
     }
     if (showCookie) {
         CookieDialog(def, onDismiss = { showCookie = false }, onSaved = {
             showCookie = false
             refresh()
-            Toast.makeText(context, "Cookie saved", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, tr("Cookie saved"), Toast.LENGTH_SHORT).show()
         })
     }
     if (showOAuth) {
         OAuthDialog(def, onDismiss = { showOAuth = false }, onSaved = {
             showOAuth = false
             refresh()
-            Toast.makeText(context, "Connected ${def.name}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, tr("Connected ${def.name}"), Toast.LENGTH_SHORT).show()
         })
     }
     if (showDevice) {
         DeviceDialog(def, onDismiss = { showDevice = false }, onSaved = {
             showDevice = false
             refresh()
-            Toast.makeText(context, "Connected ${def.name}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, tr("Connected ${def.name}"), Toast.LENGTH_SHORT).show()
         })
     }
 }
@@ -1677,7 +1676,7 @@ private fun ModelCatalogRow(
             ProbeStatus.Success -> Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     Icons.Default.Check,
-                    contentDescription = "Working",
+                    contentDescription = t("Working"),
                     tint = NineRouterColors.Success,
                     modifier = Modifier.size(15.dp),
                 )
@@ -1692,7 +1691,7 @@ private fun ModelCatalogRow(
             ProbeStatus.Failed -> IconButton(onClick = onError, modifier = Modifier.size(36.dp)) {
                 Icon(
                     Icons.Default.Close,
-                    contentDescription = "Show test error",
+                    contentDescription = t("Show test error"),
                     tint = NineRouterColors.Danger,
                     modifier = Modifier.size(15.dp),
                 )

@@ -36,7 +36,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -433,7 +432,7 @@ private fun DetailsList(filtered: List<UsageEntry>, onSelect: (UsageEntry) -> Un
                     )
                     Spacer(Modifier.width(7.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(entry.model, style = MaterialTheme.typography.bodySmall, color = NineRouterColors.TextMain, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(entry.model, style = MaterialTheme.typography.bodySmall, color = NineRouterColors.TextMain, maxLines = 1, overflow = TextOverflow.Ellipsis, translate = false)
                         Text(
                             "${entry.provider} · ${timeAgo(entry.ts)}",
                             style = MaterialTheme.typography.labelSmall,

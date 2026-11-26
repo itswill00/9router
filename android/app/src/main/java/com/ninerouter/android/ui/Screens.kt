@@ -73,7 +73,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -163,7 +162,7 @@ fun EndpointScreen(refresh: () -> Unit) {
 
     fun copy(label: String, value: String) {
         copySensitive(context, label, value)
-        Toast.makeText(context, "$label copied", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, tr("$label copied"), Toast.LENGTH_SHORT).show()
     }
 
     Column(
@@ -217,7 +216,7 @@ fun EndpointScreen(refresh: () -> Unit) {
                             Intent(Intent.ACTION_VIEW, Uri.parse(GatewayState.BASE_URL))
                         )
                     }.onFailure {
-                        Toast.makeText(context, "No browser available", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, tr("No browser available"), Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -292,7 +291,7 @@ fun EndpointScreen(refresh: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(NineRouterSpacing.sm)) {
                 SecondaryButton("Restart gateway", modifier = Modifier.weight(1f)) {
                     GatewayService.restart(context)
-                    Toast.makeText(context, "Restarting gateway…", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, tr("Restarting gateway…"), Toast.LENGTH_SHORT).show()
                     refresh()
                 }
                 SecondaryButton("Battery settings", modifier = Modifier.weight(1f)) {
@@ -377,7 +376,7 @@ fun EndpointScreen(refresh: () -> Unit) {
                 if (!enable) {
                     Store.mutate { settings = settings.copy(exposure = Exposure.LOOPBACK) }
                     if (running) GatewayService.rebind(context)
-                    Toast.makeText(context, "Back to loopback only", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, tr("Back to loopback only"), Toast.LENGTH_SHORT).show()
                     refresh()
                 } else {
                     Store.mutate {
@@ -985,7 +984,7 @@ fun ChatScreen() {
             pendingImages = (pendingImages + added).take(4)
             imageBusy = false
             if (uris.size > room) {
-                Toast.makeText(context, "Up to 4 images per message", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, tr("Up to 4 images per message"), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -1164,7 +1163,7 @@ fun ChatScreen() {
                     }
                     Icon(
                         Icons.Default.KeyboardArrowDown,
-                        contentDescription = "Choose model",
+                        contentDescription = t("Choose model"),
                         tint = NineRouterColors.TextMuted,
                         modifier = Modifier.size(18.dp),
                     )
@@ -1181,7 +1180,7 @@ fun ChatScreen() {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Icon(
                         Icons.Default.List,
-                        contentDescription = "Chat sessions",
+                        contentDescription = t("Chat sessions"),
                         tint = NineRouterColors.TextMuted,
                         modifier = Modifier.size(19.dp),
                     )
@@ -1197,7 +1196,7 @@ fun ChatScreen() {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Icon(
                         Icons.Default.Add,
-                        contentDescription = "New chat",
+                        contentDescription = t("New chat"),
                         tint = NineRouterColors.TextMuted,
                         modifier = Modifier.size(19.dp),
                     )
@@ -1226,7 +1225,7 @@ fun ChatScreen() {
                         liveElapsedMs = liveElapsed,
                         onCopy = {
                             clipboard.setText(AnnotatedString(m.content))
-                            Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, tr("Copied"), Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier.animateItem(),
                     )
@@ -1269,7 +1268,7 @@ fun ChatScreen() {
                                 ) {
                                     Icon(
                                         Icons.Default.Close,
-                                        contentDescription = "Remove image",
+                                        contentDescription = t("Remove image"),
                                         tint = NineRouterColors.TextMain,
                                         modifier = Modifier.size(11.dp),
                                     )
@@ -1296,7 +1295,7 @@ fun ChatScreen() {
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.ic_attach),
-                            contentDescription = "Attach image",
+                            contentDescription = t("Attach image"),
                             tint = NineRouterColors.TextMuted,
                             modifier = Modifier.size(18.dp),
                         )
@@ -1310,7 +1309,7 @@ fun ChatScreen() {
                         modifier = Modifier
                             .weight(1f)
                             .padding(vertical = 10.dp)
-                            .semantics { contentDescription = "Message" },
+                            .semantics { contentDescription = tr("Message") },
                         decorationBox = { inner ->
                             Box {
                                 if (input.isBlank()) {
@@ -1450,7 +1449,7 @@ private fun ChatSessionsDialog(
                             ) {
                                 Icon(
                                     Icons.Default.Delete,
-                                    contentDescription = "Delete session",
+                                    contentDescription = t("Delete session"),
                                     tint = NineRouterColors.TextSubtle,
                                     modifier = Modifier.size(15.dp),
                                 )
@@ -1752,6 +1751,7 @@ private fun MessageBubble(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.widthIn(max = 240.dp),
+                        translate = isUser,
                     )
                 }
                 Spacer(Modifier.height(5.dp))
@@ -1770,6 +1770,7 @@ private fun MessageBubble(
                         message.content,
                         style = MaterialTheme.typography.bodyMedium,
                         color = NineRouterColors.TextMain,
+                        translate = false,
                     )
                 }
                 val hasStats = !isUser && !thinking && (message.inputTokens > 0 || message.elapsedMs > 0L)

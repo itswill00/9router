@@ -16,6 +16,7 @@ import com.ninerouter.android.data.Connection
 import com.ninerouter.android.data.Store
 import com.ninerouter.android.ui.AppShell
 import com.ninerouter.android.ui.NineRouterTheme
+import com.ninerouter.android.ui.tr
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -77,7 +78,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             val tokens = withContext(Dispatchers.IO) { OAuthFlow.exchangeCode(def, code, state) }
             if (tokens == null) {
-                Toast.makeText(this@MainActivity, "OAuth exchange failed for ${def.name}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@MainActivity, tr("OAuth exchange failed for ${def.name}"), Toast.LENGTH_LONG).show()
                 return@launch
             }
             val processed = withContext(Dispatchers.IO) {
@@ -110,7 +111,7 @@ class MainActivity : ComponentActivity() {
                     connections.add(connection)
                 }
             }
-            Toast.makeText(this@MainActivity, "Connected ${def.name}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this@MainActivity, tr("Connected ${def.name}"), Toast.LENGTH_SHORT).show()
         }
     }
 }

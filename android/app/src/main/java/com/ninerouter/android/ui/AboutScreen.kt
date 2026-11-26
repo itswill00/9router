@@ -28,7 +28,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -57,7 +56,7 @@ fun AboutScreen() {
         runCatching {
             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
         }.onFailure {
-            Toast.makeText(context, "No browser available", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, tr("No browser available"), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -299,7 +298,7 @@ private fun ProfileAvatar(avatar: Int, name: String, ring: androidx.compose.ui.g
     ) {
         Image(
             painter = painterResource(avatar),
-            contentDescription = "$name GitHub profile photo",
+            contentDescription = t("$name GitHub profile photo"),
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize().clip(CircleShape),
         )

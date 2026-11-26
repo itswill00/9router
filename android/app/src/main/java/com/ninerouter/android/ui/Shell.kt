@@ -57,7 +57,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
@@ -383,7 +382,7 @@ private fun DrawerContent(
         runCatching {
             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
         }.onFailure {
-            Toast.makeText(context, "No browser available", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, tr("No browser available"), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -689,7 +688,7 @@ private fun TopBar(
                     ) {
                         Icon(
                             Icons.Default.Menu,
-                            contentDescription = "Open navigation",
+                            contentDescription = t("Open navigation"),
                             tint = NineRouterColors.TextMain,
                             modifier = Modifier.size(23.dp),
                         )
@@ -704,7 +703,7 @@ private fun TopBar(
                 IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
                     Icon(
                         painter = painterResource(android.R.drawable.ic_menu_revert),
-                        contentDescription = "Close chat",
+                        contentDescription = t("Close chat"),
                         tint = NineRouterColors.TextMuted,
                         modifier = Modifier.size(18.dp),
                     )
@@ -746,7 +745,7 @@ private fun TopBar(
                 IconButton(onClick = onOpenChat, modifier = Modifier.size(40.dp)) {
                     Icon(
                         painter = painterResource(R.drawable.ic_chat),
-                        contentDescription = "Open Basic Chat",
+                        contentDescription = t("Open Basic Chat"),
                         tint = NineRouterColors.TextMuted,
                         modifier = Modifier.size(19.dp),
                     )
