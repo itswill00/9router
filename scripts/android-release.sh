@@ -4,6 +4,7 @@
 #   ./scripts/android-release.sh              # build + verify + print the plan (no publish)
 #   ./scripts/android-release.sh --yes        # publish the GitHub release
 #   ./scripts/android-release.sh --yes --prerelease
+#   ./scripts/android-release.sh --skip-build  # reuse android/dist artifacts (no rebuild)
 #   ./scripts/android-release.sh --allow-dirty  # skip the clean-tree check
 #
 # Publishes both variants (see android/API_COMPATIBILITY.md):
@@ -24,11 +25,13 @@ cd "$ROOT"
 PUBLISH=0
 PRERELEASE=0
 ALLOW_DIRTY=0
+SKIP_BUILD=0
 for arg in "$@"; do
   case "$arg" in
     --yes|-y) PUBLISH=1 ;;
     --prerelease) PRERELEASE=1 ;;
     --allow-dirty) ALLOW_DIRTY=1 ;;
+    --skip-build) SKIP_BUILD=1 ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
@@ -84,8 +87,16 @@ if [[ -z "$aapt2" ]]; then
   done
 fi
 
-echo "==> building both variants (tests + full lint + debug + R8 release)"
-"$ROOT/scripts/android-build.sh" full
+if [[ $SKIP_BUILD -eq 1 ]]; then
+  echo "==> using staged artifacts (--skip-build)"
+  [[ -f "$debug_apk" && -f "$release_apk" ]] || {
+    echo "missing staged artifacts; run ./scripts/android-build.sh release first" >&2
+    exit 1
+  }
+else
+  echo "==> building both variants (tests + full lint + debug + R8 release)"
+  "$ROOT/scripts/android-build.sh" full
+fi
 
 verify_apk() {
   local apk="$1"

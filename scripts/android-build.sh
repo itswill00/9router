@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
 # Android build helper for the 2-core / 8 GB dev box.
 #
-#   ./scripts/android-build.sh fast    # Kotlin only (fastest loop)
+# Fast loop (seconds):
+#   ./scripts/android-build.sh fast    # Kotlin only
 #   ./scripts/android-build.sh apk     # debug APK
-#   ./scripts/android-build.sh check   # unit tests + debug APK + fatal lint
-#   ./scripts/android-build.sh full    # tests + full lint + debug + R8 release, staged
+#   ./scripts/android-build.sh check   # tests + debug APK + fatal lint  <- default gate
+#
+# Before a release (minutes, R8 is the cost):
+#   ./scripts/android-build.sh lint    # full lintDebug only
+#   ./scripts/android-build.sh release # debug + R8 release, staged
+#   ./scripts/android-build.sh full    # tests + full lint + debug + R8, staged
 #   ./scripts/android-build.sh dist    # debug + R8 release, staged (no tests/lint)
 #   ./scripts/android-build.sh run     # build + install on the attached device
 #
-# Gradle's daemon, configuration cache and build cache stay warm between runs.
+# Use `check` while iterating and `full` once before publishing. Gradle's daemon,
+# configuration cache and build cache stay warm between runs; killing the daemon
+# makes the next build cold and slow.
 #
 # Staged artifacts live in android/dist/ with release-friendly names:
 #   9Router-<version>-debug.apk
@@ -59,11 +66,14 @@ case "$mode" in
   check)
     ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintVitalRelease --console=plain "$@"
     ;;
+  lint)
+    ./gradlew :app:lintDebug --console=plain "$@"
+    ;;
   full)
     ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease --console=plain "$@"
     stage_apks
     ;;
-  dist)
+  release|dist)
     ./gradlew :app:assembleDebug :app:assembleRelease --console=plain "$@"
     stage_apks
     ;;
@@ -74,7 +84,7 @@ case "$mode" in
     adb shell am start -n com.ninerouter.android/.MainActivity
     ;;
   *)
-    echo "usage: $0 {fast|apk|check|full|dist|run}" >&2
+    echo "usage: $0 {fast|apk|check|lint|full|release|dist|run}" >&2
     exit 2
     ;;
 esac
