@@ -10,14 +10,14 @@ APK per version.
 ## Current state
 
 - Branch: `master` — clean after the release commit.
-- Version: `0.1.29-android` (version code 31).
-- Latest release: https://github.com/itswill00/9router/releases/tag/android-v0.1.29
-  - asset: `9Router-0.1.29-release.apk` (10,454,268 bytes)
-  - SHA-256: `ae0922db81130b71ccba1c434fdb86000797521f9e9acf0c7d97b517fe558b06`
+- Version: `0.1.30-android` (version code 32).
+- Latest release: https://github.com/itswill00/9router/releases/tag/android-v0.1.30
+  - asset: `9Router-0.1.30-release.apk` (10,454,268 bytes)
+  - SHA-256: `52d57b0ce17a11c58a38fd575e3fd055636bcc69c557cb565585e705c245fabb`
 - Latest commits:
+  - `c749a3f6 fix(android): keep remote access toggle in sync`
   - `3d10573f test(android): cover the network auth throttle`
   - `770760b7 docs: document remote access and the exposure policy`
-  - `6e8ea6d9 feat(android): add opt-in network access with public URL`
 - Working tree: no modified or untracked files.
 
 ## Done so far
@@ -66,10 +66,10 @@ APK per version.
 ```
 
 Last result: `BUILD SUCCESSFUL` (unit tests + fatal lint). The release build
-for 0.1.29 also succeeded and the APK metadata was verified:
+for 0.1.30 also succeeded and the APK metadata was verified:
 
 ```text
-package: com.ninerouter.android  versionCode=31  versionName=0.1.29-android
+package: com.ninerouter.android  versionCode=32  versionName=0.1.30-android
 ```
 
 ## Stuck on
@@ -79,7 +79,7 @@ Nothing is blocked. There is no active bug or failing test.
 ## Next steps
 
 1. Read `AGENTS.md`; verify the tree is clean and `versionName` is
-   `0.1.29-android` before touching code.
+   `0.1.30-android` before touching code.
 2. Ask the user which backlog item to take. Do not invent a release or push
    without an explicit request.
 3. If a release is requested, follow the release procedure in `AGENTS.md`:
@@ -94,9 +94,12 @@ Nothing is blocked. There is no active bug or failing test.
 ## Pitfalls — do not repeat
 
 - **Live pages looked stale** → the revision was read only inside a helper that
-  returned a plain value, so only the helper recomposed. Use
-  `val revision by storeRevision()` / `val revision by liveRevision(...)` in the
-  screen's own scope.
+  returned a plain value, so only the helper recomposed. Read it unconditionally
+  in the screen's own scope (`val revision = storeRevision().value`, or use the
+  `by` value in a key that always runs), never only inside an `if` branch. This
+  is what made the 0.1.29 remote-access toggle stay off.
+- **Remote access toggle** → if it stops updating again, check the revision
+  read at the top of `EndpointScreen` first, then the blank-key path.
 - **Release rebuilds** → the user explicitly wants one build, then
   `android-release.sh --skip-build --yes`. Do not rebuild during publishing.
 - **Exposure shortcuts** → do not drop the peer allow-list, the forced key, the

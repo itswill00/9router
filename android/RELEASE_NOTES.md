@@ -1,10 +1,20 @@
-# 9Router Android 0.1.29
+# 9Router Android 0.1.30
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.28
+## What changed since 0.1.29
+
+- **Remote access toggle fixed.** The endpoint screen now subscribes to the
+  store revision unconditionally, so enabling LAN/tunnel mode updates the
+  switch immediately instead of staying off until the screen is reopened.
+- **No empty-key dead end.** Enabling network mode generates the gateway API
+  key when legacy state has none, instead of silently refusing.
+- **Consistent live state.** Providers, Settings, About, Quota, Token Saver,
+  CLI Tools and the shell now read the revision in their own scope too.
+
+## What changed in 0.1.29
 
 - **Remote access, opt-in.** Endpoint & Key can now open the gateway to private
   Wi-Fi, link-local, CGNAT and tailnet peers. Loopback stays the default.
@@ -551,10 +561,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `9Router-0.1.29-release.apk` and sideload it:
+Download `9Router-0.1.30-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.1.29-release.apk
+adb install -r 9Router-0.1.30-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -620,7 +630,7 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.29-android` (version code 31)
+- Version: `0.1.30-android` (version code 32)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
