@@ -61,3 +61,4 @@ counts are captured through EOF for every format (`ChatEngineStreamUsageTest`).
 1. `./scripts/android-build.sh check` must pass after the final code/doc change.
 2. Inspect the built APK's `versionCode`/`versionName` against `android/app/build.gradle.kts` and record the artifact SHA-256.
 3. Do not tag or publish a release until the route coverage above is reviewed and the release intent is confirmed; no device/emulator runtime claim without device evidence.
+4. Release title convention: use `9Router Android <version>` and pass the notes body **without** its leading `# …` heading. GitHub already renders the title above the body, so repeating the heading duplicates the name on the release page (and the in-app updater renders notes as plain text, showing the raw `#`).
