@@ -59,7 +59,7 @@ private fun filterLogs(all: List<UsageEntry>, filter: String): List<UsageEntry> 
 
 @Composable
 fun LogsScreen() {
-    @Suppress("UNUSED_VARIABLE") val revision = Store.revision
+    val revision = liveRevision(2_000L)
     var filter by remember { mutableStateOf("All") }
     var selected by remember { mutableStateOf<UsageEntry?>(null) }
     var confirmClear by remember { mutableStateOf(false) }
@@ -73,23 +73,6 @@ fun LogsScreen() {
 
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            SectionHeader(
-                "Console Log",
-                "Live request output from the router and Basic Chat",
-                action = {
-                    if (all.isNotEmpty()) {
-                        Text(
-                            "Clear",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = NineRouterColors.BrandOrange,
-                            modifier = Modifier
-                                .clickable { confirmClear = true }
-                                .padding(horizontal = 6.dp, vertical = 3.dp),
-                        )
-                    }
-                },
-            )
-            Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 LogStat("Requests", logFmt(all.size), NineRouterColors.TextMain, Modifier.weight(1f))
                 LogStat("Failed", logFmt(errors), if (errors > 0) NineRouterColors.Danger else NineRouterColors.TextMuted, Modifier.weight(1f))
@@ -97,7 +80,19 @@ fun LogsScreen() {
                 LogStat("Avg", if (avgLatency > 0) "${avgLatency}ms" else "—", NineRouterColors.Success, Modifier.weight(1f))
             }
             Spacer(Modifier.height(8.dp))
-            LogSegmented(LOG_FILTERS, filter) { filter = it }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    LogSegmented(LOG_FILTERS, filter) { filter = it }
+                }
+                if (all.isNotEmpty()) {
+                    PulsingDot(NineRouterColors.Success, size = 5.dp)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Live", style = MaterialTheme.typography.labelSmall, color = NineRouterColors.Success)
+                    TextButton(onClick = { confirmClear = true }) {
+                        Text("Clear", style = MaterialTheme.typography.labelSmall, color = NineRouterColors.BrandOrange)
+                    }
+                }
+            }
         }
 
         AnimatedContent(

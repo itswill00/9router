@@ -164,8 +164,8 @@ private fun openUrl(context: android.content.Context, url: String) {
 
 @Composable
 fun QuotaScreen(refresh: () -> Unit, onOpenProviders: () -> Unit) {
-    @Suppress("UNUSED_VARIABLE") val revision = Store.revision
-    val now = System.currentTimeMillis()
+    @Suppress("UNUSED_VARIABLE") val revision = storeRevision()
+    val now = liveNow(1_000L)
     val connections = Store.state.connections
     val weekAgo = now - 7L * 24 * 60 * 60 * 1000
     val weekUsage = Store.state.usage.filter { it.ts >= weekAgo }
@@ -174,26 +174,26 @@ fun QuotaScreen(refresh: () -> Unit, onOpenProviders: () -> Unit) {
     val cooling = connections.count { it.enabled && it.unavailableUntil > now }
     val off = connections.count { !it.enabled }
 
-    Column(Modifier.fillMaxSize()) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            SectionHeader(
-                "Quota Tracker",
-                "Track account availability, cooldowns and local usage",
-                action = {
-                    TextButton(onClick = onOpenProviders) {
-                        Text("Providers", color = NineRouterColors.BrandOrange)
-                    }
-                },
-            )
-        }
-
-        LazyColumn(
-            Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
             item {
                 Panel {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Account availability",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = NineRouterColors.TextMain,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (connections.isNotEmpty()) {
+                            TextButton(onClick = onOpenProviders) {
+                                Text("Providers", color = NineRouterColors.BrandOrange)
+                            }
+                        }
+                    }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         QuotaMetric("Available", available.toString(), NineRouterColors.Success, Modifier.weight(1f))
                         QuotaMetric("Cooling", cooling.toString(), NineRouterColors.Warning, Modifier.weight(1f))
@@ -201,7 +201,7 @@ fun QuotaScreen(refresh: () -> Unit, onOpenProviders: () -> Unit) {
                     }
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Quota windows are refreshed by the full 9Router dashboard. The native build tracks account availability, cooldowns and the usage recorded on this device.",
+                        "Quota windows sync from the full 9Router dashboard; this build tracks availability, cooldowns and local usage.",
                         style = MaterialTheme.typography.labelSmall,
                         color = NineRouterColors.TextMuted,
                     )
@@ -245,13 +245,12 @@ fun QuotaScreen(refresh: () -> Unit, onOpenProviders: () -> Unit) {
                     Text("About this page", style = MaterialTheme.typography.titleSmall, color = NineRouterColors.TextMain)
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "A cooling account is skipped by the router until its cooldown ends. Turned-off accounts stay configured but receive no traffic. Provider-side 5-hour and weekly limits are only available after the full dashboard syncs them.",
+                        "A cooling account is skipped until its cooldown ends. Turned-off accounts stay configured but receive no traffic.",
                         style = MaterialTheme.typography.bodySmall,
                         color = NineRouterColors.TextMuted,
                     )
                 }
             }
-        }
     }
 }
 
@@ -394,6 +393,7 @@ private fun quotaMoney(n: Double): String = "$" + String.format(Locale.US, "%.2f
 
 @Composable
 fun TokenSaverScreen(refresh: () -> Unit) {
+    @Suppress("UNUSED_VARIABLE") val revision = storeRevision()
     val s = Store.state.settings
     fun save(mutator: Settings.() -> Settings) {
         Store.mutate { settings = settings.mutator() }
@@ -407,14 +407,17 @@ fun TokenSaverScreen(refresh: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
-            SectionHeader(
-                "Token Saver",
-                "Compress prompts and outputs to save tokens",
-                action = { Pill("$active / 4 active") },
-            )
-        }
-        item {
             Panel {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Compression",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = NineRouterColors.TextMain,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Pill("$active / 4 active")
+                }
+                Spacer(Modifier.height(6.dp))
                 ToggleRow(
                     "RTK compression",
                     "Compresses tool results in place. Fails open on errors.",
@@ -576,6 +579,7 @@ models:
 
 @Composable
 fun CliToolsScreen() {
+    @Suppress("UNUSED_VARIABLE") val revision = storeRevision()
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val base = GatewayState.BASE_URL
@@ -587,7 +591,6 @@ fun CliToolsScreen() {
         contentPadding = PaddingValues(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item { SectionHeader("CLI Tools", "Point coding tools at this device's gateway") }
         item {
             Panel {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -715,24 +718,16 @@ enum class MediaKind(
 
 @Composable
 fun MediaProviderScreen(kind: MediaKind, onOpenProviders: () -> Unit) {
-    @Suppress("UNUSED_VARIABLE") val revision = Store.revision
+    val revision = storeRevision()
     val providers = remember(kind, revision) {
         Catalog.providers().filter { def -> kind.serviceKinds.any { it in def.serviceKinds } }
     }
-    val connected = providers.count { def -> Store.state.connections.any { it.provider == def.id } }
 
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item {
-            SectionHeader(
-                kind.label,
-                kind.description,
-                action = { Pill("$connected connected") },
-            )
-        }
         item {
             Panel {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -823,23 +818,11 @@ fun ProxyPoolsScreen() {
         contentPadding = PaddingValues(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item { SectionHeader("Proxy Pools", "Manage your proxy pool configurations") }
         item {
             Panel {
                 EmptyState(
                     title = "No proxy pools",
                     body = "The native gateway dials providers directly over the device network. Proxy pools and rotation are configured in the full 9Router dashboard.",
-                )
-            }
-        }
-        item {
-            Panel {
-                Text("Native build", style = MaterialTheme.typography.titleSmall, color = NineRouterColors.TextMain)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Outbound traffic uses the phone's own connection. If a provider requires a proxy, configure it at the network level or use the web build. No proxy credentials are stored by this screen.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NineRouterColors.TextMuted,
                 )
             }
         }
@@ -890,13 +873,6 @@ fun SkillsScreen() {
         contentPadding = PaddingValues(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item {
-            SectionHeader(
-                "Skills",
-                "Copy a link and paste to your AI to use 9Router — no install needed",
-                action = { Pill("${skillLinks.size}") },
-            )
-        }
         item {
             Panel {
                 Text("Paste this to your AI", style = MaterialTheme.typography.titleSmall, color = NineRouterColors.TextMain)
@@ -1024,7 +1000,6 @@ fun TranslatorScreen() {
         contentPadding = PaddingValues(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item { SectionHeader("Translator", "Debug the request translation between API formats") }
         item {
             Panel {
                 Text("Request body", style = MaterialTheme.typography.titleSmall, color = NineRouterColors.TextMain)

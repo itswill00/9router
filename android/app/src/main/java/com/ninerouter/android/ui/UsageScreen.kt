@@ -87,11 +87,12 @@ private data class ModelAgg(
 
 @Composable
 fun UsageScreen(refresh: () -> Unit) {
-    @Suppress("UNUSED_VARIABLE") val revision = Store.revision
+    val revision = liveRevision(1_500L)
     var tab by remember { mutableStateOf("Overview") }
     var period by remember { mutableStateOf("Today") }
     var chartMode by remember { mutableStateOf("Tokens") }
-    var payloadMode by remember { mutableStateOf("Tokens") }
+    var providerMode by remember { mutableStateOf("Tokens") }
+    var modelMode by remember { mutableStateOf("Tokens") }
     var expanded by remember { mutableStateOf<String?>(null) }
     var selected by remember { mutableStateOf<UsageEntry?>(null) }
 
@@ -101,9 +102,15 @@ fun UsageScreen(refresh: () -> Unit) {
 
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            SectionHeader("Usage & Analytics", "Monitor your API usage, token consumption, and request logs")
-            Spacer(Modifier.height(10.dp))
-            Segmented(listOf("Overview", "Details"), tab) { tab = it }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    Segmented(listOf("Overview", "Details"), tab) { tab = it }
+                }
+                Spacer(Modifier.width(8.dp))
+                PulsingDot(NineRouterColors.Success, size = 6.dp)
+                Spacer(Modifier.width(4.dp))
+                Text("Live", style = MaterialTheme.typography.labelSmall, color = NineRouterColors.Success)
+            }
             if (tab == "Overview") {
                 Spacer(Modifier.height(6.dp))
                 PeriodSelector(period) { period = it }
@@ -127,8 +134,10 @@ fun UsageScreen(refresh: () -> Unit) {
                     filtered = filtered,
                     chartMode = chartMode,
                     setChartMode = { chartMode = it },
-                    payloadMode = payloadMode,
-                    setPayloadMode = { payloadMode = it },
+                    providerMode = providerMode,
+                    setProviderMode = { providerMode = it },
+                    modelMode = modelMode,
+                    setModelMode = { modelMode = it },
                     expanded = expanded,
                     setExpanded = { expanded = it },
                     onSelect = { selected = it },
@@ -168,8 +177,10 @@ private fun Overview(
     filtered: List<UsageEntry>,
     chartMode: String,
     setChartMode: (String) -> Unit,
-    payloadMode: String,
-    setPayloadMode: (String) -> Unit,
+    providerMode: String,
+    setProviderMode: (String) -> Unit,
+    modelMode: String,
+    setModelMode: (String) -> Unit,
     expanded: String?,
     setExpanded: (String?) -> Unit,
     onSelect: (UsageEntry) -> Unit,
@@ -260,38 +271,38 @@ private fun Overview(
         Panel {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("By Provider", style = MaterialTheme.typography.titleSmall, color = NineRouterColors.TextMain, modifier = Modifier.weight(1f))
-                SegmentedSmall(listOf("Tokens", "Requests"), payloadMode, setPayloadMode)
+                SegmentedSmall(listOf("Tokens", "Requests"), providerMode, setProviderMode)
             }
             Spacer(Modifier.height(6.dp))
             val providers = filtered.groupBy { it.provider }
                 .map { (name, entries) ->
-                    name to (if (payloadMode == "Requests") entries.size else entries.sumOf { it.prompt + it.completion })
+                    name to (if (providerMode == "Requests") entries.size else entries.sumOf { it.prompt + it.completion })
                 }
                 .sortedByDescending { it.second }
                 .take(6)
             if (providers.isEmpty()) {
                 Text("No provider usage yet", color = NineRouterColors.TextMuted)
             } else {
-                BarList(providers.map { it.first to it.second.toFloat() }, if (payloadMode == "Requests") "req" else "tokens")
+                BarList(providers.map { it.first to it.second.toFloat() }, if (providerMode == "Requests") "req" else "tokens")
             }
         }
 
         Panel {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Top Models", style = MaterialTheme.typography.titleSmall, color = NineRouterColors.TextMain, modifier = Modifier.weight(1f))
-                SegmentedSmall(listOf("Tokens", "Requests"), payloadMode, setPayloadMode)
+                SegmentedSmall(listOf("Tokens", "Requests"), modelMode, setModelMode)
             }
             Spacer(Modifier.height(6.dp))
             val models = filtered.groupBy { it.model }
                 .map { (name, entries) ->
-                    name to (if (payloadMode == "Requests") entries.size else entries.sumOf { it.prompt + it.completion })
+                    name to (if (modelMode == "Requests") entries.size else entries.sumOf { it.prompt + it.completion })
                 }
                 .sortedByDescending { it.second }
                 .take(5)
             if (models.isEmpty()) {
                 Text("No model usage yet", color = NineRouterColors.TextMuted)
             } else {
-                BarList(models.map { it.first to it.second.toFloat() }, if (payloadMode == "Requests") "req" else "tokens", truncate = 18)
+                BarList(models.map { it.first to it.second.toFloat() }, if (modelMode == "Requests") "req" else "tokens", truncate = 18)
             }
         }
 

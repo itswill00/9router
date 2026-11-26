@@ -27,10 +27,12 @@ http://127.0.0.1:20128/v1
 - Provider registry (151 entries) exported at build time from the repo into
   `app/src/main/assets/provider_registry.json` by `scripts/export-android-config.mjs`.
 - Model resolution (`provider/model`, aliases, custom node prefixes, bare-model
-  inference, aliases, capability ordering), combos (`fallback` / sticky
-  `round-robin` / `smart`), account selection (`fill-first` / sticky
-  `round-robin`), cooldown fallback, token refresh (401/403), RTK tool-result
-  compression, caveman/ponytail/custom prompt injectors, and usage history.
+  inference, aliases, capability ordering), per-combo strategies (`fallback` /
+  sticky `round-robin` / `smart` with Smart Switch, Strict Lock, Per-Turn and
+  custom thresholds / `fusion` panel + judge), global vision and audio capacity
+  adapters, account selection (`fill-first` / sticky `round-robin`), cooldown
+  fallback, token refresh (401/403), RTK tool-result compression,
+  caveman/ponytail/custom prompt injectors, and usage history.
 - OAuth PKCE with a temporary loopback callback server (the same redirect shape
   the desktop app uses) plus device-code login for GitHub, Grok CLI, Kimi, Muse,
   and MiniMax Code, including GitHub Copilot token exchange and Muse key mint.
@@ -72,6 +74,19 @@ http://127.0.0.1:20128/v1
 - **Usage & Analytics**: Overview/Details tabs, Today/24h/7D/30D/60D/All
   periods, overview cards, recent requests, an area chart, provider/model
   breakdowns, and a per-model table with expandable provider detail.
+- **Live screens.** Usage, Console Log, Quota Tracker, Providers, Settings and
+  the other state-backed pages subscribe to the persisted store, so gateway
+  traffic and cooldown changes show up while the page is open. Usage and the
+  Console Log also carry a small Live indicator and a visible-screen heartbeat;
+  Quota Tracker ticks its countdowns every second.
+- **Model picker.** Models are grouped by provider, long ids wrap instead of
+  being cut off, the provider prefix is shown on the group header, and a custom
+  model id can be added inline. Multi-select is used by combos and the vision
+  and audio capacity adapters.
+- **Settings.** Max-width layout for tablets, accented section headers, account
+  and combo round-robin stickiness, token-saver and combo shortcuts, per-key
+  copy/delete with confirmation, update channel, build information and a
+  confirmed usage-history clear.
 - **Provider page**: grouped provider sections (OAuth, Free, Free Tier, API Key,
   Web Cookie, Custom compatible endpoints), a provider detail screen with
   **Connections** and the full **Models** catalog (searchable), and per-flow
@@ -98,7 +113,6 @@ http://127.0.0.1:20128/v1
 - Native Kiro / Cursor / Antigravity / commandcode binary envelopes.
 - MITM certificate handling, cloud sync, image/TTS/STT/video endpoints.
 - Full translator parity for thinking blocks, tool-id edge cases, `is_error`.
-- Combo strategy `fusion` (panel + judge).
 - LAN exposure. The app never binds `0.0.0.0`; use `adb reverse` or an explicit
   tunnel if another device must reach it.
 

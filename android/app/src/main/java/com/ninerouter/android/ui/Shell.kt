@@ -99,7 +99,7 @@ private enum class Screen(
 ) {
     Endpoint("Endpoint & Key", "Endpoint & Key", "API endpoint configuration", R.drawable.ic_nav_endpoint),
     Providers("Providers", "Providers", "Manage your AI provider connections", R.drawable.ic_nav_providers),
-    Combos("Combo & Vision Adapter", "Combos", "Model combos with fallback", R.drawable.ic_nav_combos),
+    Combos("Combo & Vision Adapter", "Combos", "Fallback, round robin, smart router and fusion", R.drawable.ic_nav_combos),
     Usage("Usage", "Usage & Analytics", "Monitor your API usage, token consumption, and request logs", R.drawable.ic_nav_usage),
     Quota("Quota Tracker", "Quota Tracker", "Track and manage your API quota limits", R.drawable.ic_nav_quota),
     TokenSaver("Token Saver", "Token Saver", "Compress prompts and outputs to save tokens", R.drawable.ic_nav_savings),
@@ -163,7 +163,7 @@ private fun Screen.mediaKind(): MediaKind? = when (this) {
 
 @Composable
 fun AppShell(refreshTrigger: () -> Unit) {
-    @Suppress("UNUSED_VARIABLE") val revision = Store.revision
+    val revision = storeRevision()
     var screenName by rememberSaveable { mutableStateOf(Screen.Endpoint.name) }
     val screen = Screen.from(screenName)
     var showChat by rememberSaveable { mutableStateOf(false) }
@@ -295,7 +295,11 @@ fun AppShell(refreshTrigger: () -> Unit) {
                             Screen.Skills -> SkillsScreen()
                             Screen.ConsoleLog -> LogsScreen()
                             Screen.Translator -> TranslatorScreen()
-                            Screen.Settings -> SettingsScreen(refreshTrigger)
+                            Screen.Settings -> SettingsScreen(
+                                refresh = refreshTrigger,
+                                onOpenTokenSaver = { select(Screen.TokenSaver) },
+                                onOpenCombos = { select(Screen.Combos) },
+                            )
                         }
                     }
                 }

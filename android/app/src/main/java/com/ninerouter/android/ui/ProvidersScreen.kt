@@ -99,7 +99,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 @Composable
 fun ProvidersScreen(refresh: () -> Unit) {
-    @Suppress("UNUSED_VARIABLE") val revision = Store.revision
+    val revision = storeRevision()
     var detailId by remember { mutableStateOf<String?>(null) }
     var nodeId by remember { mutableStateOf<String?>(null) }
     val detail = detailId?.let { Catalog.find(it) }
@@ -226,8 +226,6 @@ private fun ProviderCatalog(
 
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            SectionHeader("Providers", "Connect accounts and API keys")
-            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 query, { query = it },
                 label = { Text("Search providers") },
@@ -543,7 +541,7 @@ private fun NodeInfo(label: String, value: String) {
 
 @Composable
 private fun NodeDetail(nodeId: String, onBack: () -> Unit, refresh: () -> Unit) {
-    @Suppress("UNUSED_VARIABLE") val revision = Store.revision
+    val revision = storeRevision()
     val context = LocalContext.current
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val node = Store.state.nodes.firstOrNull { it.id == nodeId }
@@ -612,7 +610,7 @@ private fun NodeDetail(nodeId: String, onBack: () -> Unit, refresh: () -> Unit) 
             ) {
                 Icon(Icons.Default.ArrowBack, contentDescription = null, tint = NineRouterColors.TextMuted, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("Providers", color = NineRouterColors.TextMuted)
+                Text("Back", color = NineRouterColors.TextMuted)
             }
         }
         item {
@@ -985,7 +983,7 @@ private data class ModelProbeState(
 
 @Composable
 private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> Unit) {
-    @Suppress("UNUSED_VARIABLE") val revision = Store.revision
+    val revision = storeRevision()
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
@@ -1109,7 +1107,7 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
                     modifier = Modifier.size(17.dp),
                 )
                 Spacer(Modifier.width(4.dp))
-                Text("Providers", color = NineRouterColors.TextMuted)
+                Text("Back", color = NineRouterColors.TextMuted)
             }
         }
 
