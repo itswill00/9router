@@ -12,6 +12,9 @@
 #   9Router-<version>-release.apk  (R8-minified; same debug signing identity)
 #
 # Enforces the release conventions:
+#   - unit tests + fatal lint must pass (run `android-build.sh lint` separately
+#     after lint-sensitive Compose changes; full lintDebug roughly doubles the
+#     cold release build on 2 cores)
 #   - each staged APK's embedded versionCode/versionName match build.gradle.kts
 #   - the release title is "9Router Android <version>"
 #   - the notes body drops its leading "# ..." heading, so the release page does
@@ -94,7 +97,7 @@ if [[ $SKIP_BUILD -eq 1 ]]; then
     exit 1
   }
 else
-  echo "==> building both variants (tests + full lint + debug + R8 release)"
+  echo "==> building both variants (tests + fatal lint + debug + R8 release)"
   "$ROOT/scripts/android-build.sh" full
 fi
 

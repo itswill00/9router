@@ -7,11 +7,15 @@
 #   ./scripts/android-build.sh check   # tests + debug APK + fatal lint  <- default gate
 #
 # Before a release (minutes, R8 is the cost):
-#   ./scripts/android-build.sh lint    # full lintDebug only
+#   ./scripts/android-build.sh lint    # full lintDebug only (slow; run when touching UI)
 #   ./scripts/android-build.sh release # debug + R8 release, staged
-#   ./scripts/android-build.sh full    # tests + full lint + debug + R8, staged
+#   ./scripts/android-build.sh full    # tests + fatal lint + debug + R8, staged
 #   ./scripts/android-build.sh dist    # debug + R8 release, staged (no tests/lint)
 #   ./scripts/android-build.sh run     # build + install on the attached device
+#
+# `full` deliberately uses lintVitalRelease instead of a full lintDebug pass,
+# which roughly doubles a cold release build on 2 cores. Run `lint` separately
+# before a release when the change touched lint-sensitive Compose code.
 #
 # Use `check` while iterating and `full` once before publishing. Gradle's daemon,
 # configuration cache and build cache stay warm between runs; killing the daemon
@@ -70,7 +74,7 @@ case "$mode" in
     ./gradlew :app:lintDebug --console=plain "$@"
     ;;
   full)
-    ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease --console=plain "$@"
+    ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:lintVitalRelease --console=plain "$@"
     stage_apks
     ;;
   release|dist)

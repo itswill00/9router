@@ -60,7 +60,7 @@ counts are captured through EOF for every format (`ChatEngineStreamUsageTest`).
 
 Releases are cut with `./scripts/android-release.sh` (see `android/README.md`).
 
-1. `./scripts/android-release.sh` builds and verifies both variants, then prints the plan without publishing. It runs `./scripts/android-build.sh full` (unit tests + full lint + debug + R8 release) and refuses a dirty tree, an existing tag, or mismatched APK metadata.
+1. `./scripts/android-release.sh` builds and verifies both variants, then prints the plan without publishing. It runs `./scripts/android-build.sh full` (unit tests + fatal lint + debug + R8 release) and refuses a dirty tree, an existing tag, or mismatched APK metadata. Run `./scripts/android-build.sh lint` separately after lint-sensitive UI changes; full `lintDebug` roughly doubles a cold release build on 2 cores.
 2. Two APKs are staged in `android/dist/` and published together:
    - `9Router-<version>-debug.apk` — debug signing, verbose.
    - `9Router-<version>-release.apk` — R8-minified/shrunk, **same debug signing identity** so the variants update each other in place and the in-app updater keeps working with no uninstall.
