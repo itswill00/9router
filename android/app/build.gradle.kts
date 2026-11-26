@@ -13,22 +13,18 @@ android {
         applicationId = "com.ninerouter.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 20
-        versionName = "0.1.18-android"
+        versionCode = 21
+        versionName = "0.1.19-android"
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
-            // Reuse the debug signing identity so the published debug and release
-            // APKs are interchangeable: the in-app updater keeps installing in
-            // place, and switching variants never needs an uninstall.
+            // R8 dominated release builds on the 2-core dev box, so ship a plain
+            // release build instead. It keeps the shared sideloading signing
+            // identity and is installable/updatable in place, just larger.
+            isMinifyEnabled = false
+            isShrinkResources = false
             signingConfig = signingConfigs.getByName("debug")
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro",
-            )
         }
     }
 

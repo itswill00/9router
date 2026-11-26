@@ -1,25 +1,19 @@
 #!/usr/bin/env bash
-# Android release helper.
+# Android release helper. Publishes ONE R8-minified APK per release.
 #
 #   ./scripts/android-release.sh              # build + verify + print the plan (no publish)
 #   ./scripts/android-release.sh --yes        # publish the GitHub release
 #   ./scripts/android-release.sh --yes --prerelease
-#   ./scripts/android-release.sh --skip-build  # reuse android/dist artifacts (no rebuild)
+#   ./scripts/android-release.sh --skip-build  # reuse the staged release APK
 #   ./scripts/android-release.sh --allow-dirty  # skip the clean-tree check
 #
-# Publishes both variants (see android/API_COMPATIBILITY.md):
-#   9Router-<version>-debug.apk    (debug signing, verbose)
-#   9Router-<version>-release.apk  (R8-minified; same debug signing identity)
-#
+# Builds only the release variant (no debug APK, no full two-variant build).
 # Enforces the release conventions:
-#   - unit tests + fatal lint must pass (run `android-build.sh lint` separately
-#     after lint-sensitive Compose changes; full lintDebug roughly doubles the
-#     cold release build on 2 cores)
-#   - each staged APK's embedded versionCode/versionName match build.gradle.kts
+#   - the staged APK's embedded versionCode/versionName match build.gradle.kts
 #   - the release title is "9Router Android <version>"
 #   - the notes body drops its leading "# ..." heading, so the release page does
 #     not show the name twice
-#   - the notes record both artifact names and their SHA-256
+#   - the notes record the artifact name and its SHA-256
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -50,16 +44,16 @@ version_name="$(grep -oE 'versionName = "[^"]+"' "$GRADLE" | awk 'NR==1' | sed -
 version_code="$(grep -oE 'versionCode = [0-9]+' "$GRADLE" | awk 'NR==1' | grep -oE '[0-9]+')"
 [[ -n "$version_name" && -n "$version_code" ]] || { echo "could not read version from $GRADLE" >&2; exit 1; }
 
-# 0.1.16-android -> 0.1.16
+# 0.1.19-android -> 0.1.19
 version="${version_name%-android}"
 tag="android-v$version"
 title="9Router Android $version"
-debug_apk="$DIST/9Router-$version-debug.apk"
 release_apk="$DIST/9Router-$version-release.apk"
 
 echo "version: $version_name (code $version_code)"
 echo "tag:     $tag"
 echo "title:   $title"
+echo "artifact: $(basename "$release_apk")"
 
 if [[ $ALLOW_DIRTY -eq 0 ]]; then
   if [[ -n "$(git status --porcelain --untracked-files=normal | grep -v '^?? android/dist/')" ]]; then
@@ -91,39 +85,32 @@ if [[ -z "$aapt2" ]]; then
 fi
 
 if [[ $SKIP_BUILD -eq 1 ]]; then
-  echo "==> using staged artifacts (--skip-build)"
-  [[ -f "$debug_apk" && -f "$release_apk" ]] || {
-    echo "missing staged artifacts; run ./scripts/android-build.sh release first" >&2
+  echo "==> using the staged release artifact (--skip-build)"
+  [[ -f "$release_apk" ]] || {
+    echo "missing $release_apk; run ./scripts/android-build.sh release first" >&2
     exit 1
   }
 else
-  echo "==> building both variants (tests + fatal lint + debug + R8 release)"
-  "$ROOT/scripts/android-build.sh" full
+  echo "==> building the release variant (R8; no debug APK, no full build)"
+  "$ROOT/scripts/android-build.sh" release
 fi
 
-verify_apk() {
-  local apk="$1"
-  [[ -f "$apk" ]] || { echo "missing built artifact: $apk" >&2; return 1; }
-  if [[ -n "$aapt2" ]]; then
-    local badging apk_code apk_name
-    badging="$("$aapt2" dump badging "$apk" 2>/dev/null | awk 'NR==1')"
-    apk_code="$(echo "$badging" | grep -oE "versionCode='[0-9]+'" | grep -oE '[0-9]+')"
-    apk_name="$(echo "$badging" | grep -oE "versionName='[^']+'" | sed -E "s/.*'([^']+)'.*/\1/")"
-    if [[ "$apk_code" != "$version_code" || "$apk_name" != "$version_name" ]]; then
-      echo "APK metadata mismatch for $(basename "$apk"): apk=$apk_name/$apk_code source=$version_name/$version_code" >&2
-      return 1
-    fi
-    echo "  $(basename "$apk"): $apk_name (code $apk_code) OK" >&2
-  else
-    echo "  $(basename "$apk"): aapt2 not found; skipping metadata check" >&2
-  fi
-  sha256sum "$apk" | awk '{print $1}'
-}
+[[ -f "$release_apk" ]] || { echo "missing built artifact: $release_apk" >&2; exit 1; }
 
-echo "==> verifying artifacts"
-sha_debug="$(verify_apk "$debug_apk")" || exit 1
-sha_release="$(verify_apk "$release_apk")" || exit 1
-echo "  debug sha256:   $sha_debug"
+if [[ -n "$aapt2" ]]; then
+  badging="$("$aapt2" dump badging "$release_apk" 2>/dev/null | awk 'NR==1')"
+  apk_code="$(echo "$badging" | grep -oE "versionCode='[0-9]+'" | grep -oE '[0-9]+')"
+  apk_name="$(echo "$badging" | grep -oE "versionName='[^']+'" | sed -E "s/.*'([^']+)'.*/\1/")"
+  if [[ "$apk_code" != "$version_code" || "$apk_name" != "$version_name" ]]; then
+    echo "APK metadata mismatch: apk=$apk_name/$apk_code source=$version_name/$version_code" >&2
+    exit 1
+  fi
+  echo "  $(basename "$release_apk"): $apk_name (code $apk_code) OK"
+else
+  echo "  aapt2 not found; skipping metadata check" >&2
+fi
+
+sha_release="$(sha256sum "$release_apk" | awk '{print $1}')"
 echo "  release sha256: $sha_release"
 
 # --- build the release notes ---------------------------------------------------
@@ -149,10 +136,7 @@ fi
   echo
   echo "---"
   echo
-  echo "**Artifacts** (both signed with the same key; install either, switch in place)"
-  echo
-  echo "- \`$(basename "$debug_apk")\` — SHA-256 \`$sha_debug\`"
-  echo "- \`$(basename "$release_apk")\` — SHA-256 \`$sha_release\`"
+  echo "**Artifact:** \`$(basename "$release_apk")\` — SHA-256 \`$sha_release\`"
   echo
   echo "**Version:** \`$version_name\` (code $version_code)"
 } >> "$tmp"
@@ -175,7 +159,6 @@ echo "==> creating GitHub release"
 prerelease_flag=()
 [[ $PRERELEASE -eq 1 ]] && prerelease_flag=(--prerelease)
 gh release create "$tag" \
-  "$debug_apk#$(basename "$debug_apk")" \
   "$release_apk#$(basename "$release_apk")" \
   --title "$title" \
   --notes-file "$tmp" \

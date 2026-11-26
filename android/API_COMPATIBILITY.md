@@ -60,11 +60,9 @@ counts are captured through EOF for every format (`ChatEngineStreamUsageTest`).
 
 Releases are cut with `./scripts/android-release.sh` (see `android/README.md`).
 
-1. `./scripts/android-release.sh` builds and verifies both variants, then prints the plan without publishing. It runs `./scripts/android-build.sh full` (unit tests + fatal lint + debug + R8 release) and refuses a dirty tree, an existing tag, or mismatched APK metadata. Run `./scripts/android-build.sh lint` separately after lint-sensitive UI changes; full `lintDebug` roughly doubles a cold release build on 2 cores.
-2. Two APKs are staged in `android/dist/` and published together:
-   - `9Router-<version>-debug.apk` — debug signing, verbose.
-   - `9Router-<version>-release.apk` — R8-minified/shrunk, **same debug signing identity** so the variants update each other in place and the in-app updater keeps working with no uninstall.
-   Both embedded `versionCode`/`versionName` must match `android/app/build.gradle.kts`; each SHA-256 is recorded in the release notes.
-3. The in-app updater prefers the `-release` asset, then `-debug`, then any `.apk` (`UpdateManagerAssetTest`).
+1. `./scripts/android-release.sh` builds and verifies the release APK, then prints the plan without publishing. It runs `./scripts/android-build.sh release` (release variant only; R8 is disabled because it dominated build time on 2 cores) and refuses a dirty tree, an existing tag, or mismatched APK metadata.
+2. A single `9Router-<version>-release.apk` is staged in `android/dist/` and published. It is a plain release build (no R8) signed with the shared sideloading identity so in-app updates install in place. Its embedded `versionCode`/`versionName` must match `android/app/build.gradle.kts`, and its SHA-256 is recorded in the release notes.
+   Debug APKs are local development artifacts and are never attached to a release.
+3. The in-app updater selects the `-release` asset, falling back to debug or any `.apk` for older releases (`UpdateManagerAssetTest`).
 4. Do not tag or publish until the route coverage above is reviewed and the release intent is confirmed; no device/emulator runtime claim without device evidence.
 5. Release title convention: `9Router Android <version>`, and pass the notes body **without** its leading `# …` heading (the script does this). GitHub already renders the title above the body, so repeating the heading duplicates the name on the release page and shows a raw `#` in the in-app updater.

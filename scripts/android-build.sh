@@ -1,31 +1,29 @@
 #!/usr/bin/env bash
 # Android build helper for the 2-core / 8 GB dev box.
 #
-# Fast loop (seconds):
+# Fast loop:
 #   ./scripts/android-build.sh fast    # Kotlin only
-#   ./scripts/android-build.sh apk     # debug APK
-#   ./scripts/android-build.sh check   # tests + debug APK + fatal lint  <- default gate
+#   ./scripts/android-build.sh check   # unit tests + fatal lint (no APK)
 #
-# Before a release (minutes, R8 is the cost):
-#   ./scripts/android-build.sh lint    # full lintDebug only (slow; run when touching UI)
-#   ./scripts/android-build.sh release # debug + R8 release, staged
-#   ./scripts/android-build.sh full    # tests + fatal lint + debug + R8, staged
-#   ./scripts/android-build.sh dist    # debug + R8 release, staged (no tests/lint)
-#   ./scripts/android-build.sh run     # build + install on the attached device
+# Release (single R8 variant):
+#   ./scripts/android-build.sh release # R8 release APK + stage
+#   ./scripts/android-build.sh full    # tests + fatal lint + R8 release + stage
+#   ./scripts/android-build.sh lint    # full lintDebug only (slow, optional)
+#   ./scripts/android-build.sh dist    # alias for release
 #
-# `full` deliberately uses lintVitalRelease instead of a full lintDebug pass,
-# which roughly doubles a cold release build on 2 cores. Run `lint` separately
-# before a release when the change touched lint-sensitive Compose code.
+# Device-only debug builds:
+#   ./scripts/android-build.sh apk     # debug APK (not published)
+#   ./scripts/android-build.sh run     # build + install debug on the device
 #
-# Use `check` while iterating and `full` once before publishing. Gradle's daemon,
-# configuration cache and build cache stay warm between runs; killing the daemon
-# makes the next build cold and slow.
-#
-# Staged artifacts live in android/dist/ with release-friendly names:
-#   9Router-<version>-debug.apk
+# Releases ship ONE artifact in android/dist/:
 #   9Router-<version>-release.apk
-# Both variants share the debug signing identity, so they are installable and
-# update each other in place. The release build is R8-minified/shrunk.
+# It keeps the shared sideloading signing identity so in-app updates install
+# in place. The debug variant is a local development tool only and is never
+# attached to a GitHub release.
+#
+# Use `check` while iterating and `release` when cutting a release. Gradle's
+# daemon, configuration cache and build cache stay warm between runs; killing
+# the daemon makes the next build cold and slow.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -43,20 +41,18 @@ artifact_version() {
     | sed 's/-android$//'
 }
 
-stage_apks() {
+stage_release() {
   local version out
   version="$(artifact_version)"
   out="$ROOT/android/dist"
   mkdir -p "$out"
-  # Drop stale artifacts so dist/ never mixes versions.
+  # Drop stale artifacts so dist/ never mixes versions or variants.
   rm -f "$out"/9Router-*.apk
-  for variant in debug release; do
-    local built="app/build/outputs/apk/$variant/app-$variant.apk"
-    if [[ -f "$built" ]]; then
-      cp -f "$built" "$out/9Router-$version-$variant.apk"
-    fi
-  done
-  echo "staged artifacts:"
+  local built="app/build/outputs/apk/release/app-release.apk"
+  if [[ -f "$built" ]]; then
+    cp -f "$built" "$out/9Router-$version-release.apk"
+  fi
+  echo "staged artifact:"
   find "$out" -maxdepth 1 -name '9Router-*.apk' -printf '  %p\n' 2>/dev/null | sort
 }
 
@@ -68,18 +64,18 @@ case "$mode" in
     ./gradlew :app:assembleDebug --console=plain "$@"
     ;;
   check)
-    ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintVitalRelease --console=plain "$@"
+    ./gradlew :app:testDebugUnitTest :app:lintVitalRelease --console=plain "$@"
     ;;
   lint)
     ./gradlew :app:lintDebug --console=plain "$@"
     ;;
-  full)
-    ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:lintVitalRelease --console=plain "$@"
-    stage_apks
-    ;;
   release|dist)
-    ./gradlew :app:assembleDebug :app:assembleRelease --console=plain "$@"
-    stage_apks
+    ./gradlew :app:assembleRelease --console=plain "$@"
+    stage_release
+    ;;
+  full)
+    ./gradlew :app:testDebugUnitTest :app:assembleRelease :app:lintVitalRelease --console=plain "$@"
+    stage_release
     ;;
   run)
     ./gradlew :app:assembleDebug --console=plain "$@"
@@ -88,7 +84,7 @@ case "$mode" in
     adb shell am start -n com.ninerouter.android/.MainActivity
     ;;
   *)
-    echo "usage: $0 {fast|apk|check|lint|full|release|dist|run}" >&2
+    echo "usage: $0 {fast|check|lint|release|dist|full|apk|run}" >&2
     exit 2
     ;;
 esac

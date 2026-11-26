@@ -87,39 +87,42 @@ http://127.0.0.1:20128/v1
 
 ## Build / install
 
-Build both variants and stage release-ready artifacts:
+Build the single release variant and stage it (no R8, no debug APK):
 
 ```bash
-./scripts/android-build.sh dist
+./scripts/android-build.sh release
 ```
 
 That produces:
 
 ```
-android/dist/9Router-<version>-debug.apk     # debug signing, verbose
-android/dist/9Router-<version>-release.apk   # R8-minified, same debug signing identity
+android/dist/9Router-<version>-release.apk
 ```
 
-Both are signed with the same key, so either installs over the other in place:
+Install it:
 
 ```bash
-adb install -r android/dist/9Router-<version>-debug.apk
+adb install -r android/dist/9Router-<version>-release.apk
 ```
 
-The raw, unstaged Gradle outputs remain at
-`android/app/build/outputs/apk/<variant>/app-<variant>.apk`.
+The debug variant is for local device testing only and is never published:
+
+```bash
+./scripts/android-build.sh apk    # debug APK
+./scripts/android-build.sh run    # build + install debug
+```
 
 ## Release
 
 ```bash
-./scripts/android-release.sh          # build + verify + preview (no publish)
-./scripts/android-release.sh --yes    # tag + publish both APKs
+./scripts/android-release.sh          # build release + verify + preview (no publish)
+./scripts/android-release.sh --yes    # tag + publish the release APK
 ```
 
 The release title is `9Router Android <version>`, and the notes are generated from
 `android/RELEASE_NOTES.md` — its leading `# …` heading is dropped so the release
-page does not repeat the name. Both APKs are attached with their SHA-256. See
-`android/API_COMPATIBILITY.md` for the full release gate.
+page does not repeat the name. A single release APK is attached with its
+SHA-256. See `android/API_COMPATIBILITY.md` for the full release gate.
 
 Regenerate the provider asset after changing the upstream registry:
 
