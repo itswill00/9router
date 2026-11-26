@@ -52,8 +52,8 @@ http://127.0.0.1:20128/v1
   Usage, Quota Tracker, Token Saver, CLI Tools, then a System group with
   Media Providers (Embedding, Text to Image, Video, Text To Speech, Speech To
   Text, System One, Web Fetch & Search), Proxy Pools, Skills, Console Log,
-  Translator, 9Remote, 9English and Settings. Basic Chat stays out of the
-  drawer, as it does upstream, and opens from the top-bar chat button.
+  Translator, 9Remote, 9English, About and Settings. Basic Chat stays out of
+  the drawer, as it does upstream, and opens from the top-bar chat button.
   Predictive back closes the drawer first, then chat, then returns to Endpoint.
 - **Quota Tracker.** Per-account availability, cooldown countdown, local
   seven-day request/token/cost totals, last error, and an enable switch.
@@ -68,6 +68,9 @@ http://127.0.0.1:20128/v1
   on GitHub, the Translator page previews request bodies between OpenAI,
   Claude, Gemini and Responses formats, and Proxy Pools explains why the
   native build connects directly.
+- **About page.** A profile-led project page with the itswill00 GitHub avatar,
+  app story, a 2×2 feature grid, tech-stack rows, project links, MIT licence
+  link and dynamic provider/connection/combo counts.
 - **Provider detail polish.** Connections render as individual cards with
   ellipsis-safe account rows, confirmed delete, and per-model Test / Test all
   (OAuth and API key, 20 s timeout, 3 parallel) with Working/Failed filters.

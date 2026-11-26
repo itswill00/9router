@@ -64,6 +64,7 @@ fun SettingsScreen(
     refresh: () -> Unit,
     onOpenTokenSaver: () -> Unit,
     onOpenCombos: () -> Unit,
+    onOpenAbout: () -> Unit,
 ) {
     val revision by storeRevision()
     val context = LocalContext.current
@@ -386,26 +387,27 @@ fun SettingsScreen(
             item { SettingsSection("About & data", "Build information and local state") }
             item {
                 Panel {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "About this app",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = NineRouterColors.TextMain,
+                            )
+                            Text(
+                                "Project story, developer and links",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = NineRouterColors.TextMuted,
+                            )
+                        }
+                        TextButton(onClick = onOpenAbout) {
+                            Text("Open", color = NineRouterColors.BrandOrange)
+                        }
+                    }
+                    DividerLine(Modifier.padding(vertical = 8.dp))
                     StatusRow("Version", AppInfo.VERSION_NAME)
                     Spacer(Modifier.height(6.dp))
                     StatusRow("Build", AppInfo.VERSION_CODE.toString())
-                    Spacer(Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        SecondaryButton("Project page", modifier = Modifier.weight(1f)) {
-                            runCatching {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(AppInfo.GITHUB_URL)))
-                            }.onFailure {
-                                Toast.makeText(context, "No browser available", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                        SecondaryButton("Releases", modifier = Modifier.weight(1f)) {
-                            runCatching {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(AppInfo.RELEASES_URL)))
-                            }.onFailure {
-                                Toast.makeText(context, "No browser available", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    }
                     Spacer(Modifier.height(10.dp))
                     Text(
                         "Credentials are encrypted with the Android Keystore before being written to disk. The gateway only listens on loopback.",

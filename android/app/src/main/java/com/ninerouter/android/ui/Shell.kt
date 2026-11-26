@@ -118,6 +118,7 @@ private enum class Screen(
     Skills("Skills", "Agent Skills", "Copy a link and paste to your AI to use 9Router — no install needed", R.drawable.ic_nav_skills),
     ConsoleLog("Console Log", "Console Log", "Live request output from the gateway", R.drawable.ic_nav_logs),
     Translator("Translator", "Translator", "Debug translation flow between formats", R.drawable.ic_nav_translate),
+    About("About", "About", "Project and developer", R.drawable.ic_nav_info),
     Settings("Settings", "Settings", "Manage your preferences", R.drawable.ic_nav_settings),
     ;
 
@@ -299,10 +300,12 @@ fun AppShell(refreshTrigger: () -> Unit) {
                             Screen.Skills -> SkillsScreen()
                             Screen.ConsoleLog -> LogsScreen()
                             Screen.Translator -> TranslatorScreen()
+                            Screen.About -> AboutScreen()
                             Screen.Settings -> SettingsScreen(
                                 refresh = refreshTrigger,
                                 onOpenTokenSaver = { select(Screen.TokenSaver) },
                                 onOpenCombos = { select(Screen.Combos) },
+                                onOpenAbout = { select(Screen.About) },
                             )
                         }
                     }
@@ -473,6 +476,12 @@ private fun DrawerContent(
                 label = "9English",
                 selected = false,
                 onClick = { openUrl("https://9english.net/") },
+            )
+            SidebarItem(
+                icon = Screen.About.icon,
+                label = "About",
+                selected = !chatOpen && selected == Screen.About,
+                onClick = { onSelect(Screen.About) },
             )
             SidebarItem(
                 icon = Screen.Settings.icon,
