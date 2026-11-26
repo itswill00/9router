@@ -34,12 +34,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -51,23 +53,30 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import com.ninerouter.android.GatewayService
 import com.ninerouter.android.core.NodeProbe
+import com.ninerouter.android.core.ProviderProbe
 import com.ninerouter.android.core.OAuthFlow
 import com.ninerouter.android.data.Catalog
 import com.ninerouter.android.data.Connection
@@ -76,8 +85,14 @@ import com.ninerouter.android.data.ProviderDef
 import com.ninerouter.android.data.ProviderNode
 import com.ninerouter.android.data.Store
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicReference
@@ -960,10 +975,20 @@ private fun ProviderCard(
 // Provider detail — Connections + Models, matching the desktop page
 // ---------------------------------------------------------------------------
 
+private enum class ProbeStatus { Idle, Loading, Success, Failed }
+
+private data class ModelProbeState(
+    val status: ProbeStatus = ProbeStatus.Idle,
+    val latencyMs: Long = 0L,
+    val error: String = "",
+)
+
 @Composable
 private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> Unit) {
     @Suppress("UNUSED_VARIABLE") val revision = Store.revision
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
     var showApiKey by remember { mutableStateOf(false) }
     var showToken by remember { mutableStateOf(false) }
     var showCookie by remember { mutableStateOf(false) }
@@ -971,8 +996,17 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
     var showDevice by remember { mutableStateOf(false) }
     var modelQuery by remember { mutableStateOf("") }
     var visibleModels by remember { mutableStateOf(10) }
+    var modelFilter by remember { mutableStateOf("All") }
+    val probeStates = remember { mutableStateMapOf<String, ModelProbeState>() }
+    var probeAllJob by remember { mutableStateOf<Job?>(null) }
+    var probeAllRunning by remember { mutableStateOf(false) }
+    var errorModel by remember { mutableStateOf<String?>(null) }
+    var pendingDelete by remember { mutableStateOf<Connection?>(null) }
 
     val connections = Store.state.connections.filter { it.provider == def.id }
+    // Prefer the active account; fall back to a disabled one so the user still
+    // gets an explicit "connection is disabled" error instead of a silent no-op.
+    val activeConnection = connections.firstOrNull { it.enabled } ?: connections.firstOrNull()
     val authLabel = when {
         ProviderAuth.browserOAuth(def) && ProviderAuth.apiKey(def) -> "OAuth or API key"
         ProviderAuth.browserOAuth(def) -> "OAuth"
@@ -987,9 +1021,80 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(def.website))) }
     }
 
+    fun copyModel(model: String) {
+        clipboard.setText(AnnotatedString(model))
+        Toast.makeText(context, "Model id copied", Toast.LENGTH_SHORT).show()
+    }
+
+    fun testOne(model: String) {
+        val conn = activeConnection
+        if (conn == null) {
+            probeStates[model] = ModelProbeState(ProbeStatus.Failed, error = "No connection for ${def.name}")
+            return
+        }
+        probeStates[model] = ModelProbeState(ProbeStatus.Loading)
+        scope.launch {
+            val result = ProviderProbe.test(def, conn, model)
+            probeStates[model] = if (result.ok) {
+                ModelProbeState(ProbeStatus.Success, result.latencyMs)
+            } else {
+                ModelProbeState(ProbeStatus.Failed, result.latencyMs, result.message)
+            }
+            // The probe may have refreshed an OAuth token.
+            Store.save()
+        }
+    }
+
+    fun testAll(models: List<String>) {
+        if (probeAllRunning || models.isEmpty()) return
+        val conn = activeConnection
+        if (conn == null) {
+            probeStates[models.first()] = ModelProbeState(ProbeStatus.Failed, error = "No connection for ${def.name}")
+            return
+        }
+        probeAllRunning = true
+        probeAllJob = scope.launch {
+            try {
+                val semaphore = Semaphore(3)
+                coroutineScope {
+                    models.map { model ->
+                        async {
+                            semaphore.withPermit {
+                                probeStates[model] = ModelProbeState(ProbeStatus.Loading)
+                                val result = ProviderProbe.test(def, conn, model)
+                                probeStates[model] = if (result.ok) {
+                                    ModelProbeState(ProbeStatus.Success, result.latencyMs)
+                                } else {
+                                    ModelProbeState(ProbeStatus.Failed, result.latencyMs, result.message)
+                                }
+                            }
+                        }
+                    }.awaitAll()
+                }
+            } finally {
+                probeAllRunning = false
+                Store.save()
+            }
+        }
+    }
+
+    fun cancelAll() {
+        probeAllJob?.cancel()
+        probeAllJob = null
+        probeAllRunning = false
+        probeStates.keys.toList().forEach { key ->
+            if (probeStates[key]?.status == ProbeStatus.Loading) probeStates[key] = ModelProbeState()
+        }
+    }
+
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = NineRouterSpacing.md, vertical = NineRouterSpacing.sm),
+        contentPadding = PaddingValues(
+            start = NineRouterSpacing.md,
+            end = NineRouterSpacing.md,
+            top = NineRouterSpacing.sm,
+            bottom = NineRouterSpacing.xxl,
+        ),
         verticalArrangement = Arrangement.spacedBy(NineRouterSpacing.md),
     ) {
         item {
@@ -1063,51 +1168,44 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
         }
 
         item {
-            Panel(modifier = Modifier.animateContentSize()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Connections", style = MaterialTheme.typography.titleMedium, color = NineRouterColors.TextMain)
-                    Spacer(Modifier.width(NineRouterSpacing.sm))
-                    Pill(connections.size.toString())
-                }
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    "Accounts are tried in priority order, then fallback.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NineRouterColors.TextMuted,
-                )
-                Spacer(Modifier.height(NineRouterSpacing.md))
-                if (connections.isEmpty()) {
+            SectionHeader(
+                title = "Connections",
+                subtitle = "Accounts are tried in priority order, then fallback.",
+                action = { Pill(connections.size.toString()) },
+            )
+        }
+
+        if (connections.isEmpty()) {
+            item {
+                Panel {
                     EmptyState(
                         title = "No connections yet",
                         body = "Add an account or key to start routing requests through ${def.name}.",
                     )
-                } else {
-                    connections.forEachIndexed { index, conn ->
-                        if (index > 0) DividerLine(Modifier.padding(vertical = NineRouterSpacing.sm))
-                        ConnectionListItem(
-                            conn = conn,
-                            onChange = {
-                                Store.save()
-                                refresh()
-                            },
-                            onDelete = {
-                                Store.state.connections.removeAll { it.id == conn.id }
-                                Store.save()
-                                refresh()
-                            },
-                        )
-                    }
                 }
-                Spacer(Modifier.height(NineRouterSpacing.md))
-                ConnectionActions(
-                    def = def,
-                    onOAuth = { showOAuth = true },
-                    onDevice = { showDevice = true },
-                    onApiKey = { showApiKey = true },
-                    onToken = { showToken = true },
-                    onCookie = { showCookie = true },
+            }
+        } else {
+            items(connections, key = { it.id }) { conn ->
+                ConnectionCard(
+                    conn = conn,
+                    onChange = {
+                        Store.save()
+                        refresh()
+                    },
+                    onDelete = { pendingDelete = conn },
                 )
             }
+        }
+
+        item {
+            ConnectionActions(
+                def = def,
+                onOAuth = { showOAuth = true },
+                onDevice = { showDevice = true },
+                onApiKey = { showApiKey = true },
+                onToken = { showToken = true },
+                onCookie = { showCookie = true },
+            )
         }
 
         item {
@@ -1117,12 +1215,24 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
                     Spacer(Modifier.width(NineRouterSpacing.sm))
                     Pill(def.models.size.toString())
                     Spacer(Modifier.weight(1f))
-                    Text(
-                        "addressed as ${def.alias}/…",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = NineRouterColors.TextSubtle,
-                    )
+                    if (probeAllRunning) {
+                        TextButton(onClick = { cancelAll() }) {
+                            Text("Cancel", color = NineRouterColors.Danger, style = MaterialTheme.typography.labelMedium)
+                        }
+                    } else {
+                        TextButton(onClick = { testAll(searchFilteredModels(def.models, modelQuery)) }, enabled = def.models.isNotEmpty()) {
+                            Text("Test all", color = NineRouterColors.BrandOrange, style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
                 }
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "addressed as ${def.alias}/…",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.TextSubtle,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 if (def.models.isNotEmpty()) {
                     Spacer(Modifier.height(NineRouterSpacing.sm))
                     OutlinedTextField(
@@ -1139,44 +1249,127 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
                         shape = NineRouterShapes.small,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    Spacer(Modifier.height(NineRouterSpacing.sm))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("All", "Working", "Failed").forEach { filter ->
+                            FilterChip(filter, modelFilter == filter) {
+                                modelFilter = filter
+                                visibleModels = 10
+                            }
+                        }
+                    }
                 }
                 Spacer(Modifier.height(NineRouterSpacing.sm))
 
-                val filtered = if (modelQuery.isBlank()) {
-                    def.models
-                } else {
-                    def.models.filter { model ->
-                        model.contains(modelQuery, true) ||
-                            def.modelNames[model].orEmpty().contains(modelQuery, true)
-                    }
+                val searched = searchFilteredModels(def.models, modelQuery)
+                val shown = when (modelFilter) {
+                    "Working" -> searched.filter { probeStates[it]?.status == ProbeStatus.Success }
+                    "Failed" -> searched.filter { probeStates[it]?.status == ProbeStatus.Failed }
+                    else -> searched
                 }
                 if (def.models.isEmpty()) {
                     EmptyState(
                         title = "No model catalog",
                         body = "This provider has no exported model list. You can still use a custom model id from a combo.",
                     )
-                } else if (filtered.isEmpty()) {
+                } else if (searched.isEmpty()) {
                     EmptyState(
                         title = "No matches",
                         body = "No model matches “$modelQuery”.",
                     )
+                } else if (shown.isEmpty()) {
+                    EmptyState(
+                        title = "No ${modelFilter.lowercase()} models",
+                        body = "Run Test all to populate Working and Failed results.",
+                    )
                 } else {
-                    filtered.take(visibleModels).forEachIndexed { index, model ->
+                    shown.take(visibleModels).forEachIndexed { index, model ->
                         if (index > 0) DividerLine(Modifier.padding(vertical = 2.dp))
                         ModelCatalogRow(
                             model = model,
-                            name = def.modelNames[model],
+                            title = def.modelNames[model] ?: model,
+                            alias = "${def.alias}/$model",
                             caps = def.modelCapabilities[model].orEmpty(),
+                            state = probeStates[model] ?: ModelProbeState(),
+                            onTest = { testOne(model) },
+                            onCopy = { copyModel(model) },
+                            onError = { errorModel = model },
                         )
                     }
-                    if (filtered.size > visibleModels) {
+                    if (shown.size > visibleModels) {
                         TextButton(onClick = { visibleModels += 20 }) {
-                            Text("Show ${minOf(20, filtered.size - visibleModels)} more of ${filtered.size}", color = NineRouterColors.BrandOrange)
+                            Text(
+                                "Show ${minOf(20, shown.size - visibleModels)} more of ${shown.size}",
+                                color = NineRouterColors.BrandOrange,
+                            )
                         }
                     }
                 }
             }
         }
+    }
+
+    errorModel?.let { model ->
+        val state = probeStates[model]
+        AlertDialog(
+            onDismissRequest = { errorModel = null },
+            containerColor = NineRouterColors.Surface,
+            title = { Text("Test failed", color = NineRouterColors.TextMain) },
+            text = {
+                Column {
+                    Text(
+                        model,
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                        color = NineRouterColors.TextSubtle,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(NineRouterSpacing.sm))
+                    Text(
+                        state?.error?.ifBlank { "Unknown error" } ?: "Unknown error",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NineRouterColors.TextMuted,
+                        maxLines = 12,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    clipboard.setText(AnnotatedString(state?.error.orEmpty()))
+                    Toast.makeText(context, "Error copied", Toast.LENGTH_SHORT).show()
+                }) { Text("Copy error", color = NineRouterColors.BrandOrange) }
+            },
+            dismissButton = {
+                TextButton(onClick = { errorModel = null }) { Text("Close", color = NineRouterColors.TextMuted) }
+            },
+        )
+    }
+
+    pendingDelete?.let { conn ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            containerColor = NineRouterColors.Surface,
+            title = { Text("Delete connection?", color = NineRouterColors.TextMain) },
+            text = {
+                Text(
+                    "Remove ${conn.name.ifBlank { def.name }} from ${def.name}? Requests will stop using this account.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NineRouterColors.TextMuted,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    Store.state.connections.removeAll { it.id == conn.id }
+                    Store.save()
+                    pendingDelete = null
+                    refresh()
+                }) { Text("Delete", color = NineRouterColors.Danger) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("Cancel", color = NineRouterColors.TextMuted) }
+            },
+        )
     }
 
     if (showApiKey) {
@@ -1216,6 +1409,10 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
     }
 }
 
+private fun searchFilteredModels(models: List<String>, query: String): List<String> =
+    if (query.isBlank()) models
+    else models.filter { it.contains(query, true) }
+
 @Composable
 private fun ConnectionActions(
     def: ProviderDef,
@@ -1248,66 +1445,110 @@ private fun ConnectionActions(
             SecondaryButton("Paste cookie", onClick = onCookie, modifier = Modifier.fillMaxWidth())
         }
         if (browser || device) {
-            TextButton(onClick = onToken, modifier = Modifier.fillMaxWidth()) {
-                Text("Paste token manually", color = NineRouterColors.TextMuted)
-            }
+            SecondaryButton("Paste token manually", onClick = onToken, modifier = Modifier.fillMaxWidth())
         }
     }
 }
 
 @Composable
-private fun ConnectionListItem(conn: Connection, onChange: () -> Unit, onDelete: () -> Unit) {
+private fun ConnectionCard(conn: Connection, onChange: () -> Unit, onDelete: () -> Unit) {
     val typeLabel = when (conn.authType.lowercase()) {
         "oauth" -> "OAuth"
         "cookie" -> "Cookie"
         else -> "API key"
     }
-    Row(verticalAlignment = Alignment.Top) {
-        Surface(
-            color = if (conn.enabled) NineRouterColors.Success.copy(alpha = 0.10f) else NineRouterColors.Surface2,
-            shape = RoundedCornerShape(10.dp),
-            border = BorderStroke(1.dp, if (conn.enabled) NineRouterColors.Success.copy(alpha = 0.25f) else NineRouterColors.Border),
+    Surface(
+        color = NineRouterColors.Surface,
+        shape = NineRouterShapes.large,
+        border = BorderStroke(1.dp, NineRouterColors.BorderSubtle),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(NineRouterSpacing.md),
+            verticalArrangement = Arrangement.spacedBy(NineRouterSpacing.sm),
         ) {
-            Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
-                Text(
-                    when (conn.authType.lowercase()) {
-                        "oauth" -> "OA"
-                        "cookie" -> "CK"
-                        else -> "KEY"
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    color = if (conn.enabled) NineRouterColors.Success.copy(alpha = 0.10f) else NineRouterColors.Surface2,
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(
+                        1.dp,
+                        if (conn.enabled) NineRouterColors.Success.copy(alpha = 0.25f) else NineRouterColors.Border,
+                    ),
+                ) {
+                    Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+                        Text(
+                            when (conn.authType.lowercase()) {
+                                "oauth" -> "OA"
+                                "cookie" -> "CK"
+                                else -> "KEY"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (conn.enabled) NineRouterColors.Success else NineRouterColors.TextMuted,
+                        )
+                    }
+                }
+                Spacer(Modifier.width(NineRouterSpacing.sm))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        conn.name.ifBlank { conn.provider },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = NineRouterColors.TextMain,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        "$typeLabel account${if (conn.enabled) "" else " · off"}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (conn.enabled) NineRouterColors.TextMuted else NineRouterColors.TextSubtle,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Switch(
+                    checked = conn.enabled,
+                    onCheckedChange = {
+                        conn.enabled = it
+                        onChange()
                     },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (conn.enabled) NineRouterColors.Success else NineRouterColors.TextMuted,
                 )
             }
-        }
-        Spacer(Modifier.width(NineRouterSpacing.sm))
-        Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    conn.name.ifBlank { conn.provider },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = NineRouterColors.TextMain,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                if (!conn.enabled) {
-                    Spacer(Modifier.width(6.dp))
-                    Pill("off", NineRouterColors.TextMuted, NineRouterColors.Surface2)
+
+            if (conn.email.isNotBlank() || conn.projectId.isNotBlank()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(NineRouterSpacing.sm)) {
+                    if (conn.email.isNotBlank()) {
+                        Text(
+                            conn.email,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NineRouterColors.TextMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    if (conn.projectId.isNotBlank()) {
+                        Text(
+                            "project ${conn.projectId}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NineRouterColors.TextSubtle,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             }
-            Text(
-                listOfNotNull(
-                    typeLabel,
-                    conn.email.takeIf { it.isNotBlank() },
-                    conn.projectId.takeIf { it.isNotBlank() }?.let { "project ${it.take(12)}" },
-                    conn.lastError.takeIf { it.isNotBlank() }?.let { "error: ${it.take(36)}" },
-                ).joinToString(" · "),
-                style = MaterialTheme.typography.labelSmall,
-                color = if (conn.lastError.isNotBlank()) NineRouterColors.Danger else NineRouterColors.TextMuted,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+
+            if (conn.lastError.isNotBlank()) {
+                Text(
+                    "error: ${conn.lastError}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.Danger,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "Priority ${conn.priority}",
@@ -1319,63 +1560,135 @@ private fun ConnectionListItem(conn: Connection, onChange: () -> Unit, onDelete:
                         conn.priority = (conn.priority - 1).coerceAtLeast(0)
                         onChange()
                     },
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier.size(44.dp),
                 ) {
-                    Icon(Icons.Default.KeyboardArrowUp, "Move up", tint = NineRouterColors.TextMuted, modifier = Modifier.size(17.dp))
+                    Icon(
+                        Icons.Default.KeyboardArrowUp,
+                        "Move up",
+                        tint = NineRouterColors.TextMuted,
+                        modifier = Modifier.size(18.dp),
+                    )
                 }
                 IconButton(
                     onClick = {
                         conn.priority += 1
                         onChange()
                     },
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier.size(44.dp),
                 ) {
-                    Icon(Icons.Default.KeyboardArrowDown, "Move down", tint = NineRouterColors.TextMuted, modifier = Modifier.size(17.dp))
+                    Icon(
+                        Icons.Default.KeyboardArrowDown,
+                        "Move down",
+                        tint = NineRouterColors.TextMuted,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = onDelete, modifier = Modifier.size(44.dp)) {
+                    Icon(
+                        Icons.Default.Delete,
+                        "Delete connection",
+                        tint = NineRouterColors.TextSubtle,
+                        modifier = Modifier.size(18.dp),
+                    )
                 }
             }
-        }
-        Switch(
-            checked = conn.enabled,
-            onCheckedChange = {
-                conn.enabled = it
-                onChange()
-            },
-            modifier = Modifier.size(34.dp, 20.dp),
-        )
-        IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
-            Icon(Icons.Default.Delete, "Delete connection", tint = NineRouterColors.TextSubtle, modifier = Modifier.size(17.dp))
         }
     }
 }
 
 @Composable
-private fun ModelCatalogRow(model: String, name: String?, caps: List<String>) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun ModelCatalogRow(
+    model: String,
+    title: String,
+    alias: String,
+    caps: List<String>,
+    state: ModelProbeState,
+    onTest: () -> Unit,
+    onCopy: () -> Unit,
+    onError: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Column(Modifier.weight(1f)) {
             Text(
-                name ?: model,
+                title,
                 style = MaterialTheme.typography.bodySmall,
                 color = NineRouterColors.TextMain,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (name != null) {
+            Text(
+                model,
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                color = NineRouterColors.TextSubtle,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .clickable(onClick = onCopy)
+                    .padding(vertical = 2.dp),
+            )
+            Text(
+                alias,
+                style = MaterialTheme.typography.labelSmall,
+                color = NineRouterColors.TextFaint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (caps.isNotEmpty()) {
                 Text(
-                    model,
-                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
-                    color = NineRouterColors.TextSubtle,
+                    caps.take(2).joinToString(" · "),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.TextFaint,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
         }
-        if (caps.isNotEmpty()) {
-            Spacer(Modifier.width(NineRouterSpacing.sm))
+        Spacer(Modifier.width(NineRouterSpacing.sm))
+        when (state.status) {
+            ProbeStatus.Loading -> CircularProgressIndicator(
+                modifier = Modifier.size(14.dp),
+                strokeWidth = 2.dp,
+                color = NineRouterColors.BrandOrange,
+            )
+            ProbeStatus.Success -> Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = "Working",
+                    tint = NineRouterColors.Success,
+                    modifier = Modifier.size(15.dp),
+                )
+                Spacer(Modifier.width(2.dp))
+                Text(
+                    "${state.latencyMs} ms",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.Success,
+                    maxLines = 1,
+                )
+            }
+            ProbeStatus.Failed -> IconButton(onClick = onError, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "Show test error",
+                    tint = NineRouterColors.Danger,
+                    modifier = Modifier.size(15.dp),
+                )
+            }
+            ProbeStatus.Idle -> Unit
+        }
+        TextButton(
+            onClick = onTest,
+            enabled = state.status != ProbeStatus.Loading,
+            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+        ) {
             Text(
-                caps.take(2).joinToString(" · "),
+                "Test",
                 style = MaterialTheme.typography.labelSmall,
-                color = NineRouterColors.TextSubtle,
-                maxLines = 1,
+                color = if (state.status == ProbeStatus.Loading) NineRouterColors.TextSubtle else NineRouterColors.BrandOrange,
             )
         }
     }
@@ -1791,5 +2104,66 @@ private fun EmptyHint(text: String, modifier: Modifier = Modifier) {
             color = NineRouterColors.TextMuted,
             modifier = Modifier.padding(14.dp),
         )
+    }
+}
+
+@Preview(name = "Connection card", widthDp = 360, showBackground = true, backgroundColor = 0xFF1A1A1A)
+@Composable
+private fun ConnectionCardPreview() {
+    NineRouterTheme {
+        ConnectionCard(
+            conn = Connection(
+                id = "preview",
+                provider = "antigravity",
+                name = "work@example.com",
+                authType = "oauth",
+                email = "very-long-account-address@example-company-domain.com",
+                projectId = "useful-falcon-123456",
+                priority = 1,
+            ),
+            onChange = {},
+            onDelete = {},
+        )
+    }
+}
+
+@Preview(name = "Model rows", widthDp = 360, showBackground = true, backgroundColor = 0xFF1A1A1A)
+@Composable
+private fun ModelRowPreview() {
+    NineRouterTheme {
+        Column(Modifier.padding(12.dp)) {
+            ModelCatalogRow(
+                model = "gemini-2.5-pro",
+                title = "Gemini 2.5 Pro",
+                alias = "ag/gemini-2.5-pro",
+                caps = listOf("text", "image"),
+                state = ModelProbeState(ProbeStatus.Success, 842),
+                onTest = {},
+                onCopy = {},
+                onError = {},
+            )
+            DividerLine()
+            ModelCatalogRow(
+                model = "gemini-2.5-flash",
+                title = "Gemini 2.5 Flash",
+                alias = "ag/gemini-2.5-flash",
+                caps = emptyList(),
+                state = ModelProbeState(ProbeStatus.Failed, error = "HTTP 429: quota"),
+                onTest = {},
+                onCopy = {},
+                onError = {},
+            )
+            DividerLine()
+            ModelCatalogRow(
+                model = "gemini-2.0-flash",
+                title = "Gemini 2.0 Flash",
+                alias = "ag/gemini-2.0-flash",
+                caps = emptyList(),
+                state = ModelProbeState(ProbeStatus.Loading),
+                onTest = {},
+                onCopy = {},
+                onError = {},
+            )
+        }
     }
 }

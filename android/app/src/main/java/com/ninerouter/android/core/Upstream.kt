@@ -18,13 +18,20 @@ import okhttp3.Response
 import java.util.concurrent.TimeUnit
 
 /** OkHttp replacement for the per-provider executors in open-sse/executors. */
-open class Upstream {
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)
-        .build()
+open class Upstream(
+    private val client: OkHttpClient = defaultClient,
+) {
     private val json = Json { ignoreUnknownKeys = true }
     private val mediaJson = "application/json; charset=utf-8".toMediaType()
+
+    companion object {
+        private val defaultClient: OkHttpClient by lazy {
+            OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(120, TimeUnit.SECONDS)
+                .build()
+        }
+    }
 
     open fun execute(def: ProviderDef, conn: Connection, body: JsonObject, wantsStream: Boolean): Response {
         var payload = JsonObject(body.toMap().filterKeys { it != "_stream" })
@@ -53,6 +60,22 @@ open class Upstream {
     fun executeUrl(url: String, def: ProviderDef, conn: Connection, body: JsonObject): Response {
         val payload = JsonObject(body.toMap().filterKeys { it != "_stream" })
         return client.newCall(requestFor(url, def, conn, payload.toString(), false)).execute()
+    }
+
+    /**
+     * Proactively refresh an OAuth token that is already (or about to be) expired.
+     * The normal request path also retries on 401/403; this avoids a wasted round
+     * trip from the model probe. Callers should persist the mutated connection.
+     */
+    fun refreshIfNeeded(def: ProviderDef, conn: Connection, skewMs: Long = 60_000L): Boolean {
+        if (conn.accessToken.isBlank() || conn.expiresAt <= 0L) return false
+        if (conn.expiresAt > System.currentTimeMillis() + skewMs) return false
+        if (!refreshable(def, conn)) return false
+        val fresh = refresh(def, conn) ?: return false
+        conn.accessToken = fresh.first
+        if (fresh.second.isNotBlank()) conn.refreshToken = fresh.second
+        conn.expiresAt = System.currentTimeMillis() + 3_600_000L
+        return true
     }
 
     private fun isCliEnvelope(def: ProviderDef): Boolean =
