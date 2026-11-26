@@ -901,13 +901,21 @@ fun ChatScreen() {
                 }
             }
             Spacer(Modifier.width(8.dp))
-            IconButton(onClick = { showSessions = true }, modifier = Modifier.size(44.dp)) {
-                Icon(
-                    Icons.Default.List,
-                    contentDescription = "Chat sessions",
-                    tint = NineRouterColors.TextMuted,
-                    modifier = Modifier.size(19.dp),
-                )
+            Surface(
+                onClick = { showSessions = true },
+                color = NineRouterColors.Surface2,
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, NineRouterColors.Border),
+                modifier = Modifier.size(44.dp),
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.List,
+                        contentDescription = "Chat sessions",
+                        tint = NineRouterColors.TextMuted,
+                        modifier = Modifier.size(19.dp),
+                    )
+                }
             }
             Surface(
                 onClick = { newChat() },
