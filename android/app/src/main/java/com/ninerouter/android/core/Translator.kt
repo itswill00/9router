@@ -558,6 +558,51 @@ object Translator {
         }
     }
 
+    /**
+     * Best-effort OpenAI-shaped usage for a single upstream SSE data line. The
+     * stream writer calls this per line and keeps the last non-null result so
+     * native Claude / Responses terminals can report usage too. Returns null
+     * when the line carries no real counts (content deltas, placeholders).
+     */
+    fun sseUsage(target: String, rawLine: String, cliEnvelope: Boolean = false): JsonObject? {
+        if (!rawLine.startsWith("data:")) return null
+        val data = rawLine.removePrefix("data:").trim()
+        if (data.isEmpty() || data == "[DONE]") return null
+        var obj = try { json.parseToJsonElement(data) as? JsonObject } catch (_: Exception) { null } ?: return null
+        if (cliEnvelope) obj = unwrapEnvelope(obj)
+
+        var prompt = 0L
+        var completion = 0L
+        (obj["usage"] as? JsonObject)?.let { usage ->
+            prompt = maxOf(prompt, number(usage["prompt_tokens"], number(usage["input_tokens"], 0L)))
+            completion = maxOf(completion, number(usage["completion_tokens"], number(usage["output_tokens"], 0L)))
+        }
+        when (text(obj["type"], "")) {
+            "message_start" -> {
+                val usage = (obj["message"] as? JsonObject)?.get("usage") as? JsonObject
+                prompt = maxOf(prompt, number(usage?.get("input_tokens"), 0L))
+            }
+            "message_delta" -> {
+                val usage = obj["usage"] as? JsonObject
+                completion = maxOf(completion, number(usage?.get("output_tokens"), 0L))
+            }
+        }
+        (obj["usageMetadata"] as? JsonObject)?.let { meta ->
+            prompt = maxOf(prompt, number(meta["promptTokenCount"], 0L))
+            completion = maxOf(completion, number(meta["candidatesTokenCount"], 0L))
+        }
+        ((obj["response"] as? JsonObject)?.get("usage") as? JsonObject)?.let { usage ->
+            prompt = maxOf(prompt, number(usage["input_tokens"], 0L))
+            completion = maxOf(completion, number(usage["output_tokens"], 0L))
+        }
+        if (prompt <= 0L && completion <= 0L) return null
+        return buildJsonObject {
+            put("prompt_tokens", prompt)
+            put("completion_tokens", completion)
+            put("total_tokens", prompt + completion)
+        }
+    }
+
     fun terminalSseChunk(model: String, finishReason: String): String =
         json.encodeToString(buildJsonObject {
             put("id", "chatcmpl-stream")
