@@ -28,7 +28,6 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import okhttp3.Response
-import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -120,20 +119,16 @@ class Gateway(private val context: Context) {
         val input = socket.getInputStream()
         val output = socket.getOutputStream()
         try {
-            val requestLine = readLine(input) ?: return
-            val parts = requestLine.split(" ")
-            if (parts.size < 2) return
-            val method = parts[0]
-            val path = parts[1].substringBefore("?")
-            val headers = HashMap<String, String>()
-            while (true) {
-                val line = readLine(input) ?: break
-                if (line.isEmpty()) break
-                val idx = line.indexOf(':')
-                if (idx > 0) headers[line.substring(0, idx).trim().lowercase()] = line.substring(idx + 1).trim()
+            val request = try {
+                HttpRequestParser.read(input)
+            } catch (e: HttpRequestParseException) {
+                return writeJson(output, e.status, errorJson(e.status, e.message ?: "Invalid HTTP request"))
             }
-            val len = headers["content-length"]?.toIntOrNull() ?: 0
-            val body = if (len > 0) String(readExactly(input, len), Charsets.UTF_8) else ""
+            val method = request.method
+            val rawTarget = request.target
+            val path = rawTarget.substringBefore("?")
+            val headers = request.headers
+            val body = request.body.toString(Charsets.UTF_8)
             val authorized = authorized(headers)
 
             when {
@@ -836,25 +831,4 @@ class Gateway(private val context: Context) {
             put("code", status)
         })
     }.let { json.encodeToString(it) }
-
-    private fun readLine(input: InputStream): String? {
-        val buf = java.io.ByteArrayOutputStream()
-        while (true) {
-            val b = input.read()
-            if (b == -1) return if (buf.size() == 0) null else buf.toString("UTF-8").trimEnd('\r')
-            if (b == '\n'.code) return buf.toString("UTF-8").trimEnd('\r')
-            buf.write(b)
-        }
-    }
-
-    private fun readExactly(input: InputStream, length: Int): ByteArray {
-        val out = ByteArray(length)
-        var read = 0
-        while (read < length) {
-            val n = input.read(out, read, length - read)
-            if (n <= 0) break
-            read += n
-        }
-        return if (read == length) out else out.copyOf(read)
-    }
 }
