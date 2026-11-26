@@ -9,18 +9,18 @@ APK per version.
 
 ## Current state
 
-- Branch: `master` — clean; 5 unreleased commits ahead of `origin/master`.
-- Version: `0.1.30-android` (version code 32) on disk. The audit fixes below
-  are not released yet; 0.1.30 is still the latest GitHub release.
-- Latest release: https://github.com/itswill00/9router/releases/tag/android-v0.1.30
-  - asset: `9Router-0.1.30-release.apk` (10,454,268 bytes)
-  - SHA-256: `52d57b0ce17a11c58a38fd575e3fd055636bcc69c557cb565585e705c245fabb`
-- Unreleased audit commits:
+- Branch: `master` — clean; synced with `origin/master`.
+- Version: `0.1.31-android` (version code 33).
+- Latest release: https://github.com/itswill00/9router/releases/tag/android-v0.1.31
+  - asset: `9Router-0.1.31-release.apk` (10,487,572 bytes)
+  - SHA-256: `1c93ac42f663b802ce52f592123d74af263fa088881a933e3ea3b3644be7a05c`
+- Recent commits:
+  - `1218ff01 chore(android): release 0.1.31`
+  - `172e1f85 docs: record the unreleased audit pass`
   - `0d5d3407 fix(gateway): harden auth, keys and stream failures`
   - `a3d9ae20 fix(core): preserve native tool calls and stream usage`
   - `931d26ad fix(android): harden oauth, updates and background lifecycle`
   - `0cbddaca fix(ui): keep state live and remove interaction traps`
-  - `bad5faa3 docs: align the security model and install instructions`
 - Working tree: no modified or untracked files.
 
 ## Done so far
@@ -61,7 +61,7 @@ APK per version.
   health + authenticated models test. **Verified** by `ExposureTest`,
   `ApiAccessTest`, `ApiCorsTest` and the fast check; not manually exercised on
   a device in this session.
-- Full front/back audit pass (unreleased): management routes now require the
+- Full front/back audit pass (shipped in 0.1.31): management routes now require the
   primary key in loopback too, stored keys are masked, CORS is gone, SSE
   failures cannot write a second HTTP response, connections are capped, and
   state writes are atomic with a backup. Native Claude/Responses translation,
@@ -78,10 +78,10 @@ APK per version.
 ```
 
 Last result: `BUILD SUCCESSFUL` (unit tests + fatal lint). The release build
-for 0.1.30 also succeeded and the APK metadata was verified:
+for 0.1.31 also succeeded and the APK metadata was verified:
 
 ```text
-package: com.ninerouter.android  versionCode=32  versionName=0.1.30-android
+package: com.ninerouter.android  versionCode=33  versionName=0.1.31-android
 ```
 
 ## Stuck on
@@ -91,7 +91,7 @@ Nothing is blocked. There is no active bug or failing test.
 ## Next steps
 
 1. Read `AGENTS.md`; verify the tree is clean and `versionName` is
-   `0.1.30-android` before touching code.
+   `0.1.31-android` before touching code.
 2. Ask the user which backlog item to take. Do not invent a release or push
    without an explicit request.
 3. If a release is requested, follow the release procedure in `AGENTS.md`:
