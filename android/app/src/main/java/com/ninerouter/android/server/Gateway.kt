@@ -127,6 +127,7 @@ class Gateway(private val context: Context) {
             val method = request.method
             val rawTarget = request.target
             val path = rawTarget.substringBefore("?")
+            val query = rawTarget.substringAfter('?', "")
             val headers = request.headers
             val body = request.body.toString(Charsets.UTF_8)
             val authorized = authorized(headers)
@@ -144,9 +145,45 @@ class Gateway(private val context: Context) {
                     put("models", Catalog.modelIds().size + Store.state.nodes.sumOf { it.models.size })
                 }.let { json.encodeToString(it) })
 
-                path == "/v1/models" || path == "/api/v1/models" -> {
+                method == "GET" && (path == "/v1" || path == "/api/v1") -> {
                     if (!authorized) return writeJson(output, 401, errorJson(401, "Invalid API key"))
                     writeJson(output, 200, modelsJson(headers))
+                }
+
+                method == "GET" && (path == "/v1/models" || path == "/api/v1/models") -> {
+                    if (!authorized) return writeJson(output, 401, errorJson(401, "Invalid API key"))
+                    writeJson(output, 200, modelsJson(headers))
+                }
+
+                method == "GET" && (path == "/v1/models/info" || path == "/api/v1/models/info") -> {
+                    if (!authorized) return writeJson(output, 401, errorJson(401, "Invalid API key"))
+                    val id = queryParam(query, "id")
+                    if (id.isNullOrBlank()) {
+                        return writeJson(output, 400, errorJson(400, "Missing required query param: id"))
+                    }
+                    val kind = queryParam(query, "kind")?.let { ModelsApi.KIND_SLUGS[it] ?: it }
+                    val model = ModelsApi.info(Store.state, id, kind)
+                    if (model == null || ApiAccess.filterModels(headers, listOf(model), Store.state).isEmpty()) {
+                        return writeJson(output, 404, errorJson(404, "Model not found: $id"))
+                    }
+                    writeJson(output, 200, model.toString())
+                }
+
+                method == "GET" && (path.startsWith("/v1/models/") || path.startsWith("/api/v1/models/")) -> {
+                    if (!authorized) return writeJson(output, 401, errorJson(401, "Invalid API key"))
+                    val rest = path.substringAfter("/models/").trim('/')
+                    val segments = rest.split('/').filter { it.isNotBlank() }
+                    val kind = segments.singleOrNull()?.let { ModelsApi.KIND_SLUGS[it] }
+                    if (kind != null) {
+                        writeJson(output, 200, modelsJson(headers, kind))
+                        return
+                    }
+                    val id = segments.joinToString("/")
+                    val model = ModelsApi.find(Store.state, id)
+                    if (model == null || ApiAccess.filterModels(headers, listOf(model), Store.state).isEmpty()) {
+                        return writeJson(output, 404, errorJson(404, "Model not found: $id"))
+                    }
+                    writeJson(output, 200, model.toString())
                 }
 
                 method == "POST" && path in setOf(
@@ -640,41 +677,26 @@ class Gateway(private val context: Context) {
         return "$base/embeddings"
     }
 
-    private fun modelsJson(headers: Map<String, String> = emptyMap()): String {
-        val models = buildList {
-            Catalog.providers().forEach { provider ->
-                if (Store.state.connections.isEmpty() || Store.state.connections.any { it.enabled && it.provider == provider.id }) {
-                    provider.models.forEach { model ->
-                        add(buildJsonObject {
-                            put("id", "${provider.alias}/$model")
-                            put("object", "model")
-                            put("owned_by", provider.alias)
-                        })
-                    }
-                }
-            }
-            Store.state.nodes.forEach { node ->
-                node.models.forEach { model ->
-                    add(buildJsonObject {
-                        put("id", "${node.prefix}/$model")
-                        put("object", "model")
-                        put("owned_by", node.prefix)
-                    })
-                }
-            }
-            Store.state.combos.forEach { combo ->
-                add(buildJsonObject {
-                    put("id", combo.name)
-                    put("object", "model")
-                    put("owned_by", "combo")
-                })
-            }
-        }.distinctBy { (it["id"] as? JsonPrimitive)?.content }
+    private fun modelsJson(headers: Map<String, String> = emptyMap(), kind: String? = null): String {
+        val models = ModelsApi.list(Store.state, kind)
         val permitted = ApiAccess.filterModels(headers, models, Store.state)
         return json.encodeToString(buildJsonObject {
             put("object", "list")
             put("data", JsonArray(permitted))
         })
+    }
+
+    private fun queryParam(query: String, name: String): String? {
+        if (query.isBlank()) return null
+        val raw = query.split('&')
+            .firstOrNull { it.substringBefore('=') == name }
+            ?.substringAfter('=', "")
+            ?: return null
+        return try {
+            java.net.URLDecoder.decode(raw.replace('+', ' '), Charsets.UTF_8.name())
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun settingsJson(): JsonObject = buildJsonObject {
