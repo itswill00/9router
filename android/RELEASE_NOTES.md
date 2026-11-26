@@ -1,10 +1,47 @@
-# 9Router Android 0.1.30
+# 9Router Android 0.1.31
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.29
+## What changed since 0.1.30
+
+- **Security hardening.** Management routes now require the primary gateway
+  key in loopback mode too, scoped keys are inference-only, stored keys are
+  masked in responses, and wildcard CORS is gone. A missing required key fails
+  closed, IPv6 throttling buckets by /64, and provider errors are redacted
+  before they are stored or shown.
+- **Durable state.** Saves are atomic with a backup slot, unchanged secrets
+  reuse their Keystore ciphertext, and an unreadable Keystore value falls back
+  to the backup instead of silently blanking credentials. App state is
+  excluded from cloud backup and device transfer.
+- **Native protocol fixes.** Claude and Responses requests/responses pass
+  through unchanged, so tool schemas, tool results, images, thinking blocks and
+  input items survive. Cross-format tool calls and images are mapped both ways;
+  Gemini URLs are built per model; Anthropic keys use x-api-key.
+- **Streaming.** Tool and thinking deltas from Claude, Gemini and Responses are
+  translated to OpenAI chunks; partial usage frames merge instead of replacing
+  each other; OpenAI terminals carry usage and cached tokens.
+- **Routing resilience.** Provider nodes cannot retry forever, sticky
+  round-robin rotates after its limit, fusion runs on its own pool, alias
+  cycles are rejected, and a non-JSON 200 is an error instead of an empty
+  success.
+- **Gateway lifecycle.** Concurrent connections are capped, active sockets
+  close on stop, SSE failures cannot write a second HTTP response, exposure
+  changes rebind in place, and a failed bind no longer leaves a sticky
+  foreground service advertising a dead endpoint.
+- **OAuth and updates.** OAuth callbacks require the generated state and
+  re-login replaces the existing account. The updater skips prereleases and
+  debug/unsigned APKs, verifies size and SHA-256, and throttles progress.
+- **UI.** Drafts survive rotation, the user turn is saved immediately, stream
+  updates are batched, auto-scroll only follows when you are near the bottom,
+  destructive actions confirm, the full key is readable, copied credentials are
+  marked sensitive, and accessibility, contrast, IME and chart-label issues are
+  fixed. CLI snippets use the public base URL.
+- **Docs.** Install instructions point at the release APK, the API matrix is
+  corrected, and the loopback/network security model is documented.
+
+## What changed in 0.1.30
 
 - **Remote access toggle fixed.** The endpoint screen now subscribes to the
   store revision unconditionally, so enabling LAN/tunnel mode updates the
@@ -561,10 +598,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `9Router-0.1.30-release.apk` and sideload it:
+Download `9Router-0.1.31-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.1.30-release.apk
+adb install -r 9Router-0.1.31-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -630,7 +667,7 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.30-android` (version code 32)
+- Version: `0.1.31-android` (version code 33)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
