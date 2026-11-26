@@ -246,8 +246,9 @@ object UpdateManager {
             val tag = text(obj["tag_name"]) ?: return@mapNotNull null
             if (!tag.startsWith("android-v")) return@mapNotNull null
             val assets = (obj["assets"] as? JsonArray).orEmpty()
-            val apk = assets.mapNotNull { it as? JsonObject }
-                .firstOrNull { (text(it["name"]) ?: "").endsWith(".apk", ignoreCase = true) }
+            val apkObjects = assets.mapNotNull { it as? JsonObject }
+            val chosenName = selectApkAsset(apkObjects.mapNotNull { text(it["name"]) })
+            val apk = apkObjects.firstOrNull { text(it["name"]) == chosenName }
                 ?: return@mapNotNull null
             val url = text(apk["browser_download_url"]) ?: return@mapNotNull null
             val version = versionOf(tag) ?: return@mapNotNull null
@@ -299,4 +300,16 @@ object UpdateManager {
             a == 'P'.code && b == 'K'.code
         }
     }.getOrDefault(false)
+}
+
+/**
+ * Release pages carry two APKs. Prefer the R8-minified release variant, then
+ * the debug variant, then any `.apk` — deterministic regardless of the order
+ * GitHub returns the assets in.
+ */
+internal fun selectApkAsset(names: List<String>): String? {
+    val apks = names.filter { it.endsWith(".apk", ignoreCase = true) }
+    return apks.firstOrNull { it.contains("-release", ignoreCase = true) }
+        ?: apks.firstOrNull { it.contains("-debug", ignoreCase = true) }
+        ?: apks.firstOrNull()
 }
