@@ -1,11 +1,13 @@
 package com.ninerouter.android.ui
 
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -170,6 +172,11 @@ fun NineRouterTheme(content: @Composable () -> Unit) {
             large = NineRouterShapes.large,
             extraLarge = NineRouterShapes.large,
         ),
-        content = content,
-    )
+    ) {
+        // Compose defaults LocalContentColor to black; on our dark surfaces that
+        // paints dark ripples/focus overlays. Keep interaction feedback light.
+        CompositionLocalProvider(LocalContentColor provides NineRouterColors.TextMain) {
+            content()
+        }
+    }
 }
