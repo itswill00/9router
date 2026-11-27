@@ -15,15 +15,15 @@ APK per version.
   - asset: `9Router-0.3.0-release.apk` (11,317,475 bytes)
   - SHA-256: `5e4240ac18b83c7e63b8f812443becf376fae9de39d75830f3fd06879966dc6b`
 - Recent commits:
+  - `360e8d46 fix(ui): use the bundled mono family in tools and combos`
+  - `59d6f761 chore(android): release 0.3.0`
+  - `95a6920b fix(i18n): translate the design refresh copy`
+  - `6d927f98 feat(ui): add the carbon and ember design system`
+  - `0183dd24 docs: record release 0.2.0`
   - `89501b81 chore(android): release 0.2.0`
   - `e8a30860 feat(ui): turn media pages into working request consoles`
   - `811a4d13 feat(media): add native image, audio and web gateway`
   - `5c2021b0 docs: record release 0.1.34`
-  - `5a6efea4 chore(android): release 0.1.34`
-  - `894a4c88 fix(i18n): translate interpolation templates`
-  - `4aecdd79 feat(providers): allow multiple keys on custom endpoints`
-  - `c136efb9 chore(android): release 0.1.33`
-  - `e9d98dad fix(i18n): escape the placeholder regex for Android ICU`
 - Working tree: no modified or untracked files after the docs commit.
 
 ## Done so far
