@@ -1,10 +1,19 @@
-# 9Router Android 0.3.2
+# 9Router Android 0.3.3
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.3.1
+## What changed since 0.3.2
+
+- **Resume the right step after install permission.** If a download finishes
+  while "Install unknown apps" is off, tapping Install now opens the system
+  permission screen and then installs the file that is already on disk instead
+  of trying to start another download.
+- The one-tap updater, progress dialog and drawer close button from 0.3.2 are
+  unchanged.
+
+## What changed in 0.3.2
 
 - **One-tap updates.** Tapping Update in the launch prompt, the top-bar update
   pill, or Settings starts the download immediately. When it finishes the app
@@ -760,10 +769,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `9Router-0.3.2-release.apk` and sideload it:
+Download `9Router-0.3.3-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.3.2-release.apk
+adb install -r 9Router-0.3.3-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -832,7 +841,7 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.3.2-android` (version code 40)
+- Version: `0.3.3-android` (version code 41)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`

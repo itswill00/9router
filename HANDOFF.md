@@ -10,10 +10,10 @@ APK per version.
 ## Current state
 
 - Branch: `master` — clean; synced with `origin/master`.
-- Version: `0.3.2-android` (version code 40).
-- Latest release (Latest): https://github.com/itswill00/9router/releases/tag/android-v0.3.2
-  - asset: `9Router-0.3.2-release.apk` (11,325,519 bytes)
-  - SHA-256: `6d3e55a5e4424aeeb803721b91959099521c0a4c269e3f73c1eb56c2abb8e31c`
+- Version: `0.3.3-android` (version code 41).
+- Latest release (Latest): https://github.com/itswill00/9router/releases/tag/android-v0.3.3
+  - asset: `9Router-0.3.3-release.apk` (11,325,519 bytes)
+  - SHA-256: `b16fff50418ea09af356729eb493e29033246911d4605090c331a1fa7b69facc`
 - Recent commits:
   - `330170e4 chore(android): release 0.3.2`
   - `8244cfca fix(i18n): translate the one-tap update flow`
@@ -119,10 +119,10 @@ APK per version.
 ```
 
 Last result: `BUILD SUCCESSFUL` (unit tests + fatal lint). The release build
-for 0.3.2 also succeeded and the APK metadata was verified:
+for 0.3.3 also succeeded and the APK metadata was verified:
 
 ```text
-package: com.ninerouter.android  versionCode=40  versionName=0.3.2-android
+package: com.ninerouter.android  versionCode=41  versionName=0.3.3-android
 ```
 
 `ProviderNodeKeysTest` covers legacy-key migration, deduplication and cursor
@@ -136,7 +136,7 @@ Nothing is blocked. There is no active bug or failing test.
 ## Next steps
 
 1. Read `AGENTS.md`; verify the tree is clean and `versionName` is
-   `0.3.2-android` before touching code.
+   `0.3.3-android` before touching code.
 2. Ask the user which backlog item to take. Do not invent a release or push
    without an explicit request.
 3. If a release is requested, follow the release procedure in `AGENTS.md`:
@@ -182,7 +182,8 @@ Nothing is blocked. There is no active bug or failing test.
 - **Updater hand-off** → verify "install unknown apps" before downloading;
   calling `install()` from a background download without that permission opens
   Settings and strands the user. Keep the `Install` pill/Settings fallback for
-  Android background-activity restrictions.
+  Android background-activity restrictions. When the permission launcher
+  returns, install an existing `Ready` file instead of starting a new download.
 - **Drawer must close** → keep `gesturesEnabled = true` and the explicit close
   button. Disabling swipe without another affordance made the 0.3.1 drawer
   impossible to dismiss for some users.
