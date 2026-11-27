@@ -70,6 +70,12 @@ project.
   encodings, Basic Auth (iFlow), and client secrets are honored.
 - Custom OpenAI/Anthropic-compatible nodes with per-node API key.
 - Multiple API keys with per-key model/combo allow-list, constant-time compare.
+- **Media gateway v1.** `POST /v1/images/generations` (OpenAI-compatible
+  providers plus Gemini), `/v1/audio/speech` (OpenAI and ElevenLabs),
+  `/v1/audio/transcriptions` (OpenAI-compatible multipart), `/v1/search`
+  (Tavily, Exa, Brave, Serper) and `/v1/web/fetch` (Jina Reader, Firecrawl,
+  Tavily, Exa). Media pages mark each provider as ready or registry-only and
+  include a request console that calls the local gateway.
 - In-app streaming chat with persistent sessions, a session menu, image attachments for vision models, and a vision-capability warning.
 - **Compact mobile-first dashboard** using the upstream visual language: exact
   dark palette from `src/app/globals.css`, brand orange, the original `hub`

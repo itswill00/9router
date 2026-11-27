@@ -10,10 +10,10 @@ APK per version.
 ## Current state
 
 - Branch: `master` — clean; synced with `origin/master`.
-- Version: `0.1.34-android` (version code 36).
-- Latest release: https://github.com/itswill00/9router/releases/tag/android-v0.1.34
-  - asset: `9Router-0.1.34-release.apk` (11,081,042 bytes)
-  - SHA-256: `87e489c34a3c3afb61cb1ba706f4da7c6509f5538d99dae088b7086c49465494`
+- Version: `0.2.0-android` (version code 37).
+- Latest release: https://github.com/itswill00/9router/releases/tag/android-v0.2.0
+  - asset: `9Router-0.2.0-release.apk` (11,146,174 bytes)
+  - SHA-256: `9a7f9b0c3707dbc3da583fff7e20653761d1abfbf9dcb2f22f08137c3f9347dd`
 - Recent commits:
   - `5a6efea4 chore(android): release 0.1.34`
   - `894a4c88 fix(i18n): translate interpolation templates`
@@ -81,6 +81,15 @@ APK per version.
   round-robin cursor), and NodeProbe probes until a key succeeds. The node API
   accepts `apiKeys` and reports `keyCount`. **Verified** by
   `ProviderNodeKeysTest` and the fast check; not yet exercised on a phone.
+- Media gateway v1 (shipped in 0.2.0): `core/MediaEngine.kt` implements image
+  generation (OpenAI-compatible adapters + Gemini), OpenAI/ElevenLabs speech,
+  OpenAI-compatible multipart transcription, and normalized search/fetch for
+  Tavily, Exa, Brave, Serper, Jina and Firecrawl. `ProviderDef` gained
+  `MediaConfig` blocks exported from the registry. `Gateway` exposes the five
+  routes, writes binary responses, and filters `/v1/models/{kind}` to providers
+  with a native adapter. The media pages now have a request console. **Verified**
+  by `MediaEngineTest` (15 cases) and the fast check; not yet exercised against
+  real provider keys on a phone.
 - Runtime localization (shipped in 0.1.32): `ui/I18n.kt` shadows Compose `Text`, loads
   one dictionary per locale from `assets/i18n/<tag>.json`, supports `{0}`
   templates, and switches immediately through Settings → Language. The picker
@@ -98,14 +107,15 @@ APK per version.
 ```
 
 Last result: `BUILD SUCCESSFUL` (unit tests + fatal lint). The release build
-for 0.1.34 also succeeded and the APK metadata was verified:
+for 0.2.0 also succeeded and the APK metadata was verified:
 
 ```text
-package: com.ninerouter.android  versionCode=36  versionName=0.1.34-android
+package: com.ninerouter.android  versionCode=37  versionName=0.2.0-android
 ```
 
 `ProviderNodeKeysTest` covers legacy-key migration, deduplication and cursor
-reset. The release APK still contains 34 `assets/i18n/*.json` files.
+reset; `MediaEngineTest` covers the new image, speech, search, fetch, multipart
+and HTTP paths. The release APK still contains 34 `assets/i18n/*.json` files.
 
 ## Stuck on
 
@@ -114,7 +124,7 @@ Nothing is blocked. There is no active bug or failing test.
 ## Next steps
 
 1. Read `AGENTS.md`; verify the tree is clean and `versionName` is
-   `0.1.34-android` before touching code.
+   `0.2.0-android` before touching code.
 2. Ask the user which backlog item to take. Do not invent a release or push
    without an explicit request.
 3. If a release is requested, follow the release procedure in `AGENTS.md`:
@@ -140,6 +150,15 @@ Nothing is blocked. There is no active bug or failing test.
 
 ## Pitfalls — do not repeat
 
+- **Media is binary** → audio/image responses must go through `writeBytes`, not
+  `writeJson`. The gateway's normal request path converts the body to UTF-8, so
+  STT must read `request.body` as bytes; decoding multipart audio as a string
+  corrupts it.
+- **Do not advertise unimplemented media** → `/v1/models/{kind}` is filtered to
+  providers with a native adapter. Keep `MediaEngine.supports` and the media
+  page badges in sync when adding an adapter.
+- **Gemini media auth is not Bearer** → API-key Gemini requests use
+  `x-goog-api-key`; OAuth access tokens fall back to `Authorization: Bearer`.
 - **Android regex is ICU, not the JVM** → `Regex("""\{\d+}""")` compiled on the
   test JVM but threw `PatternSyntaxException` in `App.onCreate` on Android. A
   closing brace after a quantifier must be escaped too (`\{\d+\}`). JVM unit

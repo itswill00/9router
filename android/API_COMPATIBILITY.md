@@ -29,15 +29,38 @@ where one exists. Nothing here claims full `/v1` parity.
 | `POST /v1/responses` | supported | Responses JSON and native SSE (`response.created` … `response.completed`/`incomplete`, no `[DONE]`). | `SseEncoderTest` |
 | `POST /v1/messages/count_tokens` | partial | Approximate Anthropic character/4 estimator, not a real tokenizer. | `CoreCompatibilityRoutesTest` |
 | `POST /v1/embeddings` | partial | Forwards `input`, `dimensions`, `encoding_format`, `user`; returns upstream status/body. | `CoreCompatibilityRoutesTest` |
+| `POST /v1/images/generations` | partial | OpenAI-compatible image providers (OpenAI, MiniMax, OpenRouter, Recraft, xAI, SenseNova, Vercel AI Gateway) plus Gemini. Supports `?response_format=binary`; Gemini responses are normalized to `b64_json`. | `MediaEngineTest` |
+| `POST /v1/audio/speech` | partial | OpenAI TTS and ElevenLabs. Returns raw audio by default; `?response_format=json` returns base64 audio. | `MediaEngineTest` |
+| `POST /v1/audio/transcriptions` | partial | OpenAI-compatible multipart forwarding for OpenAI and Groq. The provider `model` field is rewritten without its router prefix; 8 MiB request cap. | `MediaEngineTest` |
+| `GET /v1/audio/voices` | unsupported | Use the upstream dashboard or provider API. | — |
+| `POST /v1/search` | partial | Tavily, Exa, Brave Search and Serper; normalized `{provider,query,results,…}` envelope. | `MediaEngineTest` |
+| `POST /v1/web/fetch` | partial | Jina Reader, Firecrawl, Tavily Extract and Exa Contents; normalized title/content envelope. | `MediaEngineTest` |
 | `POST /v1/responses/compact` | unsupported | Structured `501 unsupported_operation`; never runs a normal completion. | `CoreCompatibilityRoutesTest` |
 | `POST /v1/api/chat` | unsupported | Upstream's Ollama-compatible chat route; Android returns 404. | — |
 | `GET|POST /v1beta/models/{model}:*` | unsupported | No native Gemini route; returns 404. | — |
-| `/v1/audio/*` (speech, transcriptions, voices) | unsupported | No audio pipeline in the native gateway. | — |
-| `/v1/images/generations` | unsupported | — | — |
-| `/v1/search` | unsupported | — | — |
+| `/v1/audio/*` (music, voices) | unsupported | TTS/STT are supported; voice discovery and music are not. | — |
 | `/v1/systemone` | unsupported | — | — |
 | `/v1/videos/*` (generations, edits, extensions, `{id}`) | unsupported | — | — |
-| `/v1/web/fetch` | unsupported | — | — |
+
+### Media provider matrix
+
+| Capability | Native adapters |
+| --- | --- |
+| Image generation | `openai`, `minimax`, `openrouter`, `recraft`, `vercel-ai-gateway`, `xai`, `sensenova`, `sensenova-intl`, `gemini` |
+| Text to speech | `openai`, `elevenlabs` |
+| Speech to text | `openai`, `groq` (OpenAI-compatible multipart) |
+| Web search | `tavily`, `exa`, `brave-search`, `serper` |
+| Web fetch | `jina-reader`, `firecrawl`, `tavily`, `exa` |
+
+`/v1/models/{kind}` hides media entries for providers without a native
+adapter, so a client cannot discover a route that would end in a 501. The
+remaining registry entries stay visible in the in-app provider list with a
+`Registry` badge.
+
+Media requests use the provider registry's declarative endpoint config. No
+media request is proxied through a desktop service. Audio and image responses
+are streamed straight to the socket; image JSON responses are passed through
+unless Gemini needs normalization.
 
 ## Streaming protocols
 

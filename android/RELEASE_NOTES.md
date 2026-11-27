@@ -1,10 +1,57 @@
-# 9Router Android 0.1.34
+# 9Router Android 0.2.0
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.33
+## What changed since 0.1.34
+
+- **Media gateway v1.** The native gateway now serves five families that
+  previously existed only on the desktop dashboard:
+  - `POST /v1/images/generations` — OpenAI, MiniMax, OpenRouter, Recraft, xAI,
+    SenseNova, Vercel AI Gateway and Gemini. `?response_format=binary` returns
+    raw image bytes; Gemini image parts are normalized to `b64_json`.
+  - `POST /v1/audio/speech` — OpenAI TTS and ElevenLabs, with raw audio by
+    default and `?response_format=json` for a base64 envelope.
+  - `POST /v1/audio/transcriptions` — OpenAI-compatible multipart forwarding
+    for OpenAI and Groq. The router prefix is removed from the `model` field
+    before it reaches the provider.
+  - `POST /v1/search` — Tavily, Exa, Brave Search and Serper, normalized to the
+    upstream `{provider, query, results, usage, metrics}` shape.
+  - `POST /v1/web/fetch` — Jina Reader, Firecrawl, Tavily Extract and Exa
+    Contents, normalized to the upstream title/content shape.
+- **Media pages are no longer placeholders.** Image, TTS, STT and web pages
+  show which providers have a native route, distinguish ready providers from
+  registry-only entries, and include a request console that posts to the local
+  gateway. Image results render inline, TTS results can be played, and STT
+  accepts an audio file up to the gateway's 8 MiB request limit.
+- **Truthful model discovery.** `/v1/models/{kind}` hides media entries whose
+  provider has no native adapter, so clients cannot discover a route that would
+  end in a 501.
+- **Provider config bridge.** The build-time registry export now carries the
+  declarative media endpoint config (`imageConfig`, `ttsConfig`, `sttConfig`,
+  `searchConfig`, `fetchConfig`) so adding a supported provider does not
+  require hand-coding its URL in Kotlin.
+- **Translation coverage.** New console labels and helper copy are in the
+  bundled locale dictionaries.
+
+### Provider matrix
+
+| Capability | Native adapters |
+| --- | --- |
+| Image generation | `openai`, `minimax`, `openrouter`, `recraft`, `vercel-ai-gateway`, `xai`, `sensenova`, `sensenova-intl`, `gemini` |
+| Text to speech | `openai`, `elevenlabs` |
+| Speech to text | `openai`, `groq` |
+| Web search | `tavily`, `exa`, `brave-search`, `serper` |
+| Web fetch | `jina-reader`, `firecrawl`, `tavily`, `exa` |
+
+Providers outside this matrix remain visible in the app with a `Registry`
+badge; `/v1/models/{kind}` does not advertise them as callable media models.
+Video, System One, voice discovery (`/v1/audio/voices`), music and specialized
+image adapters such as FLUX, Stability, ComfyUI and SDWebUI are still out of
+scope for this build.
+
+## What changed in 0.1.34
 
 - **Multiple keys per custom endpoint.** OpenAI- and Anthropic-compatible nodes
   can now store a list of API keys. Add or remove them while creating or editing
@@ -652,10 +699,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `9Router-0.1.34-release.apk` and sideload it:
+Download `9Router-0.2.0-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.1.34-release.apk
+adb install -r 9Router-0.2.0-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -704,9 +751,12 @@ This is a native slice, not full parity with the Node gateway:
 - OAuth flows that need provider-specific cryptography (Xiaomi MiMo ECDH) or a
   custom binary handshake (Cursor, Windsurf, Trae, Qoder) use the manual token
   paste path.
-- No cloud sync, TTS, STT, image, or video endpoints. `/v1/embeddings` is
-  supported for OpenAI-compatible upstreams. Media Providers pages list the
-  bundled registry and gateway routes, but only embeddings has a native route.
+- Media coverage is adapter-based. Image generation supports OpenAI-compatible
+  providers plus Gemini; TTS supports OpenAI and ElevenLabs; STT supports
+  OpenAI and Groq; search supports Tavily, Exa, Brave and Serper; fetch supports
+  Jina, Firecrawl, Tavily and Exa. Video, music, System One, voice discovery,
+  and specialized image adapters (FLUX, Stability, ComfyUI, SDWebUI) are not
+  ported. Audio uploads are bounded by the gateway's 8 MiB request limit.
 - Proxy Pools is informational only; outbound proxy transport is not ported.
 - Translator coverage focuses on OpenAI, Claude, Gemini, and Responses.
   Thinking-block and tool-id edge cases are still being ported.
@@ -721,7 +771,7 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.1.34-android` (version code 36)
+- Version: `0.2.0-android` (version code 37)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
