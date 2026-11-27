@@ -15,6 +15,9 @@ APK per version.
   - asset: `9Router-0.4.1-release.apk` (11,313,167 bytes)
   - SHA-256: `ea67753992c243a85dc401076ce29d6a704fda76392ba65ef413ed6c55413a93`
 - Recent commits:
+  - `e8b91f9f chore(android): release 0.4.1`
+  - `64163a15 fix(topology): match react flow positions and edges`
+  - `61f413ad docs: record release 0.4.0`
   - `412e5c70 chore(android): release 0.4.0`
   - `c1e841d5 fix(i18n): refresh topology and console copy`
   - `18dcb2c0 feat(logs): capture the whole backend in the console`
@@ -22,9 +25,6 @@ APK per version.
   - `fed0ccbb docs: record release 0.3.3`
   - `7501095d chore(android): release 0.3.3`
   - `c9c0710f fix(update): install the ready file after granting permission`
-  - `0d77ed77 docs: record release 0.3.2`
-  - `330170e4 chore(android): release 0.3.2`
-  - `8244cfca fix(i18n): translate the one-tap update flow`
 - Working tree: no modified or untracked files after the docs commit.
 
 ## Done so far
