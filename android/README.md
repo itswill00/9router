@@ -83,11 +83,11 @@ project.
   Provider art and the original `hub` brand mark are still bundled from the
   upstream project.
 - **Adaptive navigation.** A five-item bottom dock on phones, a navigation rail
-  on tablets, and the full upstream index in the drawer. The default screen is
-  a Command Center with gateway state, copyable endpoints, quick actions and
-  live account/model/request counts.
-- **Navigation drawer.** The top-bar hamburger and the More item open a drawer
-  that mirrors the full 9Router sidebar: Endpoint & Key, Providers, Combo & Vision Adapter,
+  on tablets, and a **More** overflow drawer for secondary destinations. The
+  default screen is a gateway overview with state, copyable endpoints, quick
+  actions and account/model/request counts.
+- **More drawer.** The More item opens an overflow drawer with the remaining
+  9Router destinations: Endpoint & Key, Providers, Combo & Vision Adapter,
   Usage, Quota Tracker, Token Saver, CLI Tools, then a System group with
   Media Providers (Embedding, Text to Image, Video, Text To Speech, Speech To
   Text, System One, Web Fetch & Search), Proxy Pools, Skills, Console Log,

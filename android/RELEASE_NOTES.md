@@ -1,10 +1,23 @@
-# 9Router Android 0.3.0
+# 9Router Android 0.3.1
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.2.0
+## What changed since 0.3.0
+
+- **One navigation model.** The top-bar hamburger is gone. Phones navigate with
+  the bottom dock, tablets with the rail, and **More** opens an overflow drawer
+  that now contains only the secondary destinations (Quota, Token Saver, CLI
+  Tools, media providers, proxy, skills, logs, translator, About and Settings).
+  Primary pages no longer appear twice.
+- **Copy cleanup.** The generic "Live" badge is gone. The top bar uses a plain
+  status dot, the home hero says *Gateway running* / *Gateway stopped*, Usage
+  says *Realtime*, and the log stream says *Following*.
+- **Brand home affordance.** Tapping the 9Router mark in the top bar returns to
+  the gateway screen; the chat back arrow keeps its old position.
+
+## What changed in 0.3.0
 
 This is the Carbon & Ember design refresh. The gateway and API surface are
 unchanged; the app now has a single visual language from the first launch to
@@ -727,10 +740,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `9Router-0.3.0-release.apk` and sideload it:
+Download `9Router-0.3.1-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.3.0-release.apk
+adb install -r 9Router-0.3.1-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -799,7 +812,7 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.3.0-android` (version code 38)
+- Version: `0.3.1-android` (version code 39)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`

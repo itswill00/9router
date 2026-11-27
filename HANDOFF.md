@@ -10,10 +10,10 @@ APK per version.
 ## Current state
 
 - Branch: `master` — clean; synced with `origin/master`.
-- Version: `0.3.0-android` (version code 38).
-- Latest release (Latest): https://github.com/itswill00/9router/releases/tag/android-v0.3.0
-  - asset: `9Router-0.3.0-release.apk` (11,317,475 bytes)
-  - SHA-256: `5e4240ac18b83c7e63b8f812443becf376fae9de39d75830f3fd06879966dc6b`
+- Version: `0.3.1-android` (version code 39).
+- Latest release (Latest): https://github.com/itswill00/9router/releases/tag/android-v0.3.1
+  - asset: `9Router-0.3.1-release.apk` (11,314,863 bytes)
+  - SHA-256: `c52d72733e893b494a771abb2e91ffea45e6f82c9403079ba1015c3e654e6af9`
 - Recent commits:
   - `360e8d46 fix(ui): use the bundled mono family in tools and combos`
   - `59d6f761 chore(android): release 0.3.0`
@@ -111,10 +111,10 @@ APK per version.
 ```
 
 Last result: `BUILD SUCCESSFUL` (unit tests + fatal lint). The release build
-for 0.3.0 also succeeded and the APK metadata was verified:
+for 0.3.1 also succeeded and the APK metadata was verified:
 
 ```text
-package: com.ninerouter.android  versionCode=38  versionName=0.3.0-android
+package: com.ninerouter.android  versionCode=39  versionName=0.3.1-android
 ```
 
 `ProviderNodeKeysTest` covers legacy-key migration, deduplication and cursor
@@ -128,7 +128,7 @@ Nothing is blocked. There is no active bug or failing test.
 ## Next steps
 
 1. Read `AGENTS.md`; verify the tree is clean and `versionName` is
-   `0.3.0-android` before touching code.
+   `0.3.1-android` before touching code.
 2. Ask the user which backlog item to take. Do not invent a release or push
    without an explicit request.
 3. If a release is requested, follow the release procedure in `AGENTS.md`:
@@ -167,6 +167,12 @@ Nothing is blocked. There is no active bug or failing test.
   bundled Manrope/JetBrains Mono families are referenced through
   `NineRouterFonts` and must not fall back to `FontFamily.Monospace` in new
   code.
+- **One navigation surface** → primary destinations live only in the bottom
+  dock / rail. The drawer is the **More** overflow (secondary screens only), and
+  the top-bar mark goes home. Do not add a hamburger or repeat primary screens
+  in the drawer.
+- **No generic "Live" copy** → use the status dot, "Gateway running/stopped",
+  "Realtime" for Usage and "Following" for the log stream.
 - **Adaptive shell insets** → the outer `AppShell` Row owns the navigation-bar
   and IME bottom inset. Do not add another navigation-bar padding to the
   bottom dock or content, or screens jump when the keyboard opens.
