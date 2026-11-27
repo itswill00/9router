@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -86,9 +87,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -97,6 +102,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ninerouter.android.GatewayService
@@ -136,7 +142,12 @@ import java.util.UUID
 // ---------------------------------------------------------------------------
 
 @Composable
-fun EndpointScreen(refresh: () -> Unit) {
+fun EndpointScreen(
+    refresh: () -> Unit,
+    onOpenChat: () -> Unit = {},
+    onOpenProviders: () -> Unit = {},
+    onOpenUsage: () -> Unit = {},
+) {
     // Read the revision here, in this screen's scope, and unconditionally.
     // Reading it only inside the network-mode branch leaves the screen
     // unsubscribed while the toggle is off, so the switch never turns on.
@@ -169,98 +180,58 @@ fun EndpointScreen(refresh: () -> Unit) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Panel {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) {
-                    if (running) PulsingDot(NineRouterColors.Success, size = 8.dp)
-                    else StatusDot(NineRouterColors.TextSubtle, size = 9.dp)
-                }
-                Spacer(Modifier.width(7.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        if (running) "Gateway running" else "Gateway stopped",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = NineRouterColors.TextMain,
+        GatewayHero(
+            running = running,
+            exposed = exposed,
+            apiRoot = apiRoot,
+            error = gatewayError,
+            testing = testing,
+            testResult = testResult,
+            connections = Store.state.connections.size,
+            models = Catalog.modelIds().size + Store.state.nodes.sumOf { it.models.size },
+            requests24h = Store.state.usage.count { it.ts >= System.currentTimeMillis() - 24L * 60 * 60 * 1000 },
+            onStartStop = {
+                if (running) GatewayService.stop(context) else GatewayService.start(context)
+                refresh()
+            },
+            onOpenDashboard = {
+                runCatching {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse(GatewayState.BASE_URL))
                     )
-                    Text(
-                        if (!running) "Start it to serve requests"
-                        else if (exposed) "Serving loopback plus private Wi-Fi and tailnet peers"
-                        else "Serving OpenAI-compatible traffic on loopback",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = NineRouterColors.TextMuted,
-                    )
+                }.onFailure {
+                    Toast.makeText(context, tr("No browser available"), Toast.LENGTH_SHORT).show()
                 }
-                Pill(":${GatewayState.PORT}")
-            }
-            Spacer(Modifier.height(NineRouterSpacing.md))
-            CopyRow("OpenAI base URL", apiRoot) { copy("Base URL", apiRoot) }
-            Spacer(Modifier.height(6.dp))
-            CopyRow("Dashboard", GatewayState.BASE_URL) { copy("URL", GatewayState.BASE_URL) }
-            if (gatewayError.isNotBlank()) {
-                Spacer(Modifier.height(8.dp))
-                NoticeBanner(gatewayError, NineRouterColors.Danger)
-            }
-            Spacer(Modifier.height(NineRouterSpacing.md))
-            Row(horizontalArrangement = Arrangement.spacedBy(NineRouterSpacing.sm)) {
-                PrimaryButton(
-                    if (running) "Shutdown" else "Start gateway",
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        if (running) GatewayService.stop(context) else GatewayService.start(context)
-                        refresh()
-                    },
-                )
-                SecondaryButton("Open dashboard", modifier = Modifier.weight(1f)) {
-                    runCatching {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse(GatewayState.BASE_URL))
-                        )
-                    }.onFailure {
-                        Toast.makeText(context, tr("No browser available"), Toast.LENGTH_SHORT).show()
+            },
+            onCopyEndpoint = { copy("Base URL", apiRoot) },
+            onCopyDashboard = { copy("URL", GatewayState.BASE_URL) },
+            onOpenChat = onOpenChat,
+            onOpenProviders = onOpenProviders,
+            onOpenUsage = onOpenUsage,
+            onTest = {
+                if (!testing) {
+                    testing = true
+                    testResult = ""
+                    scope.launch {
+                        val result = withContext(Dispatchers.IO) {
+                            runCatching {
+                                val conn = java.net.URL("${GatewayState.BASE_URL}/api/health")
+                                    .openConnection() as java.net.HttpURLConnection
+                                conn.connectTimeout = 3000
+                                conn.readTimeout = 3000
+                                val code = conn.responseCode
+                                val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                                    ?.bufferedReader()?.use { it.readText() }.orEmpty()
+                                conn.disconnect()
+                                if (code == 200) "OK · $body" else "HTTP $code · ${body.take(160)}"
+                            }.getOrElse { it.message ?: it.javaClass.simpleName }
+                        }
+                        testing = false
+                        testResult = result
                     }
                 }
-            }
-            Spacer(Modifier.height(NineRouterSpacing.sm))
-            SecondaryButton(
-                if (testing) "Testing…" else "Test connection",
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                if (testing) return@SecondaryButton
-                testing = true
-                testResult = ""
-                scope.launch {
-                    val result = withContext(Dispatchers.IO) {
-                        runCatching {
-                            val conn = java.net.URL("${GatewayState.BASE_URL}/api/health")
-                                .openConnection() as java.net.HttpURLConnection
-                            conn.connectTimeout = 3000
-                            conn.readTimeout = 3000
-                            val code = conn.responseCode
-                            val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
-                                ?.bufferedReader()?.use { it.readText() }.orEmpty()
-                            conn.disconnect()
-                            if (code == 200) "OK · $body" else "HTTP $code · ${body.take(160)}"
-                        }.getOrElse { it.message ?: it.javaClass.simpleName }
-                    }
-                    testing = false
-                    testResult = result
-                }
-            }
-            AnimatedVisibility(
-                visible = testResult.isNotBlank(),
-                enter = fadeIn(tween(200)) + expandVertically(tween(220)),
-                exit = fadeOut(tween(140)) + shrinkVertically(tween(160)),
-            ) {
-                Column {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        testResult,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (testResult.startsWith("OK")) NineRouterColors.Success else NineRouterColors.Warning,
-                    )
-                }
-            }
-        }
+            },
+        )
 
         Panel {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -565,6 +536,227 @@ private fun httpProbe(url: String, apiKey: String?): String {
         if (code in 200..299) code.toString() else "HTTP $code"
     } finally {
         connection.disconnect()
+    }
+}
+
+@Composable
+private fun GatewayHero(
+    running: Boolean,
+    exposed: Boolean,
+    apiRoot: String,
+    error: String,
+    testing: Boolean,
+    testResult: String,
+    connections: Int,
+    models: Int,
+    requests24h: Int,
+    onStartStop: () -> Unit,
+    onOpenDashboard: () -> Unit,
+    onCopyEndpoint: () -> Unit,
+    onCopyDashboard: () -> Unit,
+    onOpenChat: () -> Unit,
+    onOpenProviders: () -> Unit,
+    onOpenUsage: () -> Unit,
+    onTest: () -> Unit,
+) {
+    val stateColor = if (running) NineRouterColors.Success else NineRouterColors.TextSubtle
+    Surface(
+        shape = NineRouterShapes.large,
+        border = BorderStroke(1.dp, NineRouterColors.BorderSubtle),
+        color = Color.Transparent,
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        listOf(Color(0xFF2A170E), NineRouterColors.SurfaceElevated),
+                    ),
+                )
+                .drawBehind {
+                    val center = Offset(size.width * 0.90f, 0f)
+                    val radius = size.width * 0.85f
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            listOf(NineRouterColors.BrandOrange.copy(alpha = 0.20f), Color.Transparent),
+                            center = center,
+                            radius = radius,
+                        ),
+                        radius = radius,
+                        center = center,
+                    )
+                },
+        ) {
+            Column(Modifier.padding(18.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(46.dp)
+                            .background(stateColor.copy(alpha = 0.12f), CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (running) PulsingDot(stateColor, size = 10.dp)
+                        else StatusDot(stateColor, size = 11.dp)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Eyebrow(if (exposed) "Private network" else "Loopback", NineRouterColors.BrandAmber)
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            if (running) "Gateway online" else "Gateway offline",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = NineRouterColors.TextMain,
+                        )
+                        Text(
+                            if (!running) "Start it to serve requests"
+                            else if (exposed) "Phone, Wi-Fi and tailnet clients"
+                            else "OpenAI-compatible traffic on this device",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NineRouterColors.TextMuted,
+                        )
+                    }
+                    Pill(
+                        ":${GatewayState.PORT}",
+                        if (running) NineRouterColors.BrandAmber else NineRouterColors.TextMuted,
+                        if (running) NineRouterColors.BrandAmber.copy(alpha = 0.12f) else NineRouterColors.Surface2,
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+                Surface(
+                    color = NineRouterColors.Bg.copy(alpha = 0.42f),
+                    shape = NineRouterShapes.medium,
+                    border = BorderStroke(1.dp, NineRouterColors.BorderSubtle),
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
+                        CopyRow("OpenAI base URL", apiRoot, onCopyEndpoint)
+                        Spacer(Modifier.height(8.dp))
+                        CopyRow("Local dashboard", GatewayState.BASE_URL, onCopyDashboard)
+                    }
+                }
+                if (error.isNotBlank()) {
+                    Spacer(Modifier.height(10.dp))
+                    NoticeBanner(error, NineRouterColors.Danger)
+                }
+
+                Spacer(Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PrimaryButton(
+                        if (running) "Shutdown" else "Start gateway",
+                        modifier = Modifier.weight(1f),
+                        onClick = onStartStop,
+                    )
+                    SecondaryButton("Dashboard", modifier = Modifier.weight(1f), onClick = onOpenDashboard)
+                }
+
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    QuickAction("Chat", R.drawable.ic_chat, onOpenChat)
+                    QuickAction("Providers", R.drawable.ic_nav_providers, onOpenProviders)
+                    QuickAction("Usage", R.drawable.ic_nav_usage, onOpenUsage)
+                    QuickAction(
+                        if (testing) "Testing" else "Test",
+                        icon = Icons.Default.Check,
+                        loading = testing,
+                        onClick = onTest,
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = testResult.isNotBlank(),
+                    enter = fadeIn(tween(200)) + expandVertically(tween(220)),
+                    exit = fadeOut(tween(140)) + shrinkVertically(tween(160)),
+                ) {
+                    Column {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            testResult,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (testResult.startsWith("OK")) NineRouterColors.Success else NineRouterColors.Warning,
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MetricTile(
+                        "Accounts",
+                        connections.toString(),
+                        "connected",
+                        NineRouterColors.TextMain,
+                        Modifier.weight(1f),
+                    )
+                    MetricTile(
+                        "Models",
+                        models.toString(),
+                        "catalog",
+                        NineRouterColors.TextMain,
+                        Modifier.weight(1f),
+                    )
+                    MetricTile(
+                        "24h",
+                        requests24h.toString(),
+                        "requests",
+                        NineRouterColors.BrandAmber,
+                        Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.QuickAction(
+    label: String,
+    iconRes: Int? = null,
+    onClick: () -> Unit,
+    icon: ImageVector? = null,
+    loading: Boolean = false,
+) {
+    Surface(
+        color = NineRouterColors.Surface2.copy(alpha = 0.56f),
+        shape = NineRouterShapes.medium,
+        border = BorderStroke(1.dp, NineRouterColors.BorderSubtle),
+        modifier = Modifier
+            .weight(1f)
+            .clip(NineRouterShapes.medium)
+            .clickable(onClick = onClick),
+    ) {
+        Column(
+            Modifier.padding(vertical = 9.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            if (loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(15.dp),
+                    color = NineRouterColors.BrandOrange,
+                    strokeWidth = 2.dp,
+                )
+            } else if (icon != null) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = NineRouterColors.BrandOrange,
+                    modifier = Modifier.size(16.dp),
+                )
+            } else if (iconRes != null) {
+                Icon(
+                    painterResource(iconRes),
+                    contentDescription = null,
+                    tint = NineRouterColors.BrandOrange,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+            Spacer(Modifier.height(3.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = NineRouterColors.TextMuted,
+                maxLines = 1,
+            )
+        }
     }
 }
 
@@ -1139,9 +1331,9 @@ fun ChatScreen() {
         ) {
             Surface(
                 onClick = { showPicker = true },
-                color = NineRouterColors.Surface2,
-                shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, NineRouterColors.Border),
+                color = NineRouterColors.SurfaceElevated,
+                shape = NineRouterShapes.medium,
+                border = BorderStroke(1.dp, NineRouterColors.BorderSubtle),
                 modifier = Modifier.weight(1f),
             ) {
                 Row(
@@ -1172,9 +1364,9 @@ fun ChatScreen() {
             Spacer(Modifier.width(8.dp))
             Surface(
                 onClick = { showSessions = true },
-                color = NineRouterColors.Surface2,
-                shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, NineRouterColors.Border),
+                color = NineRouterColors.SurfaceElevated,
+                shape = NineRouterShapes.medium,
+                border = BorderStroke(1.dp, NineRouterColors.BorderSubtle),
                 modifier = Modifier.size(44.dp),
             ) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1186,11 +1378,12 @@ fun ChatScreen() {
                     )
                 }
             }
+            Spacer(Modifier.width(4.dp))
             Surface(
                 onClick = { newChat() },
-                color = NineRouterColors.Surface2,
-                shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, NineRouterColors.Border),
+                color = NineRouterColors.SurfaceElevated,
+                shape = NineRouterShapes.medium,
+                border = BorderStroke(1.dp, NineRouterColors.BorderSubtle),
                 modifier = Modifier.size(44.dp),
             ) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1243,9 +1436,9 @@ fun ChatScreen() {
         }
 
         Surface(
-            color = NineRouterColors.Surface,
-            shape = RoundedCornerShape(20.dp),
-            border = BorderStroke(1.dp, NineRouterColors.Border),
+            color = NineRouterColors.SurfaceElevated,
+            shape = NineRouterShapes.large,
+            border = BorderStroke(1.dp, NineRouterColors.BorderSubtle),
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 10.dp),
         ) {
             Column {

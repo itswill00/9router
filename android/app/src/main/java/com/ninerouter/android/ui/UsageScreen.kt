@@ -577,9 +577,9 @@ private fun PeriodSelector(period: String, onSelect: (String) -> Unit) {
 @Composable
 private fun UsageAreaChart(buckets: List<Bucket>, mode: String) {
     val color = when (mode) {
-        "Requests" -> Color(0xFF14B8A6)
-        "Cost" -> Color(0xFFF59E0B)
-        else -> Color(0xFF6366F1)
+        "Requests" -> NineRouterColors.Info
+        "Cost" -> NineRouterColors.BrandAmber
+        else -> Color(0xFF9B8CFF)
     }
     val max = buckets.maxOf { it.value(mode) }.coerceAtLeast(1f)
     Column {
@@ -624,7 +624,14 @@ private fun UsageAreaChart(buckets: List<Bucket>, mode: String) {
 @Composable
 private fun BarList(rows: List<Pair<String, Float>>, unit: String, truncate: Int = 12) {
     val max = rows.maxOfOrNull { it.second }?.coerceAtLeast(1f) ?: 1f
-    val colors = listOf(Color(0xFF6366F1), Color(0xFF14B8A6), Color(0xFFF59E0B), Color(0xFFEF4444), Color(0xFF8B5CF6), Color(0xFF06B6D4))
+    val colors = listOf(
+        NineRouterColors.BrandOrange,
+        NineRouterColors.Success,
+        NineRouterColors.Info,
+        NineRouterColors.BrandAmber,
+        NineRouterColors.Danger,
+        Color(0xFF9B8CFF),
+    )
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         rows.forEachIndexed { i, (name, value) ->
             Row(verticalAlignment = Alignment.CenterVertically) {

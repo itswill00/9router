@@ -63,17 +63,22 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 @Composable
-fun Panel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+fun Panel(
+    modifier: Modifier = Modifier,
+    padding: Dp = 16.dp,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = NineRouterColors.Surface,
+        color = NineRouterColors.SurfaceElevated,
         shape = NineRouterShapes.large,
         border = BorderStroke(1.dp, NineRouterColors.BorderSubtle),
         shadowElevation = 0.dp,
     ) {
-        Column(Modifier.padding(14.dp), content = content)
+        Column(Modifier.padding(padding), content = content)
     }
 }
 
@@ -118,14 +123,15 @@ fun PrimaryButton(
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.height(44.dp).scale(scale),
+        modifier = modifier.height(48.dp).scale(scale),
         interactionSource = interaction,
+        elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = NineRouterColors.BrandOrange,
-            contentColor = NineRouterColors.Bg,
+            contentColor = Color(0xFF1A0B04),
         ),
-        shape = NineRouterShapes.small,
-    ) { Text(text, fontWeight = FontWeight.SemiBold) }
+        shape = NineRouterShapes.medium,
+    ) { Text(text, fontWeight = FontWeight.Bold) }
 }
 
 @Composable
@@ -143,12 +149,15 @@ fun SecondaryButton(
     )
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier.height(44.dp).scale(scale),
+        modifier = modifier.height(48.dp).scale(scale),
         interactionSource = interaction,
-        shape = NineRouterShapes.small,
-        border = BorderStroke(1.dp, NineRouterColors.BorderStrong),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = NineRouterColors.TextMain),
-    ) { Text(text) }
+        shape = NineRouterShapes.medium,
+        border = BorderStroke(1.dp, NineRouterColors.Border),
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = NineRouterColors.TextMain,
+            containerColor = NineRouterColors.Surface2.copy(alpha = 0.4f),
+        ),
+    ) { Text(text, fontWeight = FontWeight.Medium) }
 }
 
 @Composable
@@ -190,27 +199,34 @@ fun ToggleRow(
 @Composable
 fun ChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
     val background by animateColorAsState(
-        targetValue = if (selected) NineRouterColors.BrandOrange.copy(alpha = 0.16f) else NineRouterColors.Surface2,
-        animationSpec = tween(220),
+        targetValue = if (selected) NineRouterColors.BrandOrange else Color.Transparent,
+        animationSpec = tween(180),
         label = "chipBackground",
     )
     val content by animateColorAsState(
-        targetValue = if (selected) NineRouterColors.BrandOrange else NineRouterColors.TextMuted,
-        animationSpec = tween(220),
+        targetValue = if (selected) Color(0xFF1A0B04) else NineRouterColors.TextMuted,
+        animationSpec = tween(180),
         label = "chipContent",
+    )
+    val border by animateColorAsState(
+        targetValue = if (selected) NineRouterColors.BrandOrange else NineRouterColors.Border,
+        animationSpec = tween(180),
+        label = "chipBorder",
     )
     Surface(
         color = background,
-        shape = RoundedCornerShape(999.dp),
+        shape = NineRouterShapes.pill,
+        border = BorderStroke(1.dp, border),
         modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
+            .clip(NineRouterShapes.pill)
             .clickable(onClick = onClick),
     ) {
         Text(
             label,
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.labelLarge,
             color = content,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
         )
     }
 }
@@ -317,7 +333,7 @@ fun MonoText(
 ) {
     Text(
         text,
-        style = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+        style = MaterialTheme.typography.bodySmall.copy(fontFamily = NineRouterFonts.Mono),
         color = color,
         maxLines = maxLines,
         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -332,33 +348,41 @@ fun EmptyState(
     body: String,
     action: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
+    icon: ImageVector = Icons.Default.Info,
 ) {
     Column(
-        modifier.fillMaxWidth().padding(vertical = NineRouterSpacing.lg),
+        modifier.fillMaxWidth().padding(vertical = NineRouterSpacing.xl),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Surface(
-            color = NineRouterColors.Surface2,
-            shape = CircleShape,
-            border = BorderStroke(1.dp, NineRouterColors.Border),
+        Box(
+            Modifier
+                .size(52.dp)
+                .background(
+                    androidx.compose.ui.graphics.Brush.linearGradient(
+                        listOf(
+                            NineRouterColors.BrandOrange.copy(alpha = 0.18f),
+                            NineRouterColors.BrandAmber.copy(alpha = 0.05f),
+                        ),
+                    ),
+                    CircleShape,
+                ),
+            contentAlignment = Alignment.Center,
         ) {
-            Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = null,
-                    tint = NineRouterColors.TextSubtle,
-                    modifier = Modifier.size(19.dp),
-                )
-            }
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = NineRouterColors.BrandOrange,
+                modifier = Modifier.size(23.dp),
+            )
         }
-        Spacer(Modifier.height(NineRouterSpacing.sm))
+        Spacer(Modifier.height(NineRouterSpacing.md))
         Text(
             title,
-            style = MaterialTheme.typography.titleSmall,
+            style = MaterialTheme.typography.titleMedium,
             color = NineRouterColors.TextMain,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(4.dp))
         Text(
             body,
             style = MaterialTheme.typography.bodySmall,
@@ -367,7 +391,7 @@ fun EmptyState(
             modifier = Modifier.padding(horizontal = NineRouterSpacing.lg),
         )
         if (action != null) {
-            Spacer(Modifier.height(NineRouterSpacing.md))
+            Spacer(Modifier.height(NineRouterSpacing.lg))
             action()
         }
     }
@@ -436,6 +460,79 @@ fun NoticeBanner(text: String, color: Color) {
             StatusDot(color, 6.dp, Modifier.padding(top = 5.dp))
             Spacer(Modifier.width(8.dp))
             Text(text, style = MaterialTheme.typography.bodySmall, color = color)
+        }
+    }
+}
+
+@Composable
+fun Eyebrow(text: String, color: Color = NineRouterColors.BrandAmber, modifier: Modifier = Modifier) {
+    Text(
+        text.uppercase(),
+        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.4.sp),
+        color = color,
+        maxLines = 1,
+        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        modifier = modifier,
+    )
+}
+
+@Composable
+fun IconTile(
+    icon: ImageVector,
+    tint: Color = NineRouterColors.BrandOrange,
+    size: Dp = 38.dp,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier
+            .size(size)
+            .background(
+                androidx.compose.ui.graphics.Brush.linearGradient(
+                    listOf(tint.copy(alpha = 0.18f), tint.copy(alpha = 0.04f)),
+                ),
+                NineRouterShapes.medium,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(size * 0.48f))
+    }
+}
+
+@Composable
+fun MetricTile(
+    label: String,
+    value: String,
+    hint: String? = null,
+    accent: Color = NineRouterColors.TextMain,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        color = NineRouterColors.Surface2.copy(alpha = 0.55f),
+        shape = NineRouterShapes.medium,
+        border = BorderStroke(1.dp, NineRouterColors.BorderSubtle),
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 11.dp)) {
+            Eyebrow(label, NineRouterColors.TextSubtle)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                value,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = accent,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            if (hint != null) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    hint,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.TextFaint,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }

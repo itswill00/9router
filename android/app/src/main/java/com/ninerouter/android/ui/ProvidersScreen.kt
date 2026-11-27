@@ -62,6 +62,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -196,6 +197,11 @@ private fun ProviderCatalog(
         nodeName = ""
     }
 
+    val columns = when {
+        LocalConfiguration.current.screenWidthDp >= 1000 -> 4
+        LocalConfiguration.current.screenWidthDp >= 720 -> 3
+        else -> 2
+    }
     val connections = Store.state.connections
     val statsByProvider = remember(revision) {
         connections.groupBy { it.provider }.mapValues { (_, list) ->
@@ -334,7 +340,7 @@ private fun ProviderCatalog(
                     } else {
                         list.take(if (section == "apikey") 12 else 10)
                     }
-                    items(visible.chunked(2), key = { row -> row.joinToString("|") { it.id } }, contentType = { "provider-row" }) { row ->
+                    items(visible.chunked(columns), key = { row -> row.joinToString("|") { it.id } }, contentType = { "provider-row" }) { row ->
                         Row(
                             Modifier.fillMaxWidth().padding(horizontal = 12.dp).animateItem(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1379,7 +1385,7 @@ private fun ProviderDetail(def: ProviderDef, onBack: () -> Unit, refresh: () -> 
                 Column {
                     Text(
                         model,
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = NineRouterFonts.Mono),
                         color = NineRouterColors.TextSubtle,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -1682,7 +1688,7 @@ private fun ModelCatalogRow(
             )
             Text(
                 model,
-                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = NineRouterFonts.Mono),
                 color = NineRouterColors.TextSubtle,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
