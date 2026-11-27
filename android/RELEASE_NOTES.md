@@ -1,10 +1,30 @@
-# 9Router Android 0.3.1
+# 9Router Android 0.3.2
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.3.0
+## What changed since 0.3.1
+
+- **One-tap updates.** Tapping Update in the launch prompt, the top-bar update
+  pill, or Settings starts the download immediately. When it finishes the app
+  hands the APK straight to the Android installer, so the only remaining step
+  is Android's own install confirmation. There is no "download" screen, then
+  "install" screen, then "install" button any more.
+- **Permission preflight.** If "Install unknown apps" is off, the first tap
+  opens that one system screen; returning to the app resumes the download and
+  installer automatically.
+- **Download progress.** A progress dialog shows percentage and version from any
+  screen, with a Hide action for background downloads. The top-bar pill shows
+  `Update`, the percentage, then `Install` if Android blocks a background
+  hand-off.
+- **Drawer close fixed.** The overflow drawer can now be closed with the new
+  close button, the back gesture, a scrim tap, or an edge swipe. The previous
+  0.3.1 change had disabled swipe-to-close.
+- **Settings fallback.** The release panel now offers the same one-tap Update
+  now action and shows an install-permission error if one occurs.
+
+## What changed in 0.3.1
 
 - **One navigation model.** The top-bar hamburger is gone. Phones navigate with
   the bottom dock, tablets with the rail, and **More** opens an overflow drawer
@@ -740,10 +760,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `9Router-0.3.1-release.apk` and sideload it:
+Download `9Router-0.3.2-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.3.1-release.apk
+adb install -r 9Router-0.3.2-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -812,7 +832,7 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.3.1-android` (version code 39)
+- Version: `0.3.2-android` (version code 40)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`

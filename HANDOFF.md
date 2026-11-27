@@ -10,10 +10,10 @@ APK per version.
 ## Current state
 
 - Branch: `master` — clean; synced with `origin/master`.
-- Version: `0.3.1-android` (version code 39).
-- Latest release (Latest): https://github.com/itswill00/9router/releases/tag/android-v0.3.1
-  - asset: `9Router-0.3.1-release.apk` (11,314,863 bytes)
-  - SHA-256: `c52d72733e893b494a771abb2e91ffea45e6f82c9403079ba1015c3e654e6af9`
+- Version: `0.3.2-android` (version code 40).
+- Latest release (Latest): https://github.com/itswill00/9router/releases/tag/android-v0.3.2
+  - asset: `9Router-0.3.2-release.apk` (11,325,519 bytes)
+  - SHA-256: `6d3e55a5e4424aeeb803721b91959099521c0a4c269e3f73c1eb56c2abb8e31c`
 - Recent commits:
   - `919f6e4c docs: bump the recorded release to 0.3.1`
   - `dea41f3f chore(android): release 0.3.1`
@@ -80,6 +80,13 @@ APK per version.
   round-robin cursor), and NodeProbe probes until a key succeeds. The node API
   accepts `apiKeys` and reports `keyCount`. **Verified** by
   `ProviderNodeKeysTest` and the fast check; not yet exercised on a phone.
+- One-tap updates (shipped in 0.3.2): `UpdateManager.download(autoInstall=true)`
+  hands the verified APK to the system installer when the download completes;
+  the launch prompt, top-bar pill and Settings panel all call the same path.
+  Permission is preflighted with `canRequestPackageInstalls` and an
+  ActivityResult launcher so returning from "Install unknown apps" resumes the
+  download. `State.Ready` carries an optional `installError` for a blocked
+  background hand-off. **Compiled and linted**, not exercised on a device.
 - Carbon & Ember design refresh (shipped in 0.3.0): new palette/typography
   tokens in `ui/Theme.kt`, bundled Manrope + JetBrains Mono (OFL assets), an
   ambient shell, an adaptive bottom dock/navigation rail in `ui/Shell.kt`, a
@@ -112,10 +119,10 @@ APK per version.
 ```
 
 Last result: `BUILD SUCCESSFUL` (unit tests + fatal lint). The release build
-for 0.3.1 also succeeded and the APK metadata was verified:
+for 0.3.2 also succeeded and the APK metadata was verified:
 
 ```text
-package: com.ninerouter.android  versionCode=39  versionName=0.3.1-android
+package: com.ninerouter.android  versionCode=40  versionName=0.3.2-android
 ```
 
 `ProviderNodeKeysTest` covers legacy-key migration, deduplication and cursor
@@ -129,7 +136,7 @@ Nothing is blocked. There is no active bug or failing test.
 ## Next steps
 
 1. Read `AGENTS.md`; verify the tree is clean and `versionName` is
-   `0.3.1-android` before touching code.
+   `0.3.2-android` before touching code.
 2. Ask the user which backlog item to take. Do not invent a release or push
    without an explicit request.
 3. If a release is requested, follow the release procedure in `AGENTS.md`:
@@ -172,6 +179,13 @@ Nothing is blocked. There is no active bug or failing test.
   dock / rail. The drawer is the **More** overflow (secondary screens only), and
   the top-bar mark goes home. Do not add a hamburger or repeat primary screens
   in the drawer.
+- **Updater hand-off** → verify "install unknown apps" before downloading;
+  calling `install()` from a background download without that permission opens
+  Settings and strands the user. Keep the `Install` pill/Settings fallback for
+  Android background-activity restrictions.
+- **Drawer must close** → keep `gesturesEnabled = true` and the explicit close
+  button. Disabling swipe without another affordance made the 0.3.1 drawer
+  impossible to dismiss for some users.
 - **No generic "Live" copy** → use the status dot, "Gateway running/stopped",
   "Realtime" for Usage and "Following" for the log stream.
 - **Adaptive shell insets** → the outer `AppShell` Row owns the navigation-bar
