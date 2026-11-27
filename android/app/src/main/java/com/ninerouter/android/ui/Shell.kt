@@ -208,8 +208,14 @@ fun AppShell(refreshTrigger: () -> Unit) {
     val scope = rememberCoroutineScope()
     val installPermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (UpdateManager.canInstall(context)) {
-            UpdateManager.download(context, autoInstall = true)
-            showUpdateProgress = true
+            val ready = updateState as? UpdateManager.State.Ready
+            if (ready != null) {
+                val error = UpdateManager.install(context, ready.file)
+                if (error != null) Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+            } else {
+                UpdateManager.download(context, autoInstall = true)
+                showUpdateProgress = true
+            }
         } else {
             Toast.makeText(context, tr("Install permission is still off"), Toast.LENGTH_LONG).show()
         }
