@@ -44,7 +44,11 @@ object UpdateManager {
         data object UpToDate : State
         data class Available(val release: Release, val currentVersion: String) : State
         data class Downloading(val release: Release, val progress: Float) : State
-        data class Ready(val release: Release, val file: File) : State
+        data class Ready(
+            val release: Release,
+            val file: File,
+            val installError: String? = null,
+        ) : State
         data class Failed(val message: String) : State
     }
 
@@ -139,7 +143,17 @@ object UpdateManager {
         }
     }
 
-    fun download(context: Context) {
+    fun canInstall(context: Context): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+            context.packageManager.canRequestPackageInstalls()
+
+    fun installSettingsIntent(context: Context): Intent =
+        Intent(
+            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+            Uri.parse("package:${context.packageName}"),
+        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    fun download(context: Context, autoInstall: Boolean = true) {
         val available = state.value as? State.Available ?: return
         if (!busy.compareAndSet(false, true)) return
         val release = available.release
@@ -206,6 +220,13 @@ object UpdateManager {
                     tmp.delete()
                 }
                 state.value = State.Ready(release, target)
+                if (autoInstall) {
+                    // Hand off to the system installer immediately. The user
+                    // sees one in-app tap plus Android's own confirmation.
+                    install(context, target)?.let { message ->
+                        state.value = State.Ready(release, target, message)
+                    }
+                }
             } catch (e: Exception) {
                 state.value = State.Failed(e.message ?: "Download failed.")
             } finally {
@@ -223,17 +244,8 @@ object UpdateManager {
         val info = context.packageManager.getPackageArchiveInfo(file.absolutePath, 0)
             ?: return "The downloaded file is not a valid APK."
         if (info.packageName != context.packageName) return "The downloaded APK is for a different app."
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-            !context.packageManager.canRequestPackageInstalls()
-        ) {
-            runCatching {
-                context.startActivity(
-                    Intent(
-                        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                        Uri.parse("package:${context.packageName}"),
-                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                )
-            }
+        if (!canInstall(context)) {
+            runCatching { context.startActivity(installSettingsIntent(context)) }
             return "Allow \"Install unknown apps\" for 9Router, then tap Install again."
         }
         return runCatching {

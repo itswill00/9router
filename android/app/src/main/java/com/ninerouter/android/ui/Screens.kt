@@ -877,7 +877,24 @@ fun UpdatePanel(state: UpdateManager.State) {
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(8.dp))
-                PrimaryButton("Download & install", onClick = { UpdateManager.download(context) })
+                PrimaryButton("Update now", onClick = {
+                    if (UpdateManager.canInstall(context)) {
+                        UpdateManager.download(context, autoInstall = true)
+                    } else {
+                        runCatching { context.startActivity(UpdateManager.installSettingsIntent(context)) }
+                        Toast.makeText(
+                            context,
+                            tr("Allow installs for 9Router, then tap Update now again."),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                })
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Downloads and opens the Android installer automatically.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.TextSubtle,
+                )
                 Spacer(Modifier.height(2.dp))
                 TextButton(onClick = { openReleasePage() }) {
                     Text("Full release notes on GitHub", color = NineRouterColors.TextMuted)
@@ -895,6 +912,12 @@ fun UpdatePanel(state: UpdateManager.State) {
                     style = MaterialTheme.typography.bodySmall,
                     color = NineRouterColors.TextMuted,
                 )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "The installer opens automatically when the download finishes.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.TextSubtle,
+                )
             }
 
             is UpdateManager.State.Ready -> {
@@ -903,6 +926,10 @@ fun UpdatePanel(state: UpdateManager.State) {
                     style = MaterialTheme.typography.bodySmall,
                     color = NineRouterColors.Success,
                 )
+                if (!state.installError.isNullOrBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    NoticeBanner(state.installError, NineRouterColors.Warning)
+                }
                 Spacer(Modifier.height(6.dp))
                 PrimaryButton("Install update", onClick = {
                     val error = UpdateManager.install(context, state.file)

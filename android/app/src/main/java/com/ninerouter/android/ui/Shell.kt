@@ -3,6 +3,8 @@ package com.ninerouter.android.ui
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -52,12 +54,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -199,14 +203,63 @@ fun AppShell(refreshTrigger: () -> Unit) {
     val updateState by UpdateManager.state.collectAsState()
     val context = LocalContext.current
     var updatePrompt by remember { mutableStateOf<UpdateManager.Release?>(null) }
+    var showUpdateProgress by remember { mutableStateOf(false) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    val installPermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (UpdateManager.canInstall(context)) {
+            UpdateManager.download(context, autoInstall = true)
+            showUpdateProgress = true
+        } else {
+            Toast.makeText(context, tr("Install permission is still off"), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun beginUpdate() {
+        updatePrompt = null
+        when (updateState) {
+            is UpdateManager.State.Downloading -> showUpdateProgress = true
+            is UpdateManager.State.Ready -> {
+                val ready = updateState as UpdateManager.State.Ready
+                if (!UpdateManager.canInstall(context)) {
+                    installPermission.launch(UpdateManager.installSettingsIntent(context))
+                } else {
+                    val error = UpdateManager.install(context, ready.file)
+                    if (error != null) Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                }
+            }
+            is UpdateManager.State.Available -> {
+                if (!UpdateManager.canInstall(context)) {
+                    installPermission.launch(UpdateManager.installSettingsIntent(context))
+                } else {
+                    UpdateManager.download(context, autoInstall = true)
+                    showUpdateProgress = true
+                }
+            }
+            else -> UpdateManager.check(context)
+        }
+    }
 
     LaunchedEffect(Unit) { UpdateManager.autoCheck(context) }
     val availableUpdate = (updateState as? UpdateManager.State.Available)?.release
     LaunchedEffect(availableUpdate?.version) {
         if (availableUpdate != null && UpdateManager.shouldAnnounce(context, availableUpdate.version)) {
             updatePrompt = availableUpdate
+        }
+    }
+    LaunchedEffect(updateState) {
+        when (val current = updateState) {
+            is UpdateManager.State.Ready -> {
+                showUpdateProgress = false
+                current.installError?.let {
+                    Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+                }
+            }
+            is UpdateManager.State.Failed -> {
+                showUpdateProgress = false
+                Toast.makeText(context, current.message, Toast.LENGTH_LONG).show()
+            }
+            else -> Unit
         }
     }
 
@@ -236,7 +289,7 @@ fun AppShell(refreshTrigger: () -> Unit) {
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = false,
+        gesturesEnabled = true,
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = NineRouterColors.BgAlt,
@@ -257,9 +310,12 @@ fun AppShell(refreshTrigger: () -> Unit) {
             val updatePending = updateState is UpdateManager.State.Available ||
                 updateState is UpdateManager.State.Downloading ||
                 updateState is UpdateManager.State.Ready
-            val updateLabel = if (updatePending) {
-                (updateState as? UpdateManager.State.Available)?.let { "Update ${it.release.version}" } ?: "Update"
-            } else null
+            val updateLabel = when (val current = updateState) {
+                is UpdateManager.State.Available -> "Update"
+                is UpdateManager.State.Downloading -> "${(current.progress * 100).toInt()}%"
+                is UpdateManager.State.Ready -> "Install"
+                else -> if (updatePending) "Update" else null
+            }
 
             Row(
                 Modifier
@@ -274,7 +330,10 @@ fun AppShell(refreshTrigger: () -> Unit) {
                         selected = screen,
                         chatOpen = showChat,
                         onSelect = ::select,
-                        onMore = { scope.launch { drawerState.open() } },
+                        onMore = {
+                            if (drawerState.isOpen) scope.launch { drawerState.close() }
+                            else scope.launch { drawerState.open() }
+                        },
                     )
                 }
                 Column(Modifier.weight(1f)) {
@@ -290,10 +349,7 @@ fun AppShell(refreshTrigger: () -> Unit) {
                         },
                         onOpenChat = { showChat = true },
                         updateLabel = updateLabel,
-                        onUpdateClick = {
-                            showChat = false
-                            screenName = Screen.Settings.name
-                        },
+                        onUpdateClick = { beginUpdate() },
                     )
                     AmbientSurface(
                         Modifier
@@ -363,12 +419,52 @@ fun AppShell(refreshTrigger: () -> Unit) {
                             selected = screen,
                             chatOpen = showChat,
                             onSelect = ::select,
-                            onMore = { scope.launch { drawerState.open() } },
+                            onMore = {
+                                if (drawerState.isOpen) scope.launch { drawerState.close() }
+                                else scope.launch { drawerState.open() }
+                            },
                         )
                     }
                 }
             }
         }
+    }
+
+    val downloading = updateState as? UpdateManager.State.Downloading
+    if (showUpdateProgress && downloading != null) {
+        AlertDialog(
+            onDismissRequest = { showUpdateProgress = false },
+            containerColor = NineRouterColors.SurfaceElevated,
+            title = { Text("Updating 9Router", color = NineRouterColors.TextMain) },
+            text = {
+                Column {
+                    LinearProgressIndicator(
+                        progress = { downloading.progress },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = NineRouterColors.BrandOrange,
+                        trackColor = NineRouterColors.Surface3,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "${(downloading.progress * 100).toInt()}% · ${downloading.release.version}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = NineRouterColors.TextMain,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "The download keeps running if you leave this screen. The Android installer opens automatically when it finishes.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NineRouterColors.TextMuted,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showUpdateProgress = false
+                    Toast.makeText(context, tr("Download continues in the background"), Toast.LENGTH_SHORT).show()
+                }) { Text("Hide", color = NineRouterColors.TextMuted) }
+            },
+        )
     }
 
     updatePrompt?.let { release ->
@@ -382,7 +478,7 @@ fun AppShell(refreshTrigger: () -> Unit) {
             text = {
                 Column {
                     Text(
-                        "9Router ${release.version} is ready to install.",
+                        "9Router ${release.version} is ready. One tap downloads it and opens the installer.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = NineRouterColors.TextMain,
                     )
@@ -399,10 +495,8 @@ fun AppShell(refreshTrigger: () -> Unit) {
             confirmButton = {
                 TextButton(onClick = {
                     UpdateManager.markAnnounced(context, release.version)
-                    updatePrompt = null
-                    showChat = false
-                    screenName = Screen.Settings.name
-                }) { Text("Update", color = NineRouterColors.BrandOrange) }
+                    beginUpdate()
+                }) { Text("Update now", color = NineRouterColors.BrandOrange) }
             },
             dismissButton = {
                 TextButton(onClick = {
@@ -649,9 +743,23 @@ private fun DrawerContent(
     ) {
         Spacer(Modifier.height(6.dp))
         BrandHeader()
-        Spacer(Modifier.height(8.dp))
-        Eyebrow("More tools", NineRouterColors.TextFaint, Modifier.padding(start = 8.dp))
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(4.dp))
+        Row(
+            Modifier.fillMaxWidth().padding(start = 8.dp, end = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Eyebrow("More tools", NineRouterColors.TextFaint)
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = t("Close menu"),
+                    tint = NineRouterColors.TextMuted,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
         Column(
             Modifier
                 .weight(1f)
