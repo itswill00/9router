@@ -398,7 +398,13 @@ fun EmptyState(
 }
 
 @Composable
-fun ProviderIcon(id: String, name: String, size: Dp = 40.dp) {
+fun ProviderIcon(
+    id: String,
+    name: String,
+    size: Dp = 40.dp,
+    fallbackColor: Color? = null,
+    fallbackText: String? = null,
+) {
     val context = LocalContext.current
     val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, id) {
         value = withContext(Dispatchers.IO) {
@@ -418,9 +424,17 @@ fun ProviderIcon(id: String, name: String, size: Dp = 40.dp) {
             contentScale = ContentScale.Fit,
         )
     } else {
-        Surface(color = NineRouterColors.Surface3, shape = RoundedCornerShape(10.dp)) {
+        Surface(
+            color = fallbackColor?.copy(alpha = 0.12f) ?: NineRouterColors.Surface3,
+            shape = RoundedCornerShape(10.dp),
+        ) {
             Box(Modifier.size(size), contentAlignment = Alignment.Center) {
-                Text(name.take(1).uppercase(), color = NineRouterColors.TextMain, fontWeight = FontWeight.Bold)
+                Text(
+                    fallbackText?.takeIf { it.isNotBlank() } ?: name.take(1).uppercase(),
+                    color = fallbackColor ?: NineRouterColors.TextMain,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleSmall,
+                )
             }
         }
     }

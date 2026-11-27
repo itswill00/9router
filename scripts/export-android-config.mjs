@@ -231,6 +231,8 @@ for (const file of fs.readdirSync(registryDir).filter((f) => f.endsWith(".js")).
     id,
     alias: str(src, /^\s*alias:\s*["']([^"']+)["']/m) || id,
     name: str(display, /^\s*name:\s*["']([^"']+)["']/m) || id,
+    color: str(display, /^\s*color:\s*["']([^"']+)["']/m),
+    textIcon: str(display, /^\s*textIcon:\s*["']([^"']+)["']/m),
     category,
     authType,
     authModes,

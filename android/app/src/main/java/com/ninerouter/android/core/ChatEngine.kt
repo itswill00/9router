@@ -125,10 +125,12 @@ class ChatEngine(
         val accountStrategy = Store.state.settings.fallbackStrategy
         var lastError: Outcome.Error? = null
         var lastProvider = ""
+        ConsoleLog.info("[CHAT] $endpoint ${requestedModel.ifBlank { "(no model)" }} stream=$wantsStream")
 
         for (member in members) {
             val target = ModelResolver.resolve(member) ?: continue
             lastProvider = target.provider
+            ConsoleLog.info("[ROUTE] ${target.provider}/${target.model} as $member")
             val def = Catalog.find(target.provider) ?: nodeDef(target.provider)
             val providerFormat = Formats.normalize(def?.format ?: Formats.OPENAI)
             val upstreamModel = ModelResolver.upstreamModel(target.provider, target.model)
@@ -136,7 +138,10 @@ class ChatEngine(
             if (Store.state.settings.rtkEnabled) {
                 val (compressed, hits) = Rtk.apply(translated)
                 translated = compressed
-                if (hits > 0) android.util.Log.d("9R-RTK", "compress $member: $hits blocks")
+                if (hits > 0) {
+                    android.util.Log.d("9R-RTK", "compress $member: $hits blocks")
+                    ConsoleLog.debug("[RTK] $member compressed $hits block(s)")
+                }
             }
             val settings = Store.state.settings
             if (settings.cavemanEnabled) {
@@ -165,10 +170,18 @@ class ChatEngine(
                 }
                 accountMisses++
                 excluded.add(conn.id)
+                ConsoleLog.debug("[AUTH] ${target.provider} account ${conn.name.ifBlank { conn.id }}")
 
+                val activeKey = ActiveRequests.begin(
+                    target.provider,
+                    member,
+                    conn.name.ifBlank { conn.id },
+                )
                 val response = try {
                     upstream.execute(def ?: emptyDef(target.provider), conn, translated, wantsStream)
                 } catch (e: Exception) {
+                    ActiveRequests.end(activeKey, error = true)
+                    ConsoleLog.error("[ROUTE] $member failed: ${e.message ?: e.javaClass.simpleName}")
                     lastError = Outcome.Error(502, e.message ?: "Upstream error")
                     continue
                 }
@@ -183,6 +196,8 @@ class ChatEngine(
                             val raw = response.body?.string().orEmpty()
                             val parsed = parseObject(raw)
                             if (parsed == null) {
+                                ActiveRequests.end(activeKey, error = true)
+                                ConsoleLog.warn("[ROUTE] $member returned non-JSON for a streaming request")
                                 lastError = Outcome.Error(502, "Upstream returned a non-JSON body")
                                 response.close()
                                 continue
@@ -190,6 +205,8 @@ class ChatEngine(
                             val upstreamJson = if (cliEnvelope) Translator.unwrapEnvelope(parsed) else parsed
                             val finalJson = Translator.responseBody(providerFormat, responseFormat, upstreamJson, requestedModel)
                             markSuccess(conn)
+                            ActiveRequests.end(activeKey)
+                            ConsoleLog.info("[ROUTE] ok $member ${System.currentTimeMillis() - startedAt}ms")
                             trackUsage(
                                 provider = target.provider,
                                 model = member,
@@ -204,6 +221,7 @@ class ChatEngine(
                             return Outcome.Json(json.encodeToString(finalJson), member)
                         }
                         markSuccess(conn)
+                        ConsoleLog.info("[ROUTE] stream $member")
                         val tracked = trackStream(
                             response = response,
                             provider = target.provider,
@@ -213,12 +231,15 @@ class ChatEngine(
                             cliEnvelope = cliEnvelope,
                             endpoint = endpoint,
                             startedAt = startedAt,
+                            activeKey = activeKey,
                         )
                         return Outcome.Stream(tracked, providerFormat, responseFormat, requestedModel, cliEnvelope, member)
                     }
                     val raw = response.body?.string().orEmpty()
                     val parsed = parseObject(raw)
                     if (parsed == null) {
+                        ActiveRequests.end(activeKey, error = true)
+                        ConsoleLog.warn("[ROUTE] $member returned non-JSON")
                         lastError = Outcome.Error(502, "Upstream returned a non-JSON body")
                         response.close()
                         continue
@@ -226,6 +247,8 @@ class ChatEngine(
                     val upstreamJson = if (cliEnvelope) Translator.unwrapEnvelope(parsed) else parsed
                     val finalJson = Translator.responseBody(providerFormat, responseFormat, upstreamJson, requestedModel)
                     markSuccess(conn)
+                    ActiveRequests.end(activeKey)
+                    ConsoleLog.info("[ROUTE] ok $member ${System.currentTimeMillis() - startedAt}ms")
                     trackUsage(
                         provider = target.provider,
                         model = member,
@@ -242,10 +265,13 @@ class ChatEngine(
 
                 val code = response.code
                 val errorText = Redact.text(response.body?.string().orEmpty(), 400)
+                ActiveRequests.end(activeKey, error = true)
+                ConsoleLog.warn("[ROUTE] $member HTTP $code: ${errorText.take(220)}")
                 val decision = Fallback.check(code, errorText)
                 conn.lastError = Redact.text(errorText, 160)
                 if (decision.cooldownMs > 0L) {
                     conn.unavailableUntil = System.currentTimeMillis() + decision.cooldownMs
+                    ConsoleLog.warn("[COOLDOWN] ${target.provider} for ${decision.cooldownMs / 1000}s")
                 }
                 Store.save()
                 lastError = Outcome.Error(code, errorText.ifBlank { "Upstream HTTP $code" })
@@ -257,6 +283,7 @@ class ChatEngine(
             }
         }
         val error = lastError ?: Outcome.Error(503, "All models unavailable")
+        ConsoleLog.error("[CHAT] failed ${error.status}: ${error.message}")
         return fail(error.status, error.message, lastProvider, requestedModel, endpoint, startedAt)
     }
 
@@ -295,6 +322,9 @@ class ChatEngine(
         }
         val choice = pick?.choice?.takeIf { it in members }
         val confidence = pick?.confidence
+        if (choice != null) {
+            ConsoleLog.debug("[SMART] ${combo.name} -> $choice confidence=${confidence ?: "n/a"}")
+        }
 
         if (existing != null) {
             val confidentSwitch = choice != null && choice != existing &&
@@ -419,6 +449,7 @@ class ChatEngine(
         }
         val judge = combo.judgeModel.ifBlank { panel.first() }
             .takeIf { it.isNotBlank() && it != combo.name } ?: panel.first()
+        ConsoleLog.info("[FUSION] ${combo.name} panel=${panel.size} judge=$judge")
 
         val answers = runBlocking(fusionDispatcher) {
             panel.map { member ->
@@ -454,6 +485,7 @@ class ChatEngine(
         }
 
         if (answers.isEmpty()) {
+            ConsoleLog.error("[FUSION] ${combo.name} panel failed")
             return fail(503, "All fusion panel models failed", "", combo.name, endpoint, startedAt)
         }
         val judgeBody = appendJudgeTurn(body, answers, judge, wantsStream)
@@ -785,9 +817,15 @@ class ChatEngine(
         cliEnvelope: Boolean,
         endpoint: String,
         startedAt: Long,
+        activeKey: String,
     ): Response {
-        val original = response.body ?: return response
+        val original = response.body
+        if (original == null) {
+            ActiveRequests.end(activeKey)
+            return response
+        }
         val tracked = StreamUsageBody(original) { raw, error ->
+            ActiveRequests.end(activeKey, error = error != null)
             val tokens = streamTokens(providerFormat, cliEnvelope, raw, requestBody)
             recordUsage(
                 provider = provider,

@@ -25,6 +25,8 @@ data class ProviderDef(
     val id: String,
     val alias: String = id,
     val name: String = id,
+    val color: String = "",
+    val textIcon: String = "",
     val category: String = "",
     val authType: String = "apikey",
     val authModes: List<String> = emptyList(),
