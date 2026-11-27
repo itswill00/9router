@@ -86,7 +86,7 @@ fun LogsScreen() {
                 if (all.isNotEmpty()) {
                     PulsingDot(NineRouterColors.Success, size = 5.dp)
                     Spacer(Modifier.width(4.dp))
-                    Text("Live", style = MaterialTheme.typography.labelSmall, color = NineRouterColors.Success)
+                    Text("Following", style = MaterialTheme.typography.labelSmall, color = NineRouterColors.Success)
                     TextButton(onClick = { confirmClear = true }) {
                         Text("Clear", style = MaterialTheme.typography.labelSmall, color = NineRouterColors.BrandOrange)
                     }

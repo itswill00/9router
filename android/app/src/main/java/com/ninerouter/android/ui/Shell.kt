@@ -83,7 +83,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -116,7 +115,7 @@ private enum class Screen(
     val subtitle: String,
     val icon: Int,
 ) {
-    Endpoint("Endpoint & Key", "Command Center", "Gateway status, endpoint and quick actions", R.drawable.ic_nav_endpoint),
+    Endpoint("Endpoint & Key", "Gateway", "Endpoint, status and shortcuts", R.drawable.ic_nav_endpoint),
     Providers("Providers", "Providers", "Manage your AI provider connections", R.drawable.ic_nav_providers),
     Combos("Combo & Vision Adapter", "Combos", "Fallback, round robin, smart router and fusion", R.drawable.ic_nav_combos),
     Usage("Usage", "Usage & Analytics", "Monitor your API usage, token consumption, and request logs", R.drawable.ic_nav_usage),
@@ -143,15 +142,6 @@ private enum class Screen(
     }
 }
 
-private val mainScreens = listOf(
-    Screen.Endpoint,
-    Screen.Providers,
-    Screen.Combos,
-    Screen.Usage,
-    Screen.Quota,
-    Screen.TokenSaver,
-    Screen.CliTools,
-)
 
 private val mediaScreens = listOf(
     Screen.MediaEmbedding,
@@ -186,6 +176,8 @@ private val primaryNav = listOf(
 )
 
 private val primaryScreens = primaryNav.mapNotNull { it.screen }.toSet()
+
+private val secondaryScreens = listOf(Screen.Quota, Screen.TokenSaver, Screen.CliTools)
 
 private fun Screen.mediaKind(): MediaKind? = when (this) {
     Screen.MediaEmbedding -> MediaKind.Embedding
@@ -244,7 +236,7 @@ fun AppShell(refreshTrigger: () -> Unit) {
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = true,
+        gesturesEnabled = false,
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = NineRouterColors.BgAlt,
@@ -292,7 +284,10 @@ fun AppShell(refreshTrigger: () -> Unit) {
                         running = running,
                         showBack = showChat,
                         onBack = { showChat = false },
-                        onMenu = { scope.launch { drawerState.open() } },
+                        onHome = {
+                            showChat = false
+                            screenName = Screen.Endpoint.name
+                        },
                         onOpenChat = { showChat = true },
                         updateLabel = updateLabel,
                         onUpdateClick = {
@@ -655,7 +650,7 @@ private fun DrawerContent(
         Spacer(Modifier.height(6.dp))
         BrandHeader()
         Spacer(Modifier.height(8.dp))
-        Eyebrow("Native gateway · Android", NineRouterColors.TextFaint, Modifier.padding(start = 8.dp))
+        Eyebrow("More tools", NineRouterColors.TextFaint, Modifier.padding(start = 8.dp))
         Spacer(Modifier.height(12.dp))
         Column(
             Modifier
@@ -664,7 +659,8 @@ private fun DrawerContent(
                 .selectableGroup(),
             verticalArrangement = Arrangement.spacedBy(1.dp),
         ) {
-            mainScreens.forEach { item ->
+            SidebarSectionLabel("Tools")
+            secondaryScreens.forEach { item ->
                 SidebarItem(
                     icon = item.icon,
                     label = item.label,
@@ -775,7 +771,7 @@ private fun DrawerContent(
                 Spacer(Modifier.width(7.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        if (running) "Gateway live" else "Gateway off",
+                        if (running) "Gateway running" else "Gateway stopped",
                         style = MaterialTheme.typography.labelMedium,
                         color = if (running) NineRouterColors.Success else NineRouterColors.TextMuted,
                     )
@@ -940,42 +936,17 @@ private fun SidebarSubItem(
 }
 
 @Composable
-private fun TopBarStatus(running: Boolean) {
-    val color = if (running) NineRouterColors.Success else NineRouterColors.TextSubtle
-    Surface(
-        color = if (running) NineRouterColors.Success.copy(alpha = 0.12f) else NineRouterColors.Surface2,
-        shape = NineRouterShapes.pill,
-        border = BorderStroke(1.dp, color.copy(alpha = 0.18f)),
-    ) {
-        Row(
-            Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            StatusDot(color, 6.dp)
-            Spacer(Modifier.width(5.dp))
-            Text(
-                if (running) "Live" else "Off",
-                style = MaterialTheme.typography.labelSmall,
-                color = color,
-                maxLines = 1,
-            )
-        }
-    }
-}
-
-@Composable
 private fun TopBar(
     title: String,
     subtitle: String,
     running: Boolean,
     showBack: Boolean,
     onBack: () -> Unit,
-    onMenu: () -> Unit,
+    onHome: () -> Unit,
     onOpenChat: () -> Unit,
     updateLabel: String?,
     onUpdateClick: () -> Unit,
 ) {
-    val focusManager = LocalFocusManager.current
     Surface(
         modifier = Modifier
             .zIndex(1f)
@@ -1001,26 +972,12 @@ private fun TopBar(
                 enter = fadeIn(tween(180)) + scaleIn(tween(180), initialScale = 0.8f),
                 exit = fadeOut(tween(120)) + scaleOut(tween(120), targetScale = 0.8f),
             ) {
-                IconButton(
-                    onClick = {
-                        focusManager.clearFocus(force = true)
-                        onMenu()
-                    },
-                    modifier = Modifier.size(56.dp),
-                ) {
-                    Box(
-                        Modifier
-                            .size(40.dp)
-                            .background(NineRouterColors.Surface2.copy(alpha = 0.7f), androidx.compose.foundation.shape.CircleShape),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            Icons.Default.Menu,
-                            contentDescription = t("Open navigation"),
-                            tint = NineRouterColors.TextMain,
-                            modifier = Modifier.size(23.dp),
-                        )
-                    }
+                IconButton(onClick = onHome, modifier = Modifier.size(44.dp)) {
+                    Image(
+                        painter = painterResource(R.drawable.brand_mark),
+                        contentDescription = t("Go to gateway"),
+                        modifier = Modifier.size(30.dp),
+                    )
                 }
             }
             AnimatedVisibility(
@@ -1055,7 +1012,18 @@ private fun TopBar(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            TopBarStatus(running)
+            Box(
+                Modifier
+                    .size(7.dp)
+                    .background(
+                        if (running) NineRouterColors.Success else NineRouterColors.TextSubtle,
+                        CircleShape,
+                    )
+                    .semantics {
+                        contentDescription = if (running) "Gateway running" else "Gateway stopped"
+                    },
+            )
+            Spacer(Modifier.width(10.dp))
             if (!showBack) {
                 Spacer(Modifier.width(4.dp))
                 IconButton(onClick = onOpenChat, modifier = Modifier.size(42.dp)) {
@@ -1114,12 +1082,12 @@ private fun DrawerPreview() {
 private fun TopBarPreview() {
     NineRouterTheme {
         TopBar(
-            title = "Endpoint & Key",
-            subtitle = "API endpoint configuration",
+            title = "Gateway",
+            subtitle = "Endpoint, status and shortcuts",
             running = true,
             showBack = false,
             onBack = {},
-            onMenu = {},
+            onHome = {},
             onOpenChat = {},
             updateLabel = "Update 0.1.21",
             onUpdateClick = {},

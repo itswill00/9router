@@ -603,7 +603,7 @@ private fun GatewayHero(
                         Eyebrow(if (exposed) "Private network" else "Loopback", NineRouterColors.BrandAmber)
                         Spacer(Modifier.height(2.dp))
                         Text(
-                            if (running) "Gateway online" else "Gateway offline",
+                            if (running) "Gateway running" else "Gateway stopped",
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                             color = NineRouterColors.TextMain,

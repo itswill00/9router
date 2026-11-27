@@ -109,7 +109,7 @@ fun UsageScreen(refresh: () -> Unit) {
                 Spacer(Modifier.width(8.dp))
                 PulsingDot(NineRouterColors.Success, size = 6.dp)
                 Spacer(Modifier.width(4.dp))
-                Text("Live", style = MaterialTheme.typography.labelSmall, color = NineRouterColors.Success)
+                Text("Realtime", style = MaterialTheme.typography.labelSmall, color = NineRouterColors.Success)
             }
             if (tab == "Overview") {
                 Spacer(Modifier.height(6.dp))
