@@ -1,10 +1,38 @@
-# 9Router Android 0.2.0
+# 9Router Android 0.3.0
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.1.34
+## What changed since 0.2.0
+
+This is the Carbon & Ember design refresh. The gateway and API surface are
+unchanged; the app now has a single visual language from the first launch to
+the last settings row.
+
+- **New palette and type.** A deeper carbon canvas, quieter surfaces, a warmer
+  ember accent, and a bundled Manrope UI family with JetBrains Mono for model
+  ids and code. Both fonts are OFL-licensed and shipped inside the APK.
+- **Adaptive navigation.** Phones get a five-item bottom dock (Gateway,
+  Providers, Combos, Usage, More); tablets get a navigation rail. The drawer
+  remains the full index and now shows a live gateway footer.
+- **Command Center home.** The default screen is now a proper landing page:
+  gateway state ring, copyable endpoints, start/stop, dashboard, quick actions
+  for chat/providers/usage/test, and account/model/24h metrics.
+- **Shared component refresh.** Panels gained roomier padding and elevated
+  surfaces; primary actions are 48dp; selected chips are solid ember; empty
+  states have a gradient icon tile; status is a readable Live/Off pill.
+- **Ambient depth.** A subtle warm glow and vertical gradient sit behind every
+  screen, with a thin divider under the top bar and above the bottom dock.
+- **Responsive provider grid.** Provider cards render in 2, 3 or 4 columns
+  depending on window width, instead of always two.
+- **Refreshed launcher art.** The adaptive icon uses the new ember gradient and
+  carbon background.
+- **Translation coverage.** New navigation, status and Command Center copy is in
+  the bundled locale dictionaries; Indonesian gets curated wording for the
+  single-word controls.
+
+## What changed in 0.2.0
 
 - **Media gateway v1.** The native gateway now serves five families that
   previously existed only on the desktop dashboard:
@@ -699,10 +727,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `9Router-0.2.0-release.apk` and sideload it:
+Download `9Router-0.3.0-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.2.0-release.apk
+adb install -r 9Router-0.3.0-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -771,7 +799,7 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.2.0-android` (version code 37)
+- Version: `0.3.0-android` (version code 38)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`

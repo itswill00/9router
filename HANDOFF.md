@@ -10,10 +10,10 @@ APK per version.
 ## Current state
 
 - Branch: `master` — clean; synced with `origin/master`.
-- Version: `0.2.0-android` (version code 37).
-- Latest release (Latest): https://github.com/itswill00/9router/releases/tag/android-v0.2.0
-  - asset: `9Router-0.2.0-release.apk` (11,146,174 bytes)
-  - SHA-256: `9a7f9b0c3707dbc3da583fff7e20653761d1abfbf9dcb2f22f08137c3f9347dd`
+- Version: `0.3.0-android` (version code 38).
+- Latest release (Latest): https://github.com/itswill00/9router/releases/tag/android-v0.3.0
+  - asset: `9Router-0.3.0-release.apk` (11,317,475 bytes)
+  - SHA-256: `5e4240ac18b83c7e63b8f812443becf376fae9de39d75830f3fd06879966dc6b`
 - Recent commits:
   - `89501b81 chore(android): release 0.2.0`
   - `e8a30860 feat(ui): turn media pages into working request consoles`
@@ -79,6 +79,12 @@ APK per version.
   round-robin cursor), and NodeProbe probes until a key succeeds. The node API
   accepts `apiKeys` and reports `keyCount`. **Verified** by
   `ProviderNodeKeysTest` and the fast check; not yet exercised on a phone.
+- Carbon & Ember design refresh (shipped in 0.3.0): new palette/typography
+  tokens in `ui/Theme.kt`, bundled Manrope + JetBrains Mono (OFL assets), an
+  ambient shell, an adaptive bottom dock/navigation rail in `ui/Shell.kt`, a
+  Command Center hero in `ui/Screens.kt`, refreshed shared components, and a
+  responsive 2/3/4-column provider grid. **Compiled and linted**, not visually
+  exercised on a device.
 - Media gateway v1 (shipped in 0.2.0): `core/MediaEngine.kt` implements image
   generation (OpenAI-compatible adapters + Gemini), OpenAI/ElevenLabs speech,
   OpenAI-compatible multipart transcription, and normalized search/fetch for
@@ -105,10 +111,10 @@ APK per version.
 ```
 
 Last result: `BUILD SUCCESSFUL` (unit tests + fatal lint). The release build
-for 0.2.0 also succeeded and the APK metadata was verified:
+for 0.3.0 also succeeded and the APK metadata was verified:
 
 ```text
-package: com.ninerouter.android  versionCode=37  versionName=0.2.0-android
+package: com.ninerouter.android  versionCode=38  versionName=0.3.0-android
 ```
 
 `ProviderNodeKeysTest` covers legacy-key migration, deduplication and cursor
@@ -122,7 +128,7 @@ Nothing is blocked. There is no active bug or failing test.
 ## Next steps
 
 1. Read `AGENTS.md`; verify the tree is clean and `versionName` is
-   `0.2.0-android` before touching code.
+   `0.3.0-android` before touching code.
 2. Ask the user which backlog item to take. Do not invent a release or push
    without an explicit request.
 3. If a release is requested, follow the release procedure in `AGENTS.md`:
@@ -157,6 +163,13 @@ Nothing is blocked. There is no active bug or failing test.
   page badges in sync when adding an adapter.
 - **Gemini media auth is not Bearer** → API-key Gemini requests use
   `x-goog-api-key`; OAuth access tokens fall back to `Authorization: Bearer`.
+- **Fonts and resource names** → `res/font` names must stay lowercase; the
+  bundled Manrope/JetBrains Mono families are referenced through
+  `NineRouterFonts` and must not fall back to `FontFamily.Monospace` in new
+  code.
+- **Adaptive shell insets** → the outer `AppShell` Row owns the navigation-bar
+  and IME bottom inset. Do not add another navigation-bar padding to the
+  bottom dock or content, or screens jump when the keyboard opens.
 - **Android regex is ICU, not the JVM** → `Regex("""\{\d+}""")` compiled on the
   test JVM but threw `PatternSyntaxException` in `App.onCreate` on Android. A
   closing brace after a quantifier must be escaped too (`\{\d+\}`). JVM unit

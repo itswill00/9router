@@ -77,12 +77,17 @@ project.
   Tavily, Exa). Media pages mark each provider as ready or registry-only and
   include a request console that calls the local gateway.
 - In-app streaming chat with persistent sessions, a session menu, image attachments for vision models, and a vision-capability warning.
-- **Compact mobile-first dashboard** using the upstream visual language: exact
-  dark palette from `src/app/globals.css`, brand orange, the original `hub`
-  brand mark, provider icon set bundled from `public/providers`, grouped
-  provider cards, a hamburger navigation drawer, and edge-to-edge system bars.
-- **Navigation drawer.** The top-bar hamburger opens a drawer that mirrors the
-  full 9Router sidebar: Endpoint & Key, Providers, Combo & Vision Adapter,
+- **Carbon & Ember design language.** A deep carbon canvas, ember accent,
+  bundled Manrope UI type, JetBrains Mono for ids/code, ambient gradients,
+  roomier elevated panels, 48dp primary actions, and edge-to-edge system bars.
+  Provider art and the original `hub` brand mark are still bundled from the
+  upstream project.
+- **Adaptive navigation.** A five-item bottom dock on phones, a navigation rail
+  on tablets, and the full upstream index in the drawer. The default screen is
+  a Command Center with gateway state, copyable endpoints, quick actions and
+  live account/model/request counts.
+- **Navigation drawer.** The top-bar hamburger and the More item open a drawer
+  that mirrors the full 9Router sidebar: Endpoint & Key, Providers, Combo & Vision Adapter,
   Usage, Quota Tracker, Token Saver, CLI Tools, then a System group with
   Media Providers (Embedding, Text to Image, Video, Text To Speech, Speech To
   Text, System One, Web Fetch & Search), Proxy Pools, Skills, Console Log,
