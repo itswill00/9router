@@ -86,6 +86,58 @@ const lastBlock = (src, key, open = "{", close = "}") => {
   return "";
 };
 
+/** Like block(), but tolerates a missing space before the opening brace. */
+const looseBlock = (src, key, open = "{", close = "}") => {
+  const m = src.match(new RegExp(`${key}:\\s*\\${open}`));
+  if (!m) return "";
+  const start = m.index;
+  let depth = 0;
+  for (let i = start + m[0].length; i < src.length; i++) {
+    if (src[i] === open) depth++;
+    else if (src[i] === close) {
+      if (depth === 0) return src.slice(start, i + 1);
+      depth--;
+    }
+  }
+  return "";
+};
+
+/**
+ * Extract the declarative media block (imageConfig, ttsConfig, ...) that the
+ * native gateway needs to reach a provider without a Node runtime.
+ *
+ * Only literal values are exported; anything resolved through a module
+ * constant (for example SearXNG's self-hosted URL) is left blank so the app
+ * can report the provider as unsupported instead of dialing the wrong host.
+ */
+const mediaConfig = (src, key) => {
+  const raw = block(src, key);
+  if (!raw) return null;
+  const baseUrl = str(raw, /baseUrl:\s*["'`]([^"'`$]+)["'`]/);
+  const headers = {};
+  for (const m of looseBlock(raw, "headers").matchAll(/["']?([A-Za-z0-9_-]+)["']?\s*:\s*["']([^"']*)["']/g)) {
+    headers[m[1]] = m[2];
+  }
+  const list = (name) => [...(block(raw, name, "[", "]").match(/["']([^"']+)["']/g) || [])]
+    .map((v) => v.replace(/["']/g, ""));
+  const num = (name, fallback = 0) =>
+    Number.parseInt(str(raw, new RegExp(`${name}:\\s*(\\d+)`)) || String(fallback), 10);
+  return {
+    baseUrl,
+    method: str(raw, /method:\s*["']([^"']+)["']/).toUpperCase(),
+    authType: str(raw, /authType:\s*["']([^"']+)["']/),
+    authHeader: str(raw, /authHeader:\s*["']([^"']+)["']/),
+    format: str(raw, /format:\s*["']([^"']+)["']/),
+    defaultModel: str(raw, /defaultModel:\s*["']([^"']+)["']/),
+    headers,
+    bodyFields: list("bodyFields"),
+    formats: list("formats"),
+    defaultMaxResults: num("defaultMaxResults", 5),
+    maxMaxResults: num("maxMaxResults", 100),
+    timeoutMs: num("timeoutMs", 15000),
+  };
+};
+
 const entries = [];
 for (const file of fs.readdirSync(registryDir).filter((f) => f.endsWith(".js")).sort()) {
   const src = fs.readFileSync(path.join(registryDir, file), "utf8");
@@ -232,6 +284,12 @@ for (const file of fs.readdirSync(registryDir).filter((f) => f.endsWith(".js")).
     models,
     modelNames,
     modelCapabilities,
+    noAuth: /^\s*noAuth:\s*true/m.test(src),
+    imageConfig: mediaConfig(src, "imageConfig"),
+    ttsConfig: mediaConfig(src, "ttsConfig"),
+    sttConfig: mediaConfig(src, "sttConfig"),
+    searchConfig: mediaConfig(src, "searchConfig"),
+    fetchConfig: mediaConfig(src, "fetchConfig"),
   };
   const override = OAUTH_OVERRIDES[id];
   if (override) {

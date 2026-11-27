@@ -2,6 +2,23 @@ package com.ninerouter.android.data
 
 import kotlinx.serialization.Serializable
 
+/** Declarative media endpoint exported from the provider registry. */
+@Serializable
+data class MediaConfig(
+    val baseUrl: String = "",
+    val method: String = "",
+    val authType: String = "",
+    val authHeader: String = "",
+    val format: String = "",
+    val defaultModel: String = "",
+    val headers: Map<String, String> = emptyMap(),
+    val bodyFields: List<String> = emptyList(),
+    val formats: List<String> = emptyList(),
+    val defaultMaxResults: Int = 5,
+    val maxMaxResults: Int = 100,
+    val timeoutMs: Int = 15000,
+)
+
 /** Subset of open-sse/providers/registry exported by scripts/export-android-config.mjs. */
 @Serializable
 data class ProviderDef(
@@ -51,6 +68,12 @@ data class ProviderDef(
     val models: List<String> = emptyList(),
     val modelNames: Map<String, String> = emptyMap(),
     val modelCapabilities: Map<String, List<String>> = emptyMap(),
+    val noAuth: Boolean = false,
+    val imageConfig: MediaConfig? = null,
+    val ttsConfig: MediaConfig? = null,
+    val sttConfig: MediaConfig? = null,
+    val searchConfig: MediaConfig? = null,
+    val fetchConfig: MediaConfig? = null,
 )
 
 @Serializable

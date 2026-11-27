@@ -3,6 +3,7 @@ package com.ninerouter.android.server
 import android.content.Context
 import com.ninerouter.android.core.ChatEngine
 import com.ninerouter.android.core.Formats
+import com.ninerouter.android.core.MediaEngine
 import com.ninerouter.android.core.ModelResolver
 import com.ninerouter.android.core.Translator
 import com.ninerouter.android.core.Upstream
@@ -163,7 +164,8 @@ class Gateway(private val context: Context) {
             val path = rawTarget.substringBefore("?")
             val query = rawTarget.substringAfter('?', "")
             val headers = request.headers
-            val body = request.body.toString(Charsets.UTF_8)
+            val rawBody = request.body
+            val body = rawBody.toString(Charsets.UTF_8)
             val authorized = authorized(headers)
             val exposed = Exposure.enabled(Store.state.settings)
             val settings = Store.state.settings
@@ -285,6 +287,60 @@ class Gateway(private val context: Context) {
                     val deny = keyAccessDenied(headers, body)
                     if (deny != null) return writeJson(output, 403, errorJson(403, deny))
                     handleEmbeddings(body, output)
+                }
+
+                method == "POST" && path in setOf(
+                    "/v1/images/generations", "/api/v1/images/generations",
+                ) -> {
+                    if (!authorized) return writeJson(output, 401, errorJson(401, "Invalid API key"))
+                    val mediaBody = bodyObject(body) ?: return writeJson(output, 400, errorJson(400, "Invalid JSON body"))
+                    val deny = ApiAccess.deniedModel(headers, mediaAccessBody(mediaBody), Store.state)
+                    if (deny != null) return writeJson(output, 403, errorJson(403, deny))
+                    val binary = queryParam(query, "response_format") == "binary"
+                    runMedia(output) { MediaEngine.image(mediaBody, binary) }
+                }
+
+                method == "POST" && path in setOf(
+                    "/v1/audio/speech", "/api/v1/audio/speech",
+                ) -> {
+                    if (!authorized) return writeJson(output, 401, errorJson(401, "Invalid API key"))
+                    val mediaBody = bodyObject(body) ?: return writeJson(output, 400, errorJson(400, "Invalid JSON body"))
+                    val deny = ApiAccess.deniedModel(headers, mediaAccessBody(mediaBody), Store.state)
+                    if (deny != null) return writeJson(output, 403, errorJson(403, deny))
+                    val format = queryParam(query, "response_format").orEmpty()
+                    runMedia(output) { MediaEngine.speech(mediaBody, format) }
+                }
+
+                method == "POST" && path in setOf(
+                    "/v1/audio/transcriptions", "/api/v1/audio/transcriptions",
+                ) -> {
+                    if (!authorized) return writeJson(output, 401, errorJson(401, "Invalid API key"))
+                    val contentType = headers["content-type"].orEmpty()
+                    val model = MediaEngine.multipartModel(rawBody, contentType)
+                    if (model.isNullOrBlank()) return writeJson(output, 400, errorJson(400, "Missing required field: model"))
+                    val deny = ApiAccess.deniedModel(
+                        headers,
+                        buildJsonObject { put("model", model) },
+                        Store.state,
+                    )
+                    if (deny != null) return writeJson(output, 403, errorJson(403, deny))
+                    runMedia(output) { MediaEngine.transcribe(rawBody, contentType) }
+                }
+
+                method == "POST" && path in setOf("/v1/search", "/api/v1/search") -> {
+                    if (!authorized) return writeJson(output, 401, errorJson(401, "Invalid API key"))
+                    val mediaBody = bodyObject(body) ?: return writeJson(output, 400, errorJson(400, "Invalid JSON body"))
+                    val deny = ApiAccess.deniedModel(headers, mediaAccessBody(mediaBody, "search"), Store.state)
+                    if (deny != null) return writeJson(output, 403, errorJson(403, deny))
+                    runMedia(output) { MediaEngine.search(mediaBody) }
+                }
+
+                method == "POST" && path in setOf("/v1/web/fetch", "/api/v1/web/fetch") -> {
+                    if (!authorized) return writeJson(output, 401, errorJson(401, "Invalid API key"))
+                    val mediaBody = bodyObject(body) ?: return writeJson(output, 400, errorJson(400, "Invalid JSON body"))
+                    val deny = ApiAccess.deniedModel(headers, mediaAccessBody(mediaBody, "fetch"), Store.state)
+                    if (deny != null) return writeJson(output, 403, errorJson(403, deny))
+                    runMedia(output) { MediaEngine.fetch(mediaBody) }
                 }
 
                 path == "/api/version" && method == "GET" -> writeJson(output, 200, versionJson())
@@ -808,7 +864,21 @@ class Gateway(private val context: Context) {
     }
 
     private fun modelsJson(headers: Map<String, String> = emptyMap(), kind: String? = null): String {
-        val models = ModelsApi.list(Store.state, kind)
+        val models = ModelsApi.list(Store.state, kind).filter { entry ->
+            val modelKind = (entry["kind"] as? JsonPrimitive)?.content
+            if (modelKind == null || modelKind == "llm") return@filter true
+            val owner = (entry["owned_by"] as? JsonPrimitive)?.content.orEmpty()
+            val def = Catalog.find(owner) ?: return@filter false
+            when (modelKind) {
+                "image" -> MediaEngine.supports(def, "image")
+                "tts" -> MediaEngine.supports(def, "tts")
+                "stt" -> MediaEngine.supports(def, "stt")
+                "webSearch" -> MediaEngine.supports(def, "search")
+                "webFetch" -> MediaEngine.supports(def, "fetch")
+                "embedding", "video", "imageToText" -> true
+                else -> true
+            }
+        }
         val permitted = ApiAccess.filterModels(headers, models, Store.state)
         return json.encodeToString(buildJsonObject {
             put("object", "list")
@@ -1046,6 +1116,46 @@ class Gateway(private val context: Context) {
                 "Cache-Control: no-store\r\n" +
                 "Connection: close\r\n\r\n"
             ).toByteArray(Charsets.UTF_8))
+        output.write(bytes)
+        output.flush()
+    }
+
+    private fun mediaAccessBody(body: JsonObject, suffix: String? = null): JsonObject {
+        val model = textOf(body, "model")
+        if (model.isNotBlank()) return body
+        val provider = textOf(body, "provider")
+        if (provider.isBlank()) return body
+        val value = if (suffix.isNullOrBlank()) provider else "$provider/$suffix"
+        return buildJsonObject { put("model", value) }
+    }
+
+    private fun runMedia(output: OutputStream, block: () -> MediaEngine.Reply) {
+        try {
+            val reply = block()
+            writeBytes(output, reply.status, reply.contentType, reply.bytes)
+        } catch (e: MediaEngine.MediaException) {
+            writeJson(output, e.status, errorJson(e.status, e.message))
+        } catch (e: Exception) {
+            android.util.Log.w("9R-Gateway", "media request failed: ${e.javaClass.simpleName}")
+            writeJson(output, 502, errorJson(502, e.message ?: "Media request failed"))
+        }
+    }
+
+    private fun writeBytes(output: OutputStream, status: Int, contentType: String, bytes: ByteArray) {
+        val reason = when (status) {
+            200 -> "OK"; 201 -> "Created"; 204 -> "No Content"
+            400 -> "Bad Request"; 401 -> "Unauthorized"; 403 -> "Forbidden"; 404 -> "Not Found"
+            413 -> "Payload Too Large"; 429 -> "Too Many Requests"
+            500 -> "Internal Server Error"; 501 -> "Not Implemented"
+            502 -> "Bad Gateway"; 503 -> "Service Unavailable"
+            else -> "Error"
+        }
+        val headers = ApiHttp.mediaHeaders(bytes, contentType, corsOpen())
+        output.write((buildString {
+            append("HTTP/1.1 $status $reason\r\n")
+            headers.forEach { (name, value) -> append("$name: $value\r\n") }
+            append("\r\n")
+        }).toByteArray(Charsets.UTF_8))
         output.write(bytes)
         output.flush()
     }

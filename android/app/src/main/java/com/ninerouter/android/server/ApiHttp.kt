@@ -45,6 +45,17 @@ internal object ApiHttp {
         put("Connection", "close")
     }
 
+    fun mediaHeaders(body: ByteArray, contentType: String, allowAnyOrigin: Boolean = false): Map<String, String> =
+        linkedMapOf<String, String>().apply {
+            put("Content-Type", contentType)
+            put("Content-Length", body.size.toString())
+            if (allowAnyOrigin) put("Access-Control-Allow-Origin", "*")
+            put("Access-Control-Allow-Methods", METHODS)
+            put("Access-Control-Allow-Headers", DEFAULT_HEADERS)
+            put("Cache-Control", "no-store")
+            put("Connection", "close")
+        }
+
     private fun validHeaderList(value: String): Boolean {
         if (value.any { it == '\r' || it == '\n' }) return false
         val names = value.split(',').map { it.trim() }
