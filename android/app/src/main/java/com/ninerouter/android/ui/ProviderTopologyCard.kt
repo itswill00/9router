@@ -78,12 +78,17 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 
+// Layout constants from the upstream buildLayout(). Positions use the
+// dashboard's approximate 180x30 / 120x44 boxes; the rendered cards use their
+// real measured size (180x56 / dynamic router width x52).
+private const val TOPO_LAYOUT_NODE_W = 180f
+private const val TOPO_LAYOUT_NODE_H = 30f
+private const val TOPO_LAYOUT_ROUTER_W = 120f
+private const val TOPO_LAYOUT_ROUTER_H = 44f
 private const val TOPO_NODE_W = 180f
-private const val TOPO_NODE_H = 52f
-private const val TOPO_ROUTER_W = 136f
+private const val TOPO_NODE_H = 56f
 private const val TOPO_ROUTER_H = 52f
 private const val TOPO_NODE_GAP = 24f
-private const val TOPO_GRAPH_PAD = 28f
 
 private data class TopoProvider(
     val id: String,
@@ -99,6 +104,7 @@ private data class TopoNode(
     val centerX: Float,
     val centerY: Float,
     val angle: Double,
+    val width: Float,
     val active: Boolean,
     val last: Boolean,
     val error: Boolean,
@@ -126,6 +132,7 @@ private data class TopoLayout(
     val minY: Float,
     val width: Float,
     val height: Float,
+    val routerWidth: Float,
 )
 
 private fun providerColor(def: ProviderDef?): Color {
@@ -182,6 +189,13 @@ private fun topologyProviders(): List<TopoProvider> {
     return result
 }
 
+private fun providerNodeWidth(label: String): Float {
+    // 16sp Manrope average advance is ~8.8px; include icon, gaps, padding and
+    // the active dot so a label never clips at the upstream minimum width.
+    val text = label.length * 8.8f
+    return max(150f, 90f + text)
+}
+
 private fun buildLayout(
     providers: List<TopoProvider>,
     activeSet: Set<String>,
@@ -191,9 +205,10 @@ private fun buildLayout(
     val count = providers.size
     if (count == 0) return null
 
-    val minRx = ((TOPO_NODE_W + TOPO_NODE_GAP) * count) / (2 * PI)
+    val minRx = ((TOPO_LAYOUT_NODE_W + TOPO_NODE_GAP) * count) / (2 * PI)
     val rx = max(320f, minRx.toFloat())
     val ry = max(200f, rx * 0.55f)
+    val routerWidth = if (activeSet.isNotEmpty()) 164f else 134f
 
     val nodes = providers.mapIndexed { index, provider ->
         val angle = -PI / 2 + (2 * PI * index) / count
@@ -201,39 +216,39 @@ private fun buildLayout(
         val cy = ry * sin(angle).toFloat()
         val key = provider.id.lowercase(Locale.US)
         val active = key in activeSet
-        val last = !active && key in lastSet
-        val error = !active && key in errorSet
         TopoNode(
             provider = provider,
             centerX = cx,
             centerY = cy,
             angle = angle,
+            width = providerNodeWidth(provider.label),
             active = active,
-            last = last,
-            error = error,
+            last = !active && key in lastSet,
+            error = !active && key in errorSet,
         )
     }
 
-    var minX = -TOPO_ROUTER_W / 2
-    var maxX = TOPO_ROUTER_W / 2
-    var minY = -TOPO_ROUTER_H / 2
-    var maxY = TOPO_ROUTER_H / 2
+    // React Flow places the node by its top-left position, so the rendered
+    // card extends below the ellipse point by its measured height.
+    var minX = -TOPO_LAYOUT_ROUTER_W / 2
+    var maxX = -TOPO_LAYOUT_ROUTER_W / 2 + routerWidth
+    var minY = -TOPO_LAYOUT_ROUTER_H / 2
+    var maxY = -TOPO_LAYOUT_ROUTER_H / 2 + TOPO_ROUTER_H
     nodes.forEach { node ->
-        minX = min(minX, node.centerX - TOPO_NODE_W / 2)
-        maxX = max(maxX, node.centerX + TOPO_NODE_W / 2)
-        minY = min(minY, node.centerY - TOPO_NODE_H / 2)
-        maxY = max(maxY, node.centerY + TOPO_NODE_H / 2)
+        val left = node.centerX - TOPO_LAYOUT_NODE_W / 2
+        val top = node.centerY - TOPO_LAYOUT_NODE_H / 2
+        minX = min(minX, left)
+        maxX = max(maxX, left + node.width)
+        minY = min(minY, top)
+        maxY = max(maxY, top + TOPO_NODE_H)
     }
-    minX -= TOPO_GRAPH_PAD
-    maxX += TOPO_GRAPH_PAD
-    minY -= TOPO_GRAPH_PAD
-    maxY += TOPO_GRAPH_PAD
     return TopoLayout(
         nodes = nodes,
         minX = minX,
         minY = minY,
         width = maxX - minX,
         height = maxY - minY,
+        routerWidth = routerWidth,
     )
 }
 
@@ -313,7 +328,7 @@ private fun TopologyGraph(layout: TopoLayout, activeCount: Int) {
         val widthDp = maxWidth.value
         val heightDp = maxHeight.value
         val fitScale = remember(layout.width, layout.height, widthDp, heightDp) {
-            (min(widthDp / layout.width, heightDp / layout.height) * 0.86f)
+            (min(widthDp / layout.width, heightDp / layout.height) * (1f / 1.2f))
                 .coerceIn(0.1f, 2f)
         }
         var scale by remember(layout.width, layout.height) { mutableFloatStateOf(fitScale) }
@@ -363,17 +378,18 @@ private fun TopologyGraph(layout: TopoLayout, activeCount: Int) {
                 TopologyEdges(layout)
                 RouterNode(
                     activeCount = activeCount,
+                    routerWidth = layout.routerWidth,
                     modifier = Modifier.offset(
-                        x = (-TOPO_ROUTER_W / 2 - layout.minX).dp,
-                        y = (-TOPO_ROUTER_H / 2 - layout.minY).dp,
+                        x = (-TOPO_LAYOUT_ROUTER_W / 2 - layout.minX).dp,
+                        y = (-TOPO_LAYOUT_ROUTER_H / 2 - layout.minY).dp,
                     ),
                 )
                 layout.nodes.forEach { node ->
                     ProviderNode(
                         node = node,
                         modifier = Modifier.offset(
-                            x = (node.centerX - TOPO_NODE_W / 2 - layout.minX).dp,
-                            y = (node.centerY - TOPO_NODE_H / 2 - layout.minY).dp,
+                            x = (node.centerX - TOPO_LAYOUT_NODE_W / 2 - layout.minX).dp,
+                            y = (node.centerY - TOPO_LAYOUT_NODE_H / 2 - layout.minY).dp,
                         ),
                     )
                 }
@@ -443,17 +459,21 @@ private fun TopologyEdges(layout: TopoLayout) {
     }
 
     Canvas(Modifier.fillMaxSize()) {
-        val routerCenter = Offset(-layout.minX, -layout.minY)
-        val routerHalfW = TOPO_ROUTER_W / 2
-        val routerHalfH = TOPO_ROUTER_H / 2
+        val routerLeft = -TOPO_LAYOUT_ROUTER_W / 2f
+        val routerTop = -TOPO_LAYOUT_ROUTER_H / 2f
+        val routerCenter = Offset(routerLeft + layout.routerWidth / 2f - layout.minX, routerTop + TOPO_ROUTER_H / 2f - layout.minY)
+        val routerHalfW = layout.routerWidth / 2f
+        val routerHalfH = TOPO_ROUTER_H / 2f
         val haloWidth = 10.dp.toPx()
         val plasmaWidth = 5.dp.toPx()
         val coreWidth = 2.2.dp.toPx()
 
         layout.nodes.forEach { node ->
+            val providerLeft = node.centerX - TOPO_LAYOUT_NODE_W / 2f
+            val providerTop = node.centerY - TOPO_LAYOUT_NODE_H / 2f
             val providerCenter = Offset(
-                node.centerX - layout.minX,
-                node.centerY - layout.minY,
+                providerLeft + node.width / 2f - layout.minX,
+                providerTop + TOPO_NODE_H / 2f - layout.minY,
             )
             val source = handlePoint(
                 routerCenter.x,
@@ -465,7 +485,7 @@ private fun TopologyEdges(layout: TopoLayout) {
             val target = handlePoint(
                 providerCenter.x,
                 providerCenter.y,
-                TOPO_NODE_W / 2,
+                node.width / 2f,
                 TOPO_NODE_H / 2,
                 node.targetSide,
             )
@@ -532,26 +552,28 @@ private fun TopologyEdges(layout: TopoLayout) {
     }
 }
 
+private fun controlOffset(distance: Float): Float =
+    if (distance >= 0f) 0.5f * distance else 0.25f * 25f * kotlin.math.sqrt(-distance)
+
+private fun controlPoint(
+    from: Offset,
+    fromSide: TopoSide,
+    to: Offset,
+): Offset = when (fromSide) {
+    TopoSide.Top -> Offset(from.x, from.y - controlOffset(from.y - to.y))
+    TopoSide.Bottom -> Offset(from.x, from.y + controlOffset(to.y - from.y))
+    TopoSide.Left -> Offset(from.x - controlOffset(from.x - to.x), from.y)
+    TopoSide.Right -> Offset(from.x + controlOffset(to.x - from.x), from.y)
+}
+
 private fun bezierPath(
     source: Offset,
     sourceSide: TopoSide,
     target: Offset,
     targetSide: TopoSide,
 ): Path {
-    val distance = hypot(target.x - source.x, target.y - source.y)
-    val bend = max(48f, distance * 0.45f)
-    val c1 = when (sourceSide) {
-        TopoSide.Top -> Offset(source.x, source.y - bend)
-        TopoSide.Bottom -> Offset(source.x, source.y + bend)
-        TopoSide.Left -> Offset(source.x - bend, source.y)
-        TopoSide.Right -> Offset(source.x + bend, source.y)
-    }
-    val c2 = when (targetSide) {
-        TopoSide.Top -> Offset(target.x, target.y - bend)
-        TopoSide.Bottom -> Offset(target.x, target.y + bend)
-        TopoSide.Left -> Offset(target.x - bend, target.y)
-        TopoSide.Right -> Offset(target.x + bend, target.y)
-    }
+    val c1 = controlPoint(source, sourceSide, target)
+    val c2 = controlPoint(target, targetSide, source)
     return Path().apply {
         moveTo(source.x, source.y)
         cubicTo(c1.x, c1.y, c2.x, c2.y, target.x, target.y)
@@ -605,7 +627,7 @@ private fun ProviderNode(node: TopoNode, modifier: Modifier = Modifier) {
     }
     Box(
         modifier
-            .width(TOPO_NODE_W.dp)
+            .width(node.width.dp)
             .height(TOPO_NODE_H.dp)
             .then(
                 if (node.active) Modifier
@@ -625,7 +647,7 @@ private fun ProviderNode(node: TopoNode, modifier: Modifier = Modifier) {
             .clip(shape)
             .background(NineRouterColors.Bg, shape)
             .border(2.dp, borderColor, shape)
-            .padding(horizontal = 14.dp, vertical = 10.dp)
+            .padding(horizontal = 16.dp, vertical = 10.dp)
             .semantics {
                 contentDescription = "${node.provider.label}, ${if (node.active) "active" else "idle"}"
             },
@@ -649,7 +671,7 @@ private fun ProviderNode(node: TopoNode, modifier: Modifier = Modifier) {
             Spacer(Modifier.width(10.dp))
             Text(
                 node.provider.label,
-                style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 20.sp),
                 fontWeight = FontWeight.Medium,
                 color = if (node.active) activeColor else NineRouterColors.TextMain,
                 maxLines = 1,
@@ -665,7 +687,7 @@ private fun ProviderNode(node: TopoNode, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun RouterNode(activeCount: Int, modifier: Modifier = Modifier) {
+private fun RouterNode(activeCount: Int, routerWidth: Float, modifier: Modifier = Modifier) {
     val powering = activeCount > 0
     val transition = rememberInfiniteTransition(label = "topologyRouter")
     val pulse by transition.animateFloat(
@@ -699,7 +721,7 @@ private fun RouterNode(activeCount: Int, modifier: Modifier = Modifier) {
     }
     Row(
         modifier
-            .widthIn(min = TOPO_ROUTER_W.dp)
+            .width(routerWidth.dp)
             .height(TOPO_ROUTER_H.dp)
             .then(
                 if (powering) Modifier.graphicsLayer {
@@ -728,7 +750,7 @@ private fun RouterNode(activeCount: Int, modifier: Modifier = Modifier) {
                 if (powering) Color(0xFFFDE047) else NineRouterColors.BrandOrange,
                 shape,
             )
-            .padding(horizontal = 18.dp, vertical = 10.dp),
+            .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         androidx.compose.foundation.Image(
