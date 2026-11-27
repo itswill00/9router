@@ -15,16 +15,16 @@ APK per version.
   - asset: `9Router-0.3.2-release.apk` (11,325,519 bytes)
   - SHA-256: `6d3e55a5e4424aeeb803721b91959099521c0a4c269e3f73c1eb56c2abb8e31c`
 - Recent commits:
+  - `330170e4 chore(android): release 0.3.2`
+  - `8244cfca fix(i18n): translate the one-tap update flow`
+  - `089c092a feat(update): make in-app updates one tap`
+  - `c4040b6f docs: record release 0.3.1`
   - `919f6e4c docs: bump the recorded release to 0.3.1`
   - `dea41f3f chore(android): release 0.3.1`
   - `65f4805c fix(i18n): align navigation and status copy`
   - `5f2926c8 fix(ui): remove duplicate navigation and generic status copy`
   - `25858001 docs: record release 0.3.0`
   - `360e8d46 fix(ui): use the bundled mono family in tools and combos`
-  - `59d6f761 chore(android): release 0.3.0`
-  - `95a6920b fix(i18n): translate the design refresh copy`
-  - `6d927f98 feat(ui): add the carbon and ember design system`
-  - `0183dd24 docs: record release 0.2.0`
 - Working tree: no modified or untracked files after the docs commit.
 
 ## Done so far
