@@ -123,7 +123,7 @@ private fun CodeBlock(text: String, modifier: Modifier = Modifier) {
         SelectionContainer {
             Text(
                 text,
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = NineRouterFonts.Mono),
                 color = NineRouterColors.TextMain,
                 modifier = Modifier
                     .horizontalScroll(rememberScrollState())
@@ -1013,7 +1013,7 @@ private fun MediaTester(kind: MediaKind) {
                 },
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 4,
-                textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = NineRouterFonts.Mono),
             )
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1486,7 +1486,7 @@ fun TranslatorScreen() {
                     { body = it },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 7,
-                    textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = NineRouterFonts.Mono),
                 )
                 Spacer(Modifier.height(10.dp))
                 Text("Source format", style = MaterialTheme.typography.labelSmall, color = NineRouterColors.TextSubtle)

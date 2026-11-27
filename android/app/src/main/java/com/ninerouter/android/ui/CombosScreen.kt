@@ -574,7 +574,7 @@ private fun PickerButton(text: String, onClick: () -> Unit, modifier: Modifier =
     ) {
         Text(
             text,
-            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = NineRouterFonts.Mono),
             color = if (text.startsWith("Select") || text.startsWith("Auto")) NineRouterColors.TextMuted else NineRouterColors.TextMain,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -722,7 +722,7 @@ private fun ComboEditorDialog(
                                     )
                                     Text(
                                         model,
-                                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = NineRouterFonts.Mono),
                                         color = NineRouterColors.TextMain,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
@@ -987,7 +987,7 @@ internal fun ModelPickerDialog(
                             label = { Text("Custom model id") },
                             placeholder = { Text("provider/model-id") },
                             singleLine = true,
-                            textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = NineRouterFonts.Mono),
                             shape = NineRouterShapes.small,
                             modifier = Modifier.weight(1f),
                         )
@@ -1089,7 +1089,7 @@ private fun ModelGroupHeader(group: String, items: List<ModelOption>) {
             Spacer(Modifier.width(5.dp))
             Text(
                 prefix,
-                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = NineRouterFonts.Mono),
                 color = NineRouterColors.TextSubtle,
                 maxLines = 1,
             )
@@ -1137,7 +1137,7 @@ private fun ModelPickerRow(
             Column(Modifier.weight(1f)) {
                 Text(
                     option.label,
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = NineRouterFonts.Mono),
                     color = NineRouterColors.TextMain,
                 )
             }
