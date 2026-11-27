@@ -38,6 +38,7 @@
  "Attach image": "Lampirkan gambar",
  "Attached image": "Gambar terlampir",
  "Available again in {0}.": "Tersedia lagi dalam {0}.",
+ "Backend output from the gateway": "Log backend gateway",
  "Base URL": "Base URL",
  "Base URL (ending in /v1)": "Base URL (berakhiran /v1)",
  "Basic Chat": "Chat Dasar",
