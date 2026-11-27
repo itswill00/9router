@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
+import com.ninerouter.android.core.ConsoleLog
 import com.ninerouter.android.core.OAuthFlow
 import com.ninerouter.android.data.Catalog
 import com.ninerouter.android.data.Connection
@@ -47,6 +48,7 @@ class MainActivity : ComponentActivity() {
         }
         if (savedInstanceState == null) handleOAuthCallback()
         if (savedInstanceState == null && Store.state.settings.autoStartGateway) {
+            ConsoleLog.info("[APP] auto-starting the gateway service")
             GatewayService.start(this)
         }
         setContent {
@@ -78,6 +80,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             val tokens = withContext(Dispatchers.IO) { OAuthFlow.exchangeCode(def, code, state) }
             if (tokens == null) {
+                ConsoleLog.error("[AUTH] OAuth exchange failed for ${def.name}")
                 Toast.makeText(this@MainActivity, tr("OAuth exchange failed for ${def.name}"), Toast.LENGTH_LONG).show()
                 return@launch
             }
@@ -97,6 +100,7 @@ class MainActivity : ComponentActivity() {
                 accountId = processed.accountId,
                 deviceId = processed.deviceId,
             )
+            ConsoleLog.info("[AUTH] OAuth connected ${def.id}")
             Store.mutate {
                 val index = connections.indexOfFirst {
                     it.provider == def.id &&

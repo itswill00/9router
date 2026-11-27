@@ -43,6 +43,7 @@ open class Upstream(
         var response = client.newCall(request).execute()
 
         if ((response.code == 401 || response.code == 403) && refreshable(def, conn)) {
+            ConsoleLog.info("[AUTH] ${def.id} returned ${response.code}, refreshing token")
             var refreshed = false
             synchronized(conn) {
                 // Another request may have refreshed while this one waited.
@@ -83,6 +84,7 @@ open class Upstream(
         if (conn.accessToken.isBlank() || conn.expiresAt <= 0L) return false
         if (conn.expiresAt > System.currentTimeMillis() + skewMs) return false
         if (!refreshable(def, conn)) return false
+        ConsoleLog.info("[AUTH] refreshing ${def.id} before it expires")
         synchronized(conn) {
             if (conn.expiresAt > System.currentTimeMillis() + skewMs) return false
             val fresh = refresh(def, conn) ?: return false
@@ -144,6 +146,7 @@ open class Upstream(
             (def.tokenUrl.isNotBlank() || def.copilotTokenUrl.isNotBlank())
 
     private fun refresh(def: ProviderDef, conn: Connection): Pair<String, String>? {
+        ConsoleLog.debug("[AUTH] token refresh request for ${def.id}")
         if (def.copilotTokenUrl.isNotBlank()) {
             copilotToken(def, conn.refreshToken)?.let { return it to conn.refreshToken }
         }
@@ -215,13 +218,18 @@ open class Upstream(
         }
         return try {
             client.newCall(req).execute().use { res ->
-                if (!res.isSuccessful) return null
+                if (!res.isSuccessful) {
+                    ConsoleLog.warn("[AUTH] token refresh failed for ${def.id}: HTTP ${res.code}")
+                    return null
+                }
                 val obj = json.parseToJsonElement(res.body!!.string()) as? JsonObject ?: return null
                 val access = (obj["access_token"] as? JsonPrimitive)?.content ?: return null
                 val refresh = (obj["refresh_token"] as? JsonPrimitive)?.content ?: conn.refreshToken
+                ConsoleLog.info("[AUTH] token refreshed for ${def.id}")
                 access to refresh
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            ConsoleLog.warn("[AUTH] token refresh error for ${def.id}: ${e.message ?: e.javaClass.simpleName}")
             null
         }
     }

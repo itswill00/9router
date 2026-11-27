@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
+import com.ninerouter.android.core.ConsoleLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -105,6 +106,7 @@ object UpdateManager {
     fun check(context: Context, silent: Boolean = false) {
         if (!busy.compareAndSet(false, true)) return
         state.value = State.Checking
+        ConsoleLog.info("[UPDATE] checking the GitHub release channel")
         val current = currentVersion(context)
         scope.launch {
             try {
@@ -125,17 +127,21 @@ object UpdateManager {
                     Comparator { a, b -> compareVersions(a.version, b.version) }
                 )
                 if (latest == null) {
+                    ConsoleLog.warn("[UPDATE] no Android release found")
                     state.value = if (silent) State.Idle else State.Failed("No Android release found on GitHub.")
                     return@launch
                 }
                 context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                     .edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply()
-                state.value = if (isNewer(latest.version, current)) {
-                    State.Available(latest, current)
+                if (isNewer(latest.version, current)) {
+                    ConsoleLog.info("[UPDATE] ${latest.version} available (current $current)")
+                    state.value = State.Available(latest, current)
                 } else {
-                    State.UpToDate
+                    ConsoleLog.info("[UPDATE] up to date on $current")
+                    state.value = State.UpToDate
                 }
             } catch (e: Exception) {
+                ConsoleLog.error("[UPDATE] check failed: ${e.message ?: "unknown error"}")
                 state.value = if (silent) State.Idle else State.Failed(e.message ?: "Update check failed.")
             } finally {
                 busy.set(false)
@@ -157,6 +163,7 @@ object UpdateManager {
         val available = state.value as? State.Available ?: return
         if (!busy.compareAndSet(false, true)) return
         val release = available.release
+        ConsoleLog.info("[UPDATE] downloading ${release.version}")
         state.value = State.Downloading(release, 0f)
         scope.launch {
             try {
@@ -219,6 +226,7 @@ object UpdateManager {
                     tmp.copyTo(target, overwrite = true)
                     tmp.delete()
                 }
+                ConsoleLog.info("[UPDATE] downloaded ${release.version} (${target.length()} bytes)")
                 state.value = State.Ready(release, target)
                 if (autoInstall) {
                     // Hand off to the system installer immediately. The user
@@ -228,6 +236,7 @@ object UpdateManager {
                     }
                 }
             } catch (e: Exception) {
+                ConsoleLog.error("[UPDATE] download failed: ${e.message ?: "unknown error"}")
                 state.value = State.Failed(e.message ?: "Download failed.")
             } finally {
                 busy.set(false)
@@ -240,11 +249,15 @@ object UpdateManager {
      * "install unknown apps" first (the settings screen is opened for them).
      */
     fun install(context: Context, file: File): String? {
-        if (!file.exists() || file.length() == 0L) return "The downloaded file is missing. Download it again."
+        if (!file.exists() || file.length() == 0L) {
+            ConsoleLog.error("[UPDATE] install failed: downloaded file is missing")
+            return "The downloaded file is missing. Download it again."
+        }
         val info = context.packageManager.getPackageArchiveInfo(file.absolutePath, 0)
             ?: return "The downloaded file is not a valid APK."
         if (info.packageName != context.packageName) return "The downloaded APK is for a different app."
         if (!canInstall(context)) {
+            ConsoleLog.warn("[UPDATE] install permission is off")
             runCatching { context.startActivity(installSettingsIntent(context)) }
             return "Allow \"Install unknown apps\" for 9Router, then tap Install again."
         }
@@ -260,9 +273,13 @@ object UpdateManager {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
+            ConsoleLog.info("[UPDATE] opening the package installer")
             context.startActivity(intent)
             null
-        }.getOrElse { e -> e.message ?: "Could not open the package installer." }
+        }.getOrElse { e ->
+            ConsoleLog.error("[UPDATE] installer failed: ${e.message ?: e.javaClass.simpleName}")
+            e.message ?: "Could not open the package installer."
+        }
     }
 
     private fun parseReleases(body: String): List<Release> {

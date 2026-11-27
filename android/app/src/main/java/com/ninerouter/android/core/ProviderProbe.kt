@@ -35,6 +35,7 @@ object ProviderProbe {
         if (model.isBlank()) return@withContext Result(false, 0L, "Model id is empty")
         if (!conn.enabled) return@withContext Result(false, 0L, "Connection is disabled")
 
+        ConsoleLog.info("[PROBE] testing ${def.id}/${model}")
         val started = System.currentTimeMillis()
         try {
             val upstream = Upstream(probeClient)
@@ -60,13 +61,16 @@ object ProviderProbe {
             upstream.execute(def, conn, payload, wantsStream = false).use { response ->
                 val elapsed = System.currentTimeMillis() - started
                 if (response.isSuccessful) {
+                    ConsoleLog.info("[PROBE] ${def.id}/${model} ok ${elapsed}ms")
                     Result(true, elapsed, "OK")
                 } else {
                     val detail = com.ninerouter.android.data.Redact.text(response.body?.string().orEmpty(), 220)
+                    ConsoleLog.warn("[PROBE] ${def.id}/${model} HTTP ${response.code}")
                     Result(false, elapsed, "HTTP ${response.code}${if (detail.isBlank()) "" else ": $detail"}")
                 }
             }
         } catch (e: Exception) {
+            ConsoleLog.error("[PROBE] ${def.id}/${model} failed: ${e.message ?: e.javaClass.simpleName}")
             Result(
                 false,
                 System.currentTimeMillis() - started,

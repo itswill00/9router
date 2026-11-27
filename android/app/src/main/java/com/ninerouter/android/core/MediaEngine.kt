@@ -211,6 +211,15 @@ object MediaEngine {
             val plan = build(def, conn)
             val reply = execute(plan)
             last = Attempt(plan, reply)
+            if (isAuthFailure(reply.status)) {
+                ConsoleLog.warn("[MEDIA] ${def.id} auth/quota HTTP ${reply.status}, trying next account")
+            } else {
+                if (reply.status in 200..299) {
+                    ConsoleLog.debug("[MEDIA] ${def.id} ${plan.kind} HTTP ${reply.status} ${reply.bytes.size}B")
+                } else {
+                    ConsoleLog.warn("[MEDIA] ${def.id} ${plan.kind} HTTP ${reply.status}")
+                }
+            }
             if (!isAuthFailure(reply.status)) {
                 if (reply.status in 200..299) {
                     conn.unavailableUntil = 0L
@@ -232,6 +241,7 @@ object MediaEngine {
 
     fun image(body: JsonObject, binary: Boolean): Reply {
         val target = target(body.str("model"), body.str("provider"), "image")
+        ConsoleLog.info("[MEDIA] image ${target.def.id}/${target.model}")
         val provider = target.def.id
         val attempt = attempt(provider) { def, conn -> imagePlan(def, conn, target.model, body) }
         if (attempt.reply.status !in 200..299) return attempt.reply
@@ -431,6 +441,7 @@ object MediaEngine {
 
     fun speech(body: JsonObject, responseFormat: String): Reply {
         val target = target(body.str("model"), body.str("provider"), "tts")
+        ConsoleLog.info("[MEDIA] tts ${target.def.id}/${target.model}")
         val format = responseFormat.ifBlank { body.str("response_format") }.ifBlank { "mp3" }
         val attempt = attempt(target.def.id) { def, conn ->
             speechPlan(def, conn, target.model, body, format)
@@ -574,6 +585,7 @@ object MediaEngine {
         val field = multipartModel(rawBody, contentType)
             ?: throw MediaException(400, "Missing required field: model")
         val target = target(field, null, "stt")
+        ConsoleLog.info("[MEDIA] stt ${target.def.id}/${target.model}")
         val model = if (field.contains('/')) field.substringAfter('/') else field
         val rewritten = rewriteMultipartField(rawBody, contentType, "model", model)
         val attempt = attempt(target.def.id) { def, conn ->
@@ -698,6 +710,7 @@ object MediaEngine {
         val query = body.str("query")
         if (query.isBlank()) throw MediaException(400, "Missing required field: query")
         val target = targetWeb(body.str("model"), body.str("provider"), "search")
+        ConsoleLog.info("[MEDIA] search ${target.def.id} \"${query.take(80)}\"")
         val attempt = attempt(target.def.id) { def, conn -> searchPlan(def, conn, body) }
         if (attempt.reply.status !in 200..299) return attempt.reply
         val started = System.currentTimeMillis()
@@ -883,6 +896,7 @@ object MediaEngine {
         val url = body.str("url")
         if (url.isBlank()) throw MediaException(400, "Missing required field: url")
         val target = targetWeb(body.str("model"), body.str("provider"), "fetch")
+        ConsoleLog.info("[MEDIA] fetch ${target.def.id} ${url.take(120)}")
         val attempt = attempt(target.def.id) { def, conn -> fetchPlan(def, conn, body) }
         if (attempt.reply.status !in 200..299) return attempt.reply
         val started = System.currentTimeMillis()

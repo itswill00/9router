@@ -77,6 +77,7 @@ object NodeProbe {
     fun modelsUrl(node: ProviderNode): String = "${rootUrl(node)}/models"
 
     suspend fun fetchModels(node: ProviderNode): ModelsResult = withContext(Dispatchers.IO) {
+        ConsoleLog.info("[PROBE] fetching models for ${node.prefix}")
         val keys = node.effectiveKeys().ifEmpty { listOf("") }
         var last: ModelsResult? = null
         for (key in keys) {
@@ -84,7 +85,9 @@ object NodeProbe {
             if (result.error == null) return@withContext result
             last = result
         }
-        last ?: ModelsResult(emptyList(), "No API key")
+        last ?: ModelsResult(emptyList(), "No API key").also {
+            ConsoleLog.warn("[PROBE] ${node.prefix} has no API key")
+        }
     }
 
     private fun fetchModelsWithKey(node: ProviderNode, key: String): ModelsResult = runCatching {
@@ -121,6 +124,7 @@ object NodeProbe {
     }
 
     private fun testModelWithKey(node: ProviderNode, model: String, key: String): TestResult {
+        ConsoleLog.info("[PROBE] testing ${node.prefix}/$model")
         val started = System.currentTimeMillis()
         return runCatching {
             val payload = when {
@@ -158,8 +162,10 @@ object NodeProbe {
                 val elapsed = System.currentTimeMillis() - started
                 if (response.isSuccessful) {
                     val summary = replySummary(body)
+                    ConsoleLog.info("[PROBE] ${node.prefix}/$model ok ${elapsed}ms")
                     TestResult(true, if (summary.isBlank()) "Model responded" else summary, elapsed)
                 } else {
+                    ConsoleLog.warn("[PROBE] ${node.prefix}/$model HTTP ${response.code}")
                     TestResult(
                         false,
                         "HTTP ${response.code}: ${com.ninerouter.android.data.Redact.text(body, 220)}",

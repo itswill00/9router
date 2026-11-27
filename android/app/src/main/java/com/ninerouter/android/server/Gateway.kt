@@ -2,6 +2,7 @@ package com.ninerouter.android.server
 
 import android.content.Context
 import com.ninerouter.android.core.ChatEngine
+import com.ninerouter.android.core.ConsoleLog
 import com.ninerouter.android.core.Formats
 import com.ninerouter.android.core.MediaEngine
 import com.ninerouter.android.core.ModelResolver
@@ -92,7 +93,9 @@ class Gateway(private val context: Context) {
             bound.forEach { socket -> activeScope.launch { acceptLoop(socket) } }
             GatewayState.running.value = true
             GatewayState.error.value = ""
-            android.util.Log.i("9R-Gateway", "listening on ${GatewayState.BASE_URL} (${if (Exposure.enabled(Store.state.settings)) "network" else "loopback"} mode)")
+            val mode = if (Exposure.enabled(Store.state.settings)) "network" else "loopback"
+            android.util.Log.i("9R-Gateway", "listening on ${GatewayState.BASE_URL} ($mode mode)")
+            ConsoleLog.info("[GATEWAY] listening on ${GatewayState.BASE_URL} ($mode mode)")
         } catch (e: Exception) {
             bound.forEach { runCatching { it.close() } }
             GatewayState.running.value = false
@@ -101,6 +104,7 @@ class Gateway(private val context: Context) {
                     "Port ${GatewayState.PORT} is already in use. Stop the other gateway instance and try again."
                 else -> e.message ?: e.javaClass.simpleName
             }
+            ConsoleLog.error("[GATEWAY] start failed: ${GatewayState.error.value}")
             android.util.Log.e("9R-Gateway", "start failed", e)
         }
     }
@@ -122,6 +126,7 @@ class Gateway(private val context: Context) {
         activeSockets.clear()
         scope.cancel()
         GatewayState.running.value = false
+        ConsoleLog.info("[GATEWAY] stopped")
     }
 
     private suspend fun acceptLoop(socket: ServerSocket) {
@@ -130,6 +135,7 @@ class Gateway(private val context: Context) {
             val client = try { socket.accept() } catch (_: Exception) { break }
             if (!Exposure.allows(client.inetAddress)) {
                 android.util.Log.w("9R-Gateway", "dropped peer outside allowed ranges: ${client.inetAddress?.hostAddress}")
+                ConsoleLog.warn("[GATEWAY] dropped peer ${client.inetAddress?.hostAddress}")
                 runCatching { client.close() }
                 continue
             }
@@ -157,6 +163,7 @@ class Gateway(private val context: Context) {
             val request = try {
                 HttpRequestParser.read(input)
             } catch (e: HttpRequestParseException) {
+                ConsoleLog.warn("[HTTP] bad request: ${e.message ?: "parse error"}")
                 return writeJson(output, e.status, errorJson(e.status, e.message ?: "Invalid HTTP request"))
             }
             val method = request.method
@@ -169,6 +176,7 @@ class Gateway(private val context: Context) {
             val authorized = authorized(headers)
             val exposed = Exposure.enabled(Store.state.settings)
             val settings = Store.state.settings
+            ConsoleLog.info("[HTTP] $method $rawTarget")
 
             if (exposed && AuthThrottle.isBlocked(socket.inetAddress)) {
                 return writeJson(output, 429, errorJson(429, "Too many failed attempts. Try again later."))
@@ -1025,6 +1033,7 @@ class Gateway(private val context: Context) {
             // Headers are already on the wire. Never let handle() try to write
             // a second HTTP response into the chunked body.
             android.util.Log.w("9R-Gateway", "stream ended early: ${e.javaClass.simpleName}")
+            ConsoleLog.warn("[SSE] stream ended early: ${e.javaClass.simpleName}")
             runCatching {
                 writeFrameBytes(
                     output,
@@ -1142,6 +1151,13 @@ class Gateway(private val context: Context) {
     }
 
     private fun writeBytes(output: OutputStream, status: Int, contentType: String, bytes: ByteArray) {
+        if (status >= 400) {
+            ConsoleLog.log(
+                if (status >= 500) com.ninerouter.android.core.ConsoleLog.Level.ERROR
+                else com.ninerouter.android.core.ConsoleLog.Level.WARN,
+                "[HTTP] $status ${com.ninerouter.android.data.Redact.text(bytes.toString(Charsets.UTF_8), 300)}",
+            )
+        }
         val reason = when (status) {
             200 -> "OK"; 201 -> "Created"; 204 -> "No Content"
             400 -> "Bad Request"; 401 -> "Unauthorized"; 403 -> "Forbidden"; 404 -> "Not Found"
@@ -1161,6 +1177,13 @@ class Gateway(private val context: Context) {
     }
 
     private fun writeJson(output: OutputStream, status: Int, body: String) {
+        if (status >= 400) {
+            ConsoleLog.log(
+                if (status >= 500) com.ninerouter.android.core.ConsoleLog.Level.ERROR
+                else com.ninerouter.android.core.ConsoleLog.Level.WARN,
+                "[HTTP] $status ${com.ninerouter.android.data.Redact.text(body, 300)}",
+            )
+        }
         val bytes = body.toByteArray(Charsets.UTF_8)
         val reason = when (status) {
             200 -> "OK"; 201 -> "Created"; 204 -> "No Content"

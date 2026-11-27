@@ -135,7 +135,7 @@ private enum class Screen(
     MediaWeb("Web Fetch & Search", "Web Fetch & Search", "Manage your web search and fetch providers", R.drawable.ic_nav_web),
     ProxyPools("Proxy Pools", "Proxy Pools", "Manage your proxy pool configurations", R.drawable.ic_nav_proxy),
     Skills("Skills", "Agent Skills", "Copy a link and paste to your AI to use 9Router — no install needed", R.drawable.ic_nav_skills),
-    ConsoleLog("Console Log", "Console Log", "Live request output from the gateway", R.drawable.ic_nav_logs),
+    ConsoleLog("Console Log", "Console Log", "Backend output from the gateway", R.drawable.ic_nav_logs),
     Translator("Translator", "Translator", "Debug translation flow between formats", R.drawable.ic_nav_translate),
     About("About", "About", "Project and developer", R.drawable.ic_nav_info),
     Settings("Settings", "Settings", "Manage your preferences", R.drawable.ic_nav_settings),

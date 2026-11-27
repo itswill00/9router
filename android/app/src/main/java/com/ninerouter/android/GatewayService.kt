@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import com.ninerouter.android.core.ConsoleLog
 import com.ninerouter.android.data.Exposure
 import com.ninerouter.android.data.Store
 import com.ninerouter.android.ui.tr
@@ -22,6 +23,7 @@ class GatewayService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannel()
+        ConsoleLog.info("[SERVICE] gateway service created")
         gateway = Gateway(applicationContext)
     }
 
@@ -39,13 +41,16 @@ class GatewayService : Service() {
             }
         } catch (e: Exception) {
             GatewayState.error.value = "Foreground service failed: ${e.message ?: e.javaClass.simpleName}"
+            ConsoleLog.error("[SERVICE] foreground failed: ${GatewayState.error.value}")
             stopSelf()
             return START_NOT_STICKY
         }
         if (intent?.action == ACTION_REBIND && gateway != null) {
+            ConsoleLog.info("[SERVICE] rebinding gateway")
             gateway?.stop()
             gateway?.start()
             if (GatewayState.running.value != true) {
+                ConsoleLog.error("[SERVICE] rebind failed: ${GatewayState.error.value}")
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
@@ -53,6 +58,7 @@ class GatewayService : Service() {
             return START_STICKY
         }
         if (gateway == null) gateway = Gateway(applicationContext)
+        ConsoleLog.info("[SERVICE] starting gateway")
         gateway?.start()
         if (GatewayState.running.value != true) {
             // Port conflict or bind failure: do not keep a sticky foreground
@@ -65,6 +71,7 @@ class GatewayService : Service() {
     }
 
     override fun onDestroy() {
+        ConsoleLog.info("[SERVICE] gateway service destroyed")
         gateway?.stop()
         gateway = null
         super.onDestroy()
@@ -126,10 +133,12 @@ class GatewayService : Service() {
                 }
             } catch (e: Exception) {
                 GatewayState.error.value = "Cannot start gateway: ${e.message ?: e.javaClass.simpleName}"
+                ConsoleLog.error("[SERVICE] cannot start: ${GatewayState.error.value}")
             }
         }
 
         fun stop(context: Context) {
+            ConsoleLog.info("[SERVICE] stop requested")
             context.stopService(Intent(context, GatewayService::class.java))
         }
 
@@ -155,6 +164,7 @@ class GatewayService : Service() {
                 context.startService(intent)
             } catch (e: Exception) {
                 GatewayState.error.value = "Cannot rebind gateway: ${e.message ?: e.javaClass.simpleName}"
+                ConsoleLog.error("[SERVICE] cannot rebind: ${GatewayState.error.value}")
             }
         }
     }

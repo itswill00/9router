@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
+import com.ninerouter.android.core.ConsoleLog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,6 +41,7 @@ object Store {
     fun init(context: Context) {
         file = File(context.filesDir, "appstate.json")
         backup = File(context.filesDir, "appstate.json.bak")
+        ConsoleLog.info("[STORE] loading local state")
         load()
     }
 
@@ -87,6 +89,7 @@ object Store {
         if (!::file.isInitialized) return
         if (!file.exists() && !backup.exists()) {
             state = AppState(settings = Settings(apiKey = newKey()))
+            ConsoleLog.info("[STORE] first run, created a new state file")
             save()
             return
         }
@@ -116,6 +119,7 @@ object Store {
             restore(json.decodeFromString<AppState>(source.readText()))
         } catch (e: Exception) {
             android.util.Log.e(TAG, "state file unreadable: ${source.name}", e)
+            ConsoleLog.error("[STORE] ${source.name} is unreadable: ${e.javaClass.simpleName}")
             null
         }
     }
@@ -133,6 +137,7 @@ object Store {
             json.encodeToString(snapshot())
         } catch (e: Exception) {
             android.util.Log.e(TAG, "state encode failed", e)
+            ConsoleLog.error("[STORE] state encode failed: ${e.javaClass.simpleName}")
             return
         }
         if (encoded == lastSaved && file.exists()) return
@@ -156,6 +161,7 @@ object Store {
             // A full disk must not crash the gateway thread. The in-memory state
             // stays authoritative and the next save retries.
             android.util.Log.e(TAG, "state save failed", e)
+            ConsoleLog.error("[STORE] state save failed: ${e.javaClass.simpleName}")
         }
     }
 
@@ -178,15 +184,28 @@ object Store {
         } else {
             connections.add(connection)
         }
+        ConsoleLog.info("[STORE] saved connection ${connection.provider}")
     }
 
-    fun removeConnection(id: String) = mutate { connections.removeAll { it.id == id } }
+    fun removeConnection(id: String) = mutate {
+        connections.removeAll { it.id == id }
+        ConsoleLog.info("[STORE] removed connection $id")
+    }
 
-    fun addNode(node: ProviderNode) = mutate { nodes.add(node) }
+    fun addNode(node: ProviderNode) = mutate {
+        nodes.add(node)
+        ConsoleLog.info("[STORE] saved custom node ${node.prefix}")
+    }
 
-    fun removeNode(id: String) = mutate { nodes.removeAll { it.id == id } }
+    fun removeNode(id: String) = mutate {
+        nodes.removeAll { it.id == id }
+        ConsoleLog.info("[STORE] removed custom node $id")
+    }
 
-    fun addApiKey(key: ApiKey) = mutate { apiKeys.add(key) }
+    fun addApiKey(key: ApiKey) = mutate {
+        apiKeys.add(key)
+        ConsoleLog.info("[STORE] created API key ${key.name.ifBlank { key.id.take(8) }}")
+    }
 
     fun newKey(): String = "sk-9r-" + UUID.randomUUID().toString().replace("-", "")
 }
