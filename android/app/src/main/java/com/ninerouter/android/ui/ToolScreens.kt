@@ -1,8 +1,15 @@
 package com.ninerouter.android.ui
 
+import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.MediaPlayer
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -11,6 +18,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -43,16 +51,21 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -63,6 +76,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ninerouter.android.R
 import com.ninerouter.android.core.Formats
+import com.ninerouter.android.core.MediaEngine
 import com.ninerouter.android.core.Translator
 import com.ninerouter.android.data.Catalog
 import com.ninerouter.android.data.Connection
@@ -71,13 +85,28 @@ import com.ninerouter.android.data.Exposure
 import com.ninerouter.android.data.Store
 import com.ninerouter.android.data.UsageEntry
 import com.ninerouter.android.server.GatewayState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.ByteArrayOutputStream
+import java.io.File
 import java.text.NumberFormat
+import java.util.Base64
 import java.util.Locale
+import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 // ---------------------------------------------------------------------------
 // Shared tool-page helpers
@@ -692,44 +721,453 @@ enum class MediaKind(
     val serviceKinds: List<String>,
     val method: String,
     val path: String,
+    val probePath: String,
     val icon: Int,
     val supported: Boolean,
 ) {
     Embedding(
         "Embedding", "Vectors for RAG and semantic search.",
-        listOf("embedding"), "POST", "/v1/embeddings", R.drawable.ic_nav_embedding, true,
+        listOf("embedding"), "POST", "/v1/embeddings", "/v1/embeddings", R.drawable.ic_nav_embedding, true,
     ),
     TextToImage(
         "Text to Image", "Generate images from text prompts.",
-        listOf("image"), "POST", "/v1/images/generations", R.drawable.ic_nav_image, false,
+        listOf("image"), "POST", "/v1/images/generations", "/v1/images/generations", R.drawable.ic_nav_image, true,
     ),
     Video(
         "Video", "Generate short videos from text prompts.",
-        listOf("video"), "POST", "/v1/videos/generations", R.drawable.ic_nav_video, false,
+        listOf("video"), "POST", "/v1/videos/generations", "/v1/videos/generations", R.drawable.ic_nav_video, false,
     ),
     TextToSpeech(
         "Text To Speech", "Turn text into spoken audio.",
-        listOf("tts"), "POST", "/v1/audio/speech", R.drawable.ic_nav_tts, false,
+        listOf("tts"), "POST", "/v1/audio/speech", "/v1/audio/speech", R.drawable.ic_nav_tts, true,
     ),
     SpeechToText(
         "Speech To Text", "Transcribe audio into text.",
-        listOf("stt"), "POST", "/v1/audio/transcriptions", R.drawable.ic_nav_stt, false,
+        listOf("stt"), "POST", "/v1/audio/transcriptions", "/v1/audio/transcriptions", R.drawable.ic_nav_stt, true,
     ),
     SystemOne(
         "System One", "Route system-level agent requests.",
-        listOf("systemone"), "POST", "/v1/systemone", R.drawable.ic_nav_systemone, false,
+        listOf("systemone"), "POST", "/v1/systemone", "/v1/systemone", R.drawable.ic_nav_systemone, false,
     ),
     Web(
         "Web Fetch & Search", "Search the web and fetch pages as text.",
-        listOf("webSearch", "webFetch"), "POST", "/v1/search · /v1/web/fetch", R.drawable.ic_nav_web, false,
+        listOf("webSearch", "webFetch"), "POST", "/v1/search · /v1/web/fetch", "/v1/search", R.drawable.ic_nav_web, true,
     ),
 }
+
+private fun MediaKind.engineKind(): String = when (this) {
+    MediaKind.TextToImage -> "image"
+    MediaKind.TextToSpeech -> "tts"
+    MediaKind.SpeechToText -> "stt"
+    MediaKind.Web -> "search"
+    MediaKind.Embedding -> "embedding"
+    MediaKind.Video -> "video"
+    MediaKind.SystemOne -> "systemone"
+}
+
+private fun mediaDefaultModel(kind: MediaKind, mode: String): String {
+    val engine = if (kind == MediaKind.Web) mode else kind.engineKind()
+    val connected = Catalog.providers().filter { def ->
+        MediaEngine.supports(def, engine) &&
+            Store.state.connections.any { it.enabled && it.provider == def.id }
+    }
+    val pool = connected.ifEmpty { Catalog.providers().filter { MediaEngine.supports(it, engine) } }
+    return when (engine) {
+        "image" -> {
+            val openai = pool.firstOrNull { it.id == "openai" }
+            if (openai != null) "openai/gpt-image-1"
+            else {
+                val image = Regex("dall-e|gpt-image|flux|stable-diffusion|sdxl|imagen|seedream|nano-banana|recraft|grok-2-image|image")
+                pool.firstOrNull()?.let { def ->
+                    def.models.firstOrNull { image.containsMatchIn(it.lowercase()) }
+                        ?.let { "${def.alias}/$it" }
+                } ?: "openai/gpt-image-1"
+            }
+        }
+        "tts" -> when {
+            pool.any { it.id == "openai" } -> "openai/tts-1"
+            pool.any { it.id == "elevenlabs" } -> "el/21m00Tcm4TlvDq8ikWAM"
+            else -> "openai/tts-1"
+        }
+        "stt" -> pool.firstOrNull { it.id == "openai" }?.let { "openai/whisper-1" }
+            ?: pool.firstOrNull()?.let { def ->
+                def.models.firstOrNull { it.contains("whisper", true) || it.contains("scribe", true) }
+                    ?.let { "${def.alias}/$it" }
+            } ?: "openai/whisper-1"
+        "search" -> pool.firstOrNull()?.let { "${it.alias}/search" } ?: "tavily/search"
+        "fetch" -> pool.firstOrNull()?.let { "${it.alias}/fetch" } ?: "jina-reader/fetch"
+        "embedding" -> pool.firstOrNull()?.let { def ->
+            def.models.firstOrNull { it.contains("embed", true) }?.let { "${def.alias}/$it" }
+        } ?: "openai/text-embedding-3-small"
+        else -> ""
+    }
+}
+
+private fun mediaDefaultBody(kind: MediaKind, mode: String): String {
+    val model = mediaDefaultModel(kind, mode)
+    return when (kind) {
+        MediaKind.TextToImage ->
+            """{"model":"$model","prompt":"A red fox in fresh snow, cinematic light"}"""
+        MediaKind.TextToSpeech ->
+            """{"model":"$model","input":"Hello from 9Router on Android"}"""
+        MediaKind.Web ->
+            if (mode == "fetch") {
+                """{"model":"$model","url":"https://example.com","format":"markdown"}"""
+            } else {
+                """{"model":"$model","query":"9Router open source","max_results":3}"""
+            }
+        MediaKind.Embedding ->
+            """{"model":"$model","input":"Hello from 9Router"}"""
+        else -> "{}"
+    }
+}
+
+private data class MediaTestResult(
+    val status: Int,
+    val contentType: String,
+    val text: String,
+    val bitmap: Bitmap? = null,
+    val audio: File? = null,
+)
+
+private val prettyJson = Json { prettyPrint = true }
+private val mediaTestClient = OkHttpClient.Builder()
+    .connectTimeout(10, TimeUnit.SECONDS)
+    .readTimeout(180, TimeUnit.SECONDS)
+    .build()
+
+private fun runMediaTest(path: String, body: String, kind: MediaKind): MediaTestResult {
+    val request = Request.Builder()
+        .url(GatewayState.BASE_URL + path)
+        .header("Content-Type", "application/json")
+        .apply {
+            val key = Store.state.settings.apiKey
+            if (key.isNotBlank()) header("Authorization", "Bearer $key")
+        }
+        .post(body.toRequestBody("application/json; charset=utf-8".toMediaType()))
+        .build()
+    mediaTestClient.newCall(request).execute().use { response ->
+        val bytes = response.body?.bytes() ?: ByteArray(0)
+        val contentType = response.header("Content-Type").orEmpty()
+        val text = runCatching {
+            prettyJson.encodeToString(
+                kotlinx.serialization.json.JsonElement.serializer(),
+                Json.parseToJsonElement(bytes.toString(Charsets.UTF_8)),
+            )
+        }.getOrDefault(bytes.toString(Charsets.UTF_8).take(12_000))
+
+        var bitmap: Bitmap? = null
+        if (kind == MediaKind.TextToImage) {
+            val b64 = runCatching {
+                Json.parseToJsonElement(bytes.toString(Charsets.UTF_8)).jsonObject["data"]
+                    ?.jsonArray?.firstOrNull()?.jsonObject?.get("b64_json")?.toString()?.trim('"')
+            }.getOrNull()
+            if (!b64.isNullOrBlank()) {
+                val imageBytes = runCatching { Base64.getDecoder().decode(b64) }.getOrNull()
+                if (imageBytes != null) bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+            }
+        }
+
+        var audio: File? = null
+        if (kind == MediaKind.TextToSpeech && contentType.startsWith("audio/", true) && bytes.isNotEmpty()) {
+            val ext = when {
+                contentType.contains("mpeg", true) || contentType.contains("mp3", true) -> "mp3"
+                contentType.contains("wav", true) -> "wav"
+                contentType.contains("ogg", true) -> "ogg"
+                else -> "bin"
+            }
+            val file = File.createTempFile("9router-media-", ".$ext")
+            file.writeBytes(bytes)
+            audio = file
+        }
+
+        return MediaTestResult(response.code, contentType.ifBlank { "application/json" }, text, bitmap, audio)
+    }
+}
+
+private data class PickedAudio(val name: String, val mime: String, val bytes: ByteArray)
+
+private fun readPickedAudio(context: Context, uri: Uri): PickedAudio? {
+    val resolver = context.contentResolver
+    val name = runCatching {
+        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
+    }.getOrNull().orEmpty().ifBlank { "audio" }
+    val mime = resolver.getType(uri).orEmpty().ifBlank { "audio/mpeg" }
+    val bytes = runCatching { resolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+        ?: return null
+    return PickedAudio(name, mime, bytes)
+}
+
+private fun runSttTest(model: String, audio: PickedAudio): MediaTestResult {
+    val boundary = "----9router" + UUID.randomUUID().toString().replace("-", "")
+    val out = ByteArrayOutputStream()
+    fun line(value: String) = out.write(value.toByteArray(Charsets.UTF_8))
+    line("--$boundary\r\n")
+    line("Content-Disposition: form-data; name=\"model\"\r\n\r\n$model\r\n")
+    line("--$boundary\r\n")
+    line("Content-Disposition: form-data; name=\"file\"; filename=\"${audio.name.replace("\"", "")}\"\r\n")
+    line("Content-Type: ${audio.mime}\r\n\r\n")
+    out.write(audio.bytes)
+    line("\r\n--$boundary--\r\n")
+    val multipart = out.toByteArray()
+    val contentType = "multipart/form-data; boundary=$boundary"
+
+    val request = Request.Builder()
+        .url(GatewayState.BASE_URL + "/v1/audio/transcriptions")
+        .header("Content-Type", contentType)
+        .apply {
+            val key = Store.state.settings.apiKey
+            if (key.isNotBlank()) header("Authorization", "Bearer $key")
+        }
+        .post(multipart.toRequestBody(contentType.toMediaType()))
+        .build()
+
+    mediaTestClient.newCall(request).execute().use { response ->
+        val bytes = response.body?.bytes() ?: ByteArray(0)
+        val replyType = response.header("Content-Type").orEmpty()
+        val text = runCatching {
+            prettyJson.encodeToString(
+                kotlinx.serialization.json.JsonElement.serializer(),
+                Json.parseToJsonElement(bytes.toString(Charsets.UTF_8)),
+            )
+        }.getOrDefault(bytes.toString(Charsets.UTF_8).take(12_000))
+        return MediaTestResult(response.code, replyType.ifBlank { "application/json" }, text)
+    }
+}
+
+@Composable
+private fun MediaTester(kind: MediaKind) {
+    if (!kind.supported) return
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var webMode by rememberSaveable(kind.name) { mutableStateOf("search") }
+    var body by rememberSaveable(kind.name) { mutableStateOf(mediaDefaultBody(kind, webMode)) }
+    var result by remember(kind) { mutableStateOf<MediaTestResult?>(null) }
+    var busy by remember(kind) { mutableStateOf(false) }
+    var error by remember(kind) { mutableStateOf("") }
+    var player by remember(kind) { mutableStateOf<MediaPlayer?>(null) }
+    var sttModel by rememberSaveable(kind.name) { mutableStateOf(mediaDefaultModel(kind, "stt")) }
+    var picked by remember(kind) { mutableStateOf<PickedAudio?>(null) }
+    val activePlayer by rememberUpdatedState(player)
+    DisposableEffect(kind) {
+        onDispose { runCatching { activePlayer?.release() } }
+    }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val audio = withContext(Dispatchers.IO) { readPickedAudio(context, uri) }
+                when {
+                    audio == null -> error = "Cannot read the selected audio file."
+                    audio.bytes.size > 7 * 1024 * 1024 ->
+                        error = "Audio is larger than the 7 MiB console limit."
+                    else -> {
+                        picked = audio
+                        error = ""
+                        result = null
+                    }
+                }
+            }
+        }
+    }
+
+    Panel {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Try it", style = MaterialTheme.typography.titleSmall, color = NineRouterColors.TextMain)
+            Spacer(Modifier.weight(1f))
+            Pill("local gateway")
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            if (kind == MediaKind.SpeechToText) {
+                "Choose an audio file (up to 7 MiB). It is posted as multipart/form-data to the local gateway."
+            } else {
+                "Edit the request and send it through the gateway on this device."
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = NineRouterColors.TextMuted,
+        )
+        if (kind == MediaKind.Web) {
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                ChoiceChip("Search", webMode == "search") {
+                    webMode = "search"
+                    body = mediaDefaultBody(kind, webMode)
+                    result = null
+                }
+                ChoiceChip("Fetch", webMode == "fetch") {
+                    webMode = "fetch"
+                    body = mediaDefaultBody(kind, webMode)
+                    result = null
+                }
+            }
+        }
+        if (kind != MediaKind.SpeechToText) {
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                body,
+                {
+                    body = it
+                    error = ""
+                },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 4,
+                textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PrimaryButton(
+                    if (busy) "Sending…" else "Send",
+                    modifier = Modifier.weight(1f),
+                    enabled = !busy && body.isNotBlank(),
+                ) {
+                    busy = true
+                    error = ""
+                    result = null
+                    val path = if (kind == MediaKind.Web) "/v1/$webMode" else kind.probePath
+                    scope.launch {
+                        runCatching {
+                            withContext(Dispatchers.IO) { runMediaTest(path, body, kind) }
+                        }.onSuccess {
+                            result = it
+                        }.onFailure {
+                            error = it.message ?: it.javaClass.simpleName
+                        }
+                        busy = false
+                    }
+                }
+                SecondaryButton("Reset") {
+                    body = mediaDefaultBody(kind, webMode)
+                    result = null
+                    error = ""
+                }
+            }
+        } else {
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                sttModel,
+                {
+                    sttModel = it
+                    error = ""
+                },
+                label = { Text("Model") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SecondaryButton("Choose audio", modifier = Modifier.weight(1f)) {
+                    picker.launch("audio/*")
+                }
+                PrimaryButton(
+                    if (busy) "Sending…" else "Transcribe",
+                    modifier = Modifier.weight(1f),
+                    enabled = !busy && picked != null && sttModel.isNotBlank(),
+                ) {
+                    val audio = picked ?: return@PrimaryButton
+                    busy = true
+                    error = ""
+                    result = null
+                    val model = sttModel
+                    scope.launch {
+                        runCatching {
+                            withContext(Dispatchers.IO) { runSttTest(model, audio) }
+                        }.onSuccess {
+                            result = it
+                        }.onFailure {
+                            error = it.message ?: it.javaClass.simpleName
+                        }
+                        busy = false
+                    }
+                }
+            }
+            picked?.let { audio ->
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "${audio.name} · ${audio.bytes.size / 1024} KB",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.TextSubtle,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        AnimatedVisibility(
+            visible = error.isNotBlank(),
+            enter = fadeIn(tween(150)) + expandVertically(tween(200)),
+            exit = fadeOut(tween(120)) + shrinkVertically(tween(150)),
+        ) {
+            Column {
+                Spacer(Modifier.height(8.dp))
+                NoticeBanner(error, NineRouterColors.Danger)
+            }
+        }
+        result?.let { reply ->
+            Spacer(Modifier.height(10.dp))
+            DividerLine()
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Pill(
+                    "HTTP ${reply.status}",
+                    if (reply.status in 200..299) NineRouterColors.Success else NineRouterColors.Danger,
+                    if (reply.status in 200..299) NineRouterColors.Success.copy(alpha = 0.12f)
+                    else NineRouterColors.Danger.copy(alpha = 0.12f),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    reply.contentType.substringBefore(';'),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NineRouterColors.TextMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            reply.bitmap?.let { bitmap ->
+                Spacer(Modifier.height(8.dp))
+                Image(
+                    bitmap.asImageBitmap(),
+                    contentDescription = "Generated image",
+                    modifier = Modifier.fillMaxWidth().height(220.dp),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+            if (reply.audio != null) {
+                Spacer(Modifier.height(8.dp))
+                SecondaryButton("Play audio", modifier = Modifier.fillMaxWidth()) {
+                    runCatching {
+                        player?.release()
+                        player = MediaPlayer().apply {
+                            setDataSource(reply.audio.absolutePath)
+                            prepare()
+                            start()
+                        }
+                    }.onFailure {
+                        Toast.makeText(context, it.message ?: "Cannot play audio", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            CodeBlock(reply.text.take(12_000))
+        }
+    }
+}
+
 
 @Composable
 fun MediaProviderScreen(kind: MediaKind, onOpenProviders: () -> Unit) {
     val revision by storeRevision()
     val providers = remember(kind, revision) {
-        Catalog.providers().filter { def -> kind.serviceKinds.any { it in def.serviceKinds } }
+        val engineKind = if (kind == MediaKind.Web) "search" else kind.engineKind()
+        Catalog.providers().filter { def ->
+            kind.serviceKinds.any { it in def.serviceKinds } ||
+                MediaEngine.supports(def, engineKind) ||
+                (kind == MediaKind.Web && MediaEngine.supports(def, "fetch"))
+        }
+    }
+    val readyCount = remember(kind, revision) {
+        val engineKind = if (kind == MediaKind.Web) "search" else kind.engineKind()
+        providers.count { MediaEngine.supports(it, engineKind) || (kind == MediaKind.Web && MediaEngine.supports(it, "fetch")) }
     }
 
     LazyColumn(
@@ -761,11 +1199,21 @@ fun MediaProviderScreen(kind: MediaKind, onOpenProviders: () -> Unit) {
                 if (!kind.supported) {
                     Spacer(Modifier.height(8.dp))
                     NoticeBanner(
-                        "This media route is not served by the native gateway yet. The provider list below comes from the bundled registry; media configuration is available in the full 9Router dashboard.",
+                        "This media route is not served by the native gateway yet. The provider list below comes from the bundled registry; use the full 9Router dashboard for this capability.",
                         NineRouterColors.Warning,
+                    )
+                } else {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "$readyCount provider(s) ready on this device",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NineRouterColors.TextSubtle,
                     )
                 }
             }
+        }
+        if (kind.supported) {
+            item { MediaTester(kind) }
         }
         item {
             SectionHeader("Providers (${providers.size})", "From the bundled provider registry")
@@ -782,6 +1230,9 @@ fun MediaProviderScreen(kind: MediaKind, onOpenProviders: () -> Unit) {
         } else {
             items(providers, key = { it.id }, contentType = { "media-provider" }) { def ->
                 val count = Store.state.connections.count { it.provider == def.id }
+                val engineKind = if (kind == MediaKind.Web) "search" else kind.engineKind()
+                val ready = MediaEngine.supports(def, engineKind) ||
+                    (kind == MediaKind.Web && MediaEngine.supports(def, "fetch"))
                 Panel(modifier = Modifier.animateItem()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         ProviderIcon(def.id, def.name, size = 34.dp)
@@ -795,16 +1246,33 @@ fun MediaProviderScreen(kind: MediaKind, onOpenProviders: () -> Unit) {
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                def.id,
+                                if (ready) {
+                                    if (count > 0) "${def.id} · ready" else "${def.id} · connect a key"
+                                } else {
+                                    "${def.id} · no native route yet"
+                                },
                                 style = MaterialTheme.typography.labelSmall,
-                                color = NineRouterColors.TextSubtle,
+                                color = if (ready) NineRouterColors.TextSubtle else NineRouterColors.TextFaint,
                                 maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                         Pill(
-                            if (count > 0) "$count connected" else "Not connected",
-                            if (count > 0) NineRouterColors.Success else NineRouterColors.TextMuted,
-                            if (count > 0) NineRouterColors.Success.copy(alpha = 0.12f) else NineRouterColors.Surface2,
+                            when {
+                                count > 0 -> "$count connected"
+                                ready -> "Ready"
+                                else -> "Registry"
+                            },
+                            when {
+                                count > 0 -> NineRouterColors.Success
+                                ready -> NineRouterColors.BrandOrange
+                                else -> NineRouterColors.TextMuted
+                            },
+                            when {
+                                count > 0 -> NineRouterColors.Success.copy(alpha = 0.12f)
+                                ready -> NineRouterColors.BrandOrange.copy(alpha = 0.12f)
+                                else -> NineRouterColors.Surface2
+                            },
                         )
                     }
                 }
