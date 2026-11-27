@@ -10,10 +10,10 @@ APK per version.
 ## Current state
 
 - Branch: `master` — clean; synced with `origin/master`.
-- Version: `0.4.0-android` (version code 42).
-- Latest release (Latest): https://github.com/itswill00/9router/releases/tag/android-v0.4.0
-  - asset: `9Router-0.4.0-release.apk` (11,313,167 bytes)
-  - SHA-256: `714bd1cca10d89a61a515ba736d66b6445e443e323abf0977711af133081cccb`
+- Version: `0.4.1-android` (version code 43).
+- Latest release (Latest): https://github.com/itswill00/9router/releases/tag/android-v0.4.1
+  - asset: `9Router-0.4.1-release.apk` (11,313,167 bytes)
+  - SHA-256: `ea67753992c243a85dc401076ce29d6a704fda76392ba65ef413ed6c55413a93`
 - Recent commits:
   - `412e5c70 chore(android): release 0.4.0`
   - `c1e841d5 fix(i18n): refresh topology and console copy`
@@ -128,10 +128,10 @@ APK per version.
 ```
 
 Last result: `BUILD SUCCESSFUL` (unit tests + fatal lint). The release build
-for 0.4.0 also succeeded and the APK metadata was verified:
+for 0.4.1 also succeeded and the APK metadata was verified:
 
 ```text
-package: com.ninerouter.android  versionCode=42  versionName=0.4.0-android
+package: com.ninerouter.android  versionCode=43  versionName=0.4.1-android
 ```
 
 `ProviderNodeKeysTest` covers legacy-key migration, deduplication and cursor
@@ -145,7 +145,7 @@ Nothing is blocked. There is no active bug or failing test.
 ## Next steps
 
 1. Read `AGENTS.md`; verify the tree is clean and `versionName` is
-   `0.4.0-android` before touching code.
+   `0.4.1-android` before touching code.
 2. Ask the user which backlog item to take. Do not invent a release or push
    without an explicit request.
 3. If a release is requested, follow the release procedure in `AGENTS.md`:
@@ -188,6 +188,10 @@ Nothing is blocked. There is no active bug or failing test.
   dock / rail. The drawer is the **More** overflow (secondary screens only), and
   the top-bar mark goes home. Do not add a hamburger or repeat primary screens
   in the drawer.
+- **Topology layout** → keep the upstream top-left positions (`cx - 90`,
+  `cy - 15`) and measured card sizes; centering cards on the ellipse made the
+  0.4.0 graph look wrong. Use React Flow's control-offset formula and fit
+  padding (`1 / 1.2`), and widen provider cards for long labels.
 - **Topology activity** → active edges only appear while `ActiveRequests` has a
   live chat dispatch. Do not fall back to recent usage rows; that was the old
   vertical list and it made idle providers look active.

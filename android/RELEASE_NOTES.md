@@ -1,10 +1,31 @@
-# 9Router Android 0.4.0
+# 9Router Android 0.4.1
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.3.3
+## What changed since 0.4.0
+
+This is a topology parity correction for 0.4.0.
+
+- **Positions match React Flow more closely.** Provider cards now use the
+  upstream top-left layout (`cx - 90`, `cy - 15`) with their real rendered size
+  (180×56) instead of being centered on the ellipse, and the router uses the
+  upstream offset with a width that grows when the active badge is present.
+- **Exact bezier controls.** Edge control points now use React Flow's
+  `calculateControlOffset`/curvature formula instead of an approximate bend.
+- **Exact fit padding.** The graph uses React Flow's `fitView` padding ratio
+  (`1 / 1.2`) and no extra graph padding, so the ellipse fills the card the same
+  way and does not look shoved into the center.
+- **Labels stop clipping.** Provider cards widen for longer names instead of
+  truncating at a fixed 180dp, and edges attach to the real left/right borders.
+- **Cleaner node geometry.** Provider height is the measured 56dp and the
+  router badge/icon share the real 52dp row, so handles and edges meet the
+  borders instead of the old approximations.
+
+No gateway or API change. The backend Console Log from 0.4.0 is unchanged.
+
+## What changed in 0.4.0
 
 - **Provider Topology matches the upstream graph.** The vertical list is gone.
   Providers now sit on the same ellipse around the 9Router node (same node
@@ -798,10 +819,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `9Router-0.4.0-release.apk` and sideload it:
+Download `9Router-0.4.1-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.4.0-release.apk
+adb install -r 9Router-0.4.1-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -870,7 +891,7 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.4.0-android` (version code 42)
+- Version: `0.4.1-android` (version code 43)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
