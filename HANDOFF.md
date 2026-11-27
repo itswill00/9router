@@ -1,4 +1,4 @@
-# Handoff — 9Router for Android (2026-11-26)
+# Handoff — 9Router for Android (2026-11-27)
 
 ## Goal
 
@@ -11,22 +11,20 @@ APK per version.
 
 - Branch: `master` — clean; synced with `origin/master`.
 - Version: `0.2.0-android` (version code 37).
-- Latest release: https://github.com/itswill00/9router/releases/tag/android-v0.2.0
+- Latest release (Latest): https://github.com/itswill00/9router/releases/tag/android-v0.2.0
   - asset: `9Router-0.2.0-release.apk` (11,146,174 bytes)
   - SHA-256: `9a7f9b0c3707dbc3da583fff7e20653761d1abfbf9dcb2f22f08137c3f9347dd`
 - Recent commits:
+  - `89501b81 chore(android): release 0.2.0`
+  - `e8a30860 feat(ui): turn media pages into working request consoles`
+  - `811a4d13 feat(media): add native image, audio and web gateway`
+  - `5c2021b0 docs: record release 0.1.34`
   - `5a6efea4 chore(android): release 0.1.34`
   - `894a4c88 fix(i18n): translate interpolation templates`
   - `4aecdd79 feat(providers): allow multiple keys on custom endpoints`
   - `c136efb9 chore(android): release 0.1.33`
   - `e9d98dad fix(i18n): escape the placeholder regex for Android ICU`
-  - `d7129f7a chore(android): release 0.1.32`
-  - `af629cb2 docs: record release 0.1.32`
-  - `2a8c7c2d feat(i18n): add runtime language switching`
-  - `a3d9ae20 fix(core): preserve native tool calls and stream usage`
-  - `931d26ad fix(android): harden oauth, updates and background lifecycle`
-  - `0cbddaca fix(ui): keep state live and remove interaction traps`
-- Working tree: no modified or untracked files.
+- Working tree: no modified or untracked files after the docs commit.
 
 ## Done so far
 
