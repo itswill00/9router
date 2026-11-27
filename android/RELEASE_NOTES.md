@@ -1,10 +1,39 @@
-# 9Router Android 0.3.3
+# 9Router Android 0.4.0
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.3.2
+## What changed since 0.3.3
+
+- **Provider Topology matches the upstream graph.** The vertical list is gone.
+  Providers now sit on the same ellipse around the 9Router node (same node
+  sizes, minimum radii, ellipse ratio, handle selection and clockwise order),
+  with cubic edges. Error edges are red, active edges use the electric
+  halo/plasma/core beam and moving particles, the last provider is amber, and
+  idle edges are faint. The router pulses, shakes its mark and shows the active
+  count; provider nodes use the registry color, icon or text fallback, and a
+  pulsing active dot.
+- **Real in-flight tracking.** A chat request is marked active when it is
+  dispatched, cleared on success, error, stream close or disconnect, and expires
+  after 60 seconds. The last failed provider stays red for 10 seconds, matching
+  the upstream `activeRequests` / `lastProvider` / `errorProvider` behavior.
+- **Graph interaction.** Pinch to zoom, drag to pan, and the +/−/fit controls
+  match the React Flow controls. The card is 320dp tall on phones and 480dp on
+  wider windows, with the upstream empty state "No providers connected".
+- **Console Log now captures the whole backend.** HTTP ingress, routing and
+  fallback decisions, cooldowns, token refresh, media requests, probes, update
+  checks/downloads, storage writes, gateway service lifecycle and OAuth are all
+  written to the same 200-line buffer.
+- **Terminal UI.** Console Log is now a black monospace terminal with level
+  colors (LOG/INFO/WARN/ERROR/DEBUG), timestamps, auto-scroll and a Clear
+  action, matching the upstream page instead of showing only chat usage rows.
+- Provider registry export now includes each provider's `color` and `textIcon`
+  so topology nodes use the same palette as the dashboard.
+
+No gateway route or API shape changed in this release.
+
+## What changed in 0.3.3
 
 - **Resume the right step after install permission.** If a download finishes
   while "Install unknown apps" is off, tapping Install now opens the system
@@ -769,10 +798,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `9Router-0.3.3-release.apk` and sideload it:
+Download `9Router-0.4.0-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.3.3-release.apk
+adb install -r 9Router-0.4.0-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -841,7 +870,7 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.3.3-android` (version code 41)
+- Version: `0.4.0-android` (version code 42)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`

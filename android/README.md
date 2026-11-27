@@ -115,14 +115,18 @@ project.
   ellipsis-safe account rows, confirmed delete, and per-model Test / Test all
   (OAuth and API key, 20 s timeout, 3 parallel) with Working/Failed filters.
 - **Usage & Analytics**: Overview/Details tabs, Today/24h/7D/30D/60D/All
-  periods, overview cards, a vertical live provider flow, recent requests, an area
-  chart, provider/model breakdowns, and a per-model table with expandable
-  provider detail.
+  periods, overview cards, the upstream elliptical **Provider Topology** with
+  active/ last/ error edges, electric active beams, pinch-zoom and fit controls,
+  recent requests, an area chart, provider/model breakdowns, and a per-model
+  table with expandable provider detail.
+- **Console Log**: a black 200-line terminal that captures the whole backend
+  (HTTP ingress, routing, fallback, auth, media, probes, updates, storage and
+  service lifecycle) with level colors, timestamps, auto-scroll and Clear.
 - **Live screens.** Usage, Console Log, Quota Tracker, Providers, Settings and
   the other state-backed pages subscribe to the persisted store, so gateway
-  traffic and cooldown changes show up while the page is open. Usage and the
-  Console Log also carry a small Live indicator and a visible-screen heartbeat;
-  Quota Tracker ticks its countdowns every second.
+  traffic and cooldown changes show up while the page is open. Usage shows
+  *Realtime* and the log stream shows *Following* with a visible-screen
+  heartbeat; Quota Tracker ticks its countdowns every second.
 - **Model picker.** Models are grouped by provider, long ids wrap instead of
   being cut off, the provider prefix is shown on the group header, and a custom
   model id can be added inline. Multi-select is used by combos and the vision
