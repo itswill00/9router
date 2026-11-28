@@ -1,10 +1,17 @@
-# 9Router Android 0.4.2
+# 9Router Android 0.4.3
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.4.1
+## What changed since 0.4.2
+
+- **Provider Topology is removed.** The Usage graph (Canvas ellipse, electric
+  active edges, React-Flow-style zoom and fit controls) and the in-flight
+  request tracker behind it are gone. Usage Overview is now stats, recent
+  requests, charts and the per-model table only.
+
+## What changed in 0.4.2
 
 - **The streaming beam now flows like upstream.** Active edges no longer use a
   slow, uniform dash. They use the upstream timings: white core dash every
@@ -833,10 +840,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `9Router-0.4.2-release.apk` and sideload it:
+Download `9Router-0.4.3-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.4.2-release.apk
+adb install -r 9Router-0.4.3-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -905,7 +912,7 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.4.2-android` (version code 44)
+- Version: `0.4.3-android` (version code 45)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
