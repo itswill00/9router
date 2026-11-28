@@ -221,8 +221,6 @@ private fun Overview(
             )
         )
 
-        ProviderTopologyCard(usage = Store.state.usage, revision = revision)
-
         Panel {
             SectionHeader("Recent Requests", action = {
                 Text(
