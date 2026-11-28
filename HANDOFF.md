@@ -10,11 +10,14 @@ APK per version.
 ## Current state
 
 - Branch: `master` — clean; synced with `origin/master`.
-- Version: `0.4.2-android` (version code 44).
-- Latest release (Latest): https://github.com/itswill00/9router/releases/tag/android-v0.4.2
-  - asset: `9Router-0.4.2-release.apk` (11,313,167 bytes)
-  - SHA-256: `22c13a7a4fc6ca59b65cfc9a5fa912f157f11a3fa41ae5c9560b204e51b35ef3`
+- Version: `0.4.3-android` (version code 45).
+- Latest release (Latest): https://github.com/itswill00/9router/releases/tag/android-v0.4.3
+  - asset: `9Router-0.4.3-release.apk` (11,296,783 bytes)
+  - SHA-256: `929bb9a592323edc9ad7c34e6f924a16bd4f97bd682f3232cb4da7a218632a71`
 - Recent commits:
+  - `d204ff34 chore(android): release 0.4.3`
+  - `891d94bc docs: remove provider topology references`
+  - `0404c0e0 refactor(usage): drop the provider topology graph`
   - `7139b45a chore(android): release 0.4.2`
   - `254e575b fix(topology): make the active edge stream like upstream`
   - `ffab80a5 docs: record release 0.4.1`
@@ -125,10 +128,10 @@ APK per version.
 ```
 
 Last result: `BUILD SUCCESSFUL` (unit tests + fatal lint). The release build
-for 0.4.2 also succeeded and the APK metadata was verified:
+for 0.4.3 also succeeded and the APK metadata was verified:
 
 ```text
-package: com.ninerouter.android  versionCode=44  versionName=0.4.2-android
+package: com.ninerouter.android  versionCode=45  versionName=0.4.3-android
 ```
 
 `ProviderNodeKeysTest` covers legacy-key migration, deduplication and cursor
@@ -142,7 +145,7 @@ Nothing is blocked. There is no active bug or failing test.
 ## Next steps
 
 1. Read `AGENTS.md`; verify the tree is clean and `versionName` is
-   `0.4.2-android` before touching code.
+   `0.4.3-android` before touching code.
 2. Ask the user which backlog item to take. Do not invent a release or push
    without an explicit request.
 3. If a release is requested, follow the release procedure in `AGENTS.md`:
