@@ -49,9 +49,9 @@ APK per version.
   stickiness, key management and confirmations. **Written and compiled.**
 - Usage: six stat cards including Success Rate, adaptive 2/3-column grid,
   recent requests, charts, per-model table. **Written and compiled.**
-- Provider Topology replaced by a vertical route flow: 9Router hub, provider
-  branches, proportional volume bars, top four on phones / six on tablets,
-  long tail in an Other row. **Written and compiled.**
+- Provider Topology was removed in the 0.4.x line — the user judged the graph
+  useless. The Usage Overview now ends with the model table; there is no
+  topology card and no in-flight tracking.
 - About page is a project lineage: decolua as upstream founder, contributors
   credited, itswill00 as the Android port author, bundled avatars, MIT license
   and project links. **Written and compiled.**
@@ -80,15 +80,12 @@ APK per version.
   round-robin cursor), and NodeProbe probes until a key succeeds. The node API
   accepts `apiKeys` and reports `keyCount`. **Verified** by
   `ProviderNodeKeysTest` and the fast check; not yet exercised on a phone.
-- Provider topology parity + backend console (shipped in 0.4.0):
-  `core/ActiveRequests.kt` tracks in-flight chat requests per provider/model/
-  account with a 60s expiry and a 10s error provider; `ui/ProviderTopologyCard.kt`
-  is a native Canvas port of the upstream ellipse graph, electric active edges,
-  router pulse and React-Flow-style controls. `core/ConsoleLog.kt` buffers 200
+- Provider topology parity + backend console (shipped in 0.4.0, topology
+  removed afterwards): the graph lived in `ui/ProviderTopologyCard.kt` with
+  `core/ActiveRequests.kt`; both were deleted. `core/ConsoleLog.kt` buffers 200
   backend lines and the Console Log screen is a black terminal; HTTP, routing,
   auth, media, probes, updates, storage and service lifecycle all write to it.
-  **Verified** by `ActiveRequestsTest`, `ConsoleLogTest` and the fast check; not
-  visually exercised on a device.
+  **Verified** by `ConsoleLogTest` and the fast check.
 - One-tap updates (shipped in 0.3.2): `UpdateManager.download(autoInstall=true)`
   hands the verified APK to the system installer when the download completes;
   the launch prompt, top-bar pill and Settings panel all call the same path.
@@ -188,17 +185,9 @@ Nothing is blocked. There is no active bug or failing test.
   dock / rail. The drawer is the **More** overflow (secondary screens only), and
   the top-bar mark goes home. Do not add a hamburger or repeat primary screens
   in the drawer.
-- **Topology flow** → the active beam is time-driven by `withFrameNanos`, not a
-  slow shared phase: core 220ms, plasma 180ms, orbs 400–800ms with staggered
-  begins, sparks 280–480ms. The jittered halo/plasma/core replace SVG
-  feTurbulence. Do not replace it with a single dash animation.
-- **Topology layout** → keep the upstream top-left positions (`cx - 90`,
-  `cy - 15`) and measured card sizes; centering cards on the ellipse made the
-  0.4.0 graph look wrong. Use React Flow's control-offset formula and fit
-  padding (`1 / 1.2`), and widen provider cards for long labels.
-- **Topology activity** → active edges only appear while `ActiveRequests` has a
-  live chat dispatch. Do not fall back to recent usage rows; that was the old
-  vertical list and it made idle providers look active.
+- **Topology is gone** → do not reintroduce `ProviderTopologyCard.kt` or
+  `ActiveRequests.kt`. The provider graph was removed by request; Usage is
+  stats, recent requests, charts and the model table only.
 - **Console buffer** → `ConsoleLog` is process-wide; tests must clear it before
   asserting on a single line, and UI log lines must pass `translate = false`.
 - **Updater hand-off** → verify "install unknown apps" before downloading;

@@ -105,11 +105,8 @@ This file is the durable working agreement for this repository. Read
   and the status page use the public URL when set. Do not add a second exposure
   control in Settings; Settings only reflects that the key is forced on.
 - Usage Overview has six stat cards (Total Requests, Input, Cached, Output,
-  Estimated Cost, Success Rate), a vertical provider flow, recent requests,
-  charts, and the per-model table. Keep the 2-column phone / 3-column wide grid.
-- Provider Topology is a **vertical route flow**, not a radial canvas: 9Router
-  at the top, proportional bars per provider, top four on phones and six on
-  tablets, with the long tail in an "Other" row.
+  Estimated Cost, Success Rate), recent requests, charts, and the per-model
+  table. Keep the 2-column phone / 3-column wide grid.
 - The hamburger is a 56 dp target moved inward from the gesture edge, with a
   visible 40 dp disc, focus clearing, top-bar z-index, and clipped content.
   Do not shrink it or move it back to the edge.
@@ -138,7 +135,7 @@ This file is the durable working agreement for this repository. Read
 - `ui/`
   `Shell.kt` (drawer/top bar), `Screens.kt` (Endpoint/Chat/Update),
   `ProvidersScreen.kt`, `CombosScreen.kt`, `UsageScreen.kt`,
-  `ProviderTopologyCard.kt`, `SettingsScreen.kt`, `ToolScreens.kt`,
+  `SettingsScreen.kt`, `ToolScreens.kt`,
   `AboutScreen.kt`, `LogsScreen.kt`, `Components.kt`, `Theme.kt`,
   `LiveState.kt`, `I18n.kt` (runtime translator and Text shim).
 - `update/UpdateManager.kt`; `scripts/android-build.sh`,

@@ -115,10 +115,8 @@ project.
   ellipsis-safe account rows, confirmed delete, and per-model Test / Test all
   (OAuth and API key, 20 s timeout, 3 parallel) with Working/Failed filters.
 - **Usage & Analytics**: Overview/Details tabs, Today/24h/7D/30D/60D/All
-  periods, overview cards, the upstream elliptical **Provider Topology** with
-  active/ last/ error edges, electric active beams, pinch-zoom and fit controls,
-  recent requests, an area chart, provider/model breakdowns, and a per-model
-  table with expandable provider detail.
+  periods, overview cards, recent requests, an area chart, provider/model
+  breakdowns, and a per-model table with expandable provider detail.
 - **Console Log**: a black 200-line terminal that captures the whole backend
   (HTTP ingress, routing, fallback, auth, media, probes, updates, storage and
   service lifecycle) with level colors, timestamps, auto-scroll and Clear.
