@@ -33,9 +33,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -435,38 +437,29 @@ private fun TopologyControl(label: String, onClick: () -> Unit) {
 @Composable
 private fun TopologyEdges(layout: TopoLayout) {
     val hasActive = layout.nodes.any { it.active }
-    val phase = if (hasActive) {
-        val transition = rememberInfiniteTransition(label = "topologyEdges")
-        transition.animateFloat(
-            initialValue = 0f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart),
-            label = "edgePhase",
-        ).value
-    } else {
-        0f
-    }
-    val flicker = if (hasActive) {
-        val transition = rememberInfiniteTransition(label = "topologyFlicker")
-        transition.animateFloat(
-            initialValue = 0.72f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(190, easing = LinearEasing), RepeatMode.Reverse),
-            label = "edgeFlicker",
-        ).value
-    } else {
-        1f
+    var elapsedMs by remember(hasActive) { mutableLongStateOf(0L) }
+    LaunchedEffect(hasActive) {
+        if (!hasActive) {
+            elapsedMs = 0L
+            return@LaunchedEffect
+        }
+        val start = withFrameNanos { it }
+        while (true) {
+            withFrameNanos { now ->
+                elapsedMs = (now - start) / 1_000_000L
+            }
+        }
     }
 
     Canvas(Modifier.fillMaxSize()) {
         val routerLeft = -TOPO_LAYOUT_ROUTER_W / 2f
         val routerTop = -TOPO_LAYOUT_ROUTER_H / 2f
-        val routerCenter = Offset(routerLeft + layout.routerWidth / 2f - layout.minX, routerTop + TOPO_ROUTER_H / 2f - layout.minY)
+        val routerCenter = Offset(
+            routerLeft + layout.routerWidth / 2f - layout.minX,
+            routerTop + TOPO_ROUTER_H / 2f - layout.minY,
+        )
         val routerHalfW = layout.routerWidth / 2f
         val routerHalfH = TOPO_ROUTER_H / 2f
-        val haloWidth = 10.dp.toPx()
-        val plasmaWidth = 5.dp.toPx()
-        val coreWidth = 2.2.dp.toPx()
 
         layout.nodes.forEach { node ->
             val providerLeft = node.centerX - TOPO_LAYOUT_NODE_W / 2f
@@ -486,7 +479,7 @@ private fun TopologyEdges(layout: TopoLayout) {
                 providerCenter.x,
                 providerCenter.y,
                 node.width / 2f,
-                TOPO_NODE_H / 2,
+                TOPO_NODE_H / 2f,
                 node.targetSide,
             )
             val path = bezierPath(source, node.sourceSide, target, node.targetSide)
@@ -510,36 +503,7 @@ private fun TopologyEdges(layout: TopoLayout) {
             }
 
             if (node.active) {
-                drawPath(
-                    path,
-                    color = Color(0xFF22D3EE).copy(alpha = 0.35f * flicker),
-                    style = Stroke(width = haloWidth, cap = StrokeCap.Round),
-                )
-                drawPath(
-                    path,
-                    color = Color(0xFF4ADE80).copy(alpha = 0.85f),
-                    style = Stroke(
-                        width = plasmaWidth,
-                        cap = StrokeCap.Round,
-                        pathEffect = PathEffect.dashPathEffect(
-                            floatArrayOf(14.dp.toPx(), 10.dp.toPx()),
-                            phase = -phase * 36f,
-                        ),
-                    ),
-                )
-                drawPath(
-                    path,
-                    color = Color(0xFFF8FAFC),
-                    style = Stroke(
-                        width = coreWidth,
-                        cap = StrokeCap.Round,
-                        pathEffect = PathEffect.dashPathEffect(
-                            floatArrayOf(8.dp.toPx(), 6.dp.toPx()),
-                            phase = -phase * 36f,
-                        ),
-                    ),
-                )
-                drawParticles(path, phase, coreWidth)
+                drawElectricEdge(path, elapsedMs)
             } else {
                 drawPath(
                     path,
@@ -548,7 +512,170 @@ private fun TopologyEdges(layout: TopoLayout) {
                 )
             }
         }
+    }
+}
 
+/**
+ * The upstream edge is three SVG strokes passed through an animated
+ * feTurbulence/feDisplacementMap, plus six energy orbs and five blinking
+ * sparks. Compose has no SVG filter, so the same idea is rebuilt with a
+ * time-jittered polyline for the halo/plasma, CSS-speed dash offsets and
+ * per-particle motion periods.
+ */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawElectricEdge(
+    path: Path,
+    elapsedMs: Long,
+) {
+    val halo = jitteredPath(path, amplitude = 3.5.dp.toPx(), elapsedMs = elapsedMs, seed = 1)
+    val plasma = jitteredPath(path, amplitude = 2.2.dp.toPx(), elapsedMs = elapsedMs, seed = 7)
+    val core = jitteredPath(path, amplitude = 0.7.dp.toPx(), elapsedMs = elapsedMs, seed = 13)
+
+    val haloFlicker = when (((elapsedMs / 90L) % 4L).toInt()) {
+        0 -> 0.85f
+        1 -> 1f
+        2 -> 0.55f
+        else -> 1f
+    }
+    val plasmaFlicker = when (((elapsedMs / 110L) % 3L).toInt()) {
+        0 -> 0.85f
+        1 -> 1f
+        else -> 0.65f
+    }
+
+    // Wide soft glow, then the upstream halo/plasma/core layers.
+    drawPath(
+        path = halo,
+        color = Color(0xFF22D3EE).copy(alpha = 0.10f * haloFlicker),
+        style = Stroke(width = 18.dp.toPx(), cap = StrokeCap.Round),
+    )
+    drawPath(
+        path = halo,
+        color = Color(0xFF22D3EE).copy(alpha = 0.35f * haloFlicker),
+        style = Stroke(width = 10.dp.toPx(), cap = StrokeCap.Round),
+    )
+    drawPath(
+        path = plasma,
+        color = Color(0xFF4ADE80).copy(alpha = 0.85f * plasmaFlicker),
+        style = Stroke(
+            width = 5.dp.toPx(),
+            cap = StrokeCap.Round,
+            pathEffect = PathEffect.dashPathEffect(
+                floatArrayOf(14.dp.toPx(), 10.dp.toPx()),
+                phase = -((elapsedMs % 180L) / 180f) * 36f,
+            ),
+        ),
+    )
+    drawPath(
+        path = core,
+        color = Color(0xFFF8FAFC),
+        style = Stroke(
+            width = 2.2.dp.toPx(),
+            cap = StrokeCap.Round,
+            pathEffect = PathEffect.dashPathEffect(
+                floatArrayOf(8.dp.toPx(), 6.dp.toPx()),
+                phase = -((elapsedMs % 220L) / 220f) * 36f,
+            ),
+        ),
+    )
+    drawEnergyParticles(path, elapsedMs)
+}
+
+private fun jitteredPath(path: Path, amplitude: Float, elapsedMs: Long, seed: Int): Path {
+    val measure = PathMeasure()
+    measure.setPath(path, false)
+    val length = measure.length
+    if (length <= 0f) return path
+    val steps = 26
+    val frame = elapsedMs / 80f
+    val out = Path()
+    var previous: Offset? = null
+    for (index in 0..steps) {
+        val distance = length * index / steps
+        val point = measure.getPosition(distance)
+        val before = measure.getPosition((distance - 2f).coerceAtLeast(0f))
+        val after = measure.getPosition((distance + 2f).coerceAtMost(length))
+        val tangent = after - before
+        val normal = if (tangent.getDistance() > 0.0001f) {
+            Offset(-tangent.y, tangent.x) / tangent.getDistance()
+        } else {
+            Offset.Zero
+        }
+        val noise = pseudoNoise(index * 1.7f + frame * 2.9f + seed * 19.7f)
+        val shifted = point + normal * (noise * amplitude)
+        if (previous == null) out.moveTo(shifted.x, shifted.y) else out.lineTo(shifted.x, shifted.y)
+        previous = shifted
+    }
+    return out
+}
+
+private fun pseudoNoise(value: Float): Float {
+    val raw = kotlin.math.sin(value * 12.9898f) * 43758.5453f
+    return (raw - kotlin.math.floor(raw)) * 2f - 1f
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawEnergyParticles(
+    path: Path,
+    elapsedMs: Long,
+) {
+    val measure = PathMeasure()
+    measure.setPath(path, false)
+    val length = measure.length
+    if (length <= 0f) return
+
+    // <animateMotion dur={0.4 + i*0.08}s begin={i*0.09}s>
+    repeat(6) { index ->
+        val begin = index * 90L
+        if (elapsedMs < begin) return@repeat
+        val duration = 400L + index * 80L
+        val progress = ((elapsedMs - begin) % duration) / duration.toFloat()
+        val position = measure.getPosition(progress * length)
+        val radius = if (index % 2 == 0) 4.dp.toPx() else 2.5.dp.toPx()
+        val color = when (index % 3) {
+            0 -> Color(0xFFFDE047)
+            1 -> Color(0xFF67E8F9)
+            else -> Color.White
+        }
+        drawCircle(
+            color = color.copy(alpha = 0.16f),
+            radius = radius * 2.6f,
+            center = position,
+        )
+        drawCircle(color = color, radius = radius, center = position)
+    }
+
+    // Sparks: blink opacity and travel with their own short periods.
+    repeat(5) { index ->
+        val blinkBegin = index * 70L
+        if (elapsedMs >= blinkBegin) {
+            val blinkDuration = 350L + (index % 3) * 100L
+            val phase = ((elapsedMs - blinkBegin) % blinkDuration) / blinkDuration.toFloat()
+            val alpha = when {
+                phase < 0.15f -> phase / 0.15f
+                phase < 0.30f -> 1f - (phase - 0.15f) / 0.15f
+                phase < 0.55f -> 0f
+                phase < 0.70f -> (phase - 0.55f) / 0.15f
+                phase < 0.85f -> 1f - (phase - 0.70f) / 0.15f
+                else -> 0f
+            }
+            if (alpha > 0f) {
+                val motionDuration = 280L + index * 50L
+                val motionBegin = index * 110L
+                if (elapsedMs >= motionBegin) {
+                    val progress = ((elapsedMs - motionBegin) % motionDuration) / motionDuration.toFloat()
+                    val position = measure.getPosition(progress * length)
+                    drawCircle(
+                        color = Color(0xFFE0F2FE).copy(alpha = 0.20f * alpha),
+                        radius = 4.5.dp.toPx(),
+                        center = position,
+                    )
+                    drawCircle(
+                        color = Color(0xFFE0F2FE).copy(alpha = alpha),
+                        radius = 1.8.dp.toPx(),
+                        center = position,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -577,41 +704,6 @@ private fun bezierPath(
     return Path().apply {
         moveTo(source.x, source.y)
         cubicTo(c1.x, c1.y, c2.x, c2.y, target.x, target.y)
-    }
-}
-
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawParticles(
-    path: Path,
-    phase: Float,
-    coreWidth: Float,
-) {
-    val measure = PathMeasure()
-    measure.setPath(path, false)
-    val length = measure.length
-    if (length <= 0f) return
-    repeat(6) { index ->
-        val progress = ((phase + index * 0.09f) % 1f + 1f) % 1f
-        val position = measure.getPosition(progress * length)
-        val radius = if (index % 2 == 0) 4.dp.toPx() else 2.5.dp.toPx()
-        val color = when (index % 3) {
-            0 -> Color(0xFFFDE047)
-            1 -> Color(0xFF67E8F9)
-            else -> Color.White
-        }
-        drawCircle(color = color.copy(alpha = 0.95f), radius = radius, center = position)
-    }
-    repeat(5) { index ->
-        val progress = ((phase * 1.7f + index * 0.11f) % 1f + 1f) % 1f
-        val position = measure.getPosition(progress * length)
-        val blink = ((phase * 3f + index * 0.21f) % 1f)
-        val alpha = if (blink < 0.55f) 1f - blink else 0f
-        if (alpha > 0f) {
-            drawCircle(
-                color = Color(0xFFE0F2FE).copy(alpha = alpha),
-                radius = 1.8.dp.toPx(),
-                center = position,
-            )
-        }
     }
 }
 
