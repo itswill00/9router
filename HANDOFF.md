@@ -10,10 +10,10 @@ APK per version.
 ## Current state
 
 - Branch: `master` — clean; synced with `origin/master`.
-- Version: `0.4.1-android` (version code 43).
-- Latest release (Latest): https://github.com/itswill00/9router/releases/tag/android-v0.4.1
-  - asset: `9Router-0.4.1-release.apk` (11,313,167 bytes)
-  - SHA-256: `ea67753992c243a85dc401076ce29d6a704fda76392ba65ef413ed6c55413a93`
+- Version: `0.4.2-android` (version code 44).
+- Latest release (Latest): https://github.com/itswill00/9router/releases/tag/android-v0.4.2
+  - asset: `9Router-0.4.2-release.apk` (11,313,167 bytes)
+  - SHA-256: `22c13a7a4fc6ca59b65cfc9a5fa912f157f11a3fa41ae5c9560b204e51b35ef3`
 - Recent commits:
   - `e8b91f9f chore(android): release 0.4.1`
   - `64163a15 fix(topology): match react flow positions and edges`
@@ -128,10 +128,10 @@ APK per version.
 ```
 
 Last result: `BUILD SUCCESSFUL` (unit tests + fatal lint). The release build
-for 0.4.1 also succeeded and the APK metadata was verified:
+for 0.4.2 also succeeded and the APK metadata was verified:
 
 ```text
-package: com.ninerouter.android  versionCode=43  versionName=0.4.1-android
+package: com.ninerouter.android  versionCode=44  versionName=0.4.2-android
 ```
 
 `ProviderNodeKeysTest` covers legacy-key migration, deduplication and cursor
@@ -145,7 +145,7 @@ Nothing is blocked. There is no active bug or failing test.
 ## Next steps
 
 1. Read `AGENTS.md`; verify the tree is clean and `versionName` is
-   `0.4.1-android` before touching code.
+   `0.4.2-android` before touching code.
 2. Ask the user which backlog item to take. Do not invent a release or push
    without an explicit request.
 3. If a release is requested, follow the release procedure in `AGENTS.md`:
@@ -188,6 +188,10 @@ Nothing is blocked. There is no active bug or failing test.
   dock / rail. The drawer is the **More** overflow (secondary screens only), and
   the top-bar mark goes home. Do not add a hamburger or repeat primary screens
   in the drawer.
+- **Topology flow** → the active beam is time-driven by `withFrameNanos`, not a
+  slow shared phase: core 220ms, plasma 180ms, orbs 400–800ms with staggered
+  begins, sparks 280–480ms. The jittered halo/plasma/core replace SVG
+  feTurbulence. Do not replace it with a single dash animation.
 - **Topology layout** → keep the upstream top-left positions (`cx - 90`,
   `cy - 15`) and measured card sizes; centering cards on the ellipse made the
   0.4.0 graph look wrong. Use React Flow's control-offset formula and fit

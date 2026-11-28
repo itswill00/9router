@@ -1,10 +1,24 @@
-# 9Router Android 0.4.1
+# 9Router Android 0.4.2
 
 Native Android build of the 9Router routing gateway. It is written in Kotlin and
 runs entirely on the device. **No Termux, no Node.js, no shell, no root, and no
 bundled Linux userland are required.**
 
-## What changed since 0.4.0
+## What changed since 0.4.1
+
+- **The streaming beam now flows like upstream.** Active edges no longer use a
+  slow, uniform dash. They use the upstream timings: white core dash every
+  220ms, green plasma dash every 180ms, halo flicker, six energy orbs with
+  different 400–800ms travel times and stagger, and five blinking sparks.
+- **Electric shape.** Compose has no SVG `feTurbulence`, so the halo, plasma and
+  core are rebuilt as time-jittered paths (26 samples, animated noise) to get
+  the same unstable, electric silhouette.
+- **Glow.** Orbs, sparks, halo and plasma now have layered glow instead of flat
+  circles, so the active route reads as a flowing beam rather than a moving
+  dotted line.
+- The React Flow position/size correction from 0.4.1 is unchanged.
+
+## What changed in 0.4.1
 
 This is a topology parity correction for 0.4.0.
 
@@ -819,10 +833,10 @@ OAuth was audited provider by provider against `src/lib/oauth/providers/*.js`.
 
 ## Install
 
-Download `9Router-0.4.1-release.apk` and sideload it:
+Download `9Router-0.4.2-release.apk` and sideload it:
 
 ```bash
-adb install -r 9Router-0.4.1-release.apk
+adb install -r 9Router-0.4.2-release.apk
 ```
 
 Open the app. The gateway starts automatically; copy the API key from the
@@ -891,7 +905,7 @@ This is a native slice, not full parity with the Node gateway:
 
 ## Build information
 
-- Version: `0.4.1-android` (version code 43)
+- Version: `0.4.2-android` (version code 44)
 - Minimum SDK: 26 (Android 8.0)
 - Target SDK: 35 (Android 15), compiled with SDK 36
 - Source branch: `master`
