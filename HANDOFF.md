@@ -15,6 +15,9 @@ APK per version.
   - asset: `9Router-0.4.2-release.apk` (11,313,167 bytes)
   - SHA-256: `22c13a7a4fc6ca59b65cfc9a5fa912f157f11a3fa41ae5c9560b204e51b35ef3`
 - Recent commits:
+  - `7139b45a chore(android): release 0.4.2`
+  - `254e575b fix(topology): make the active edge stream like upstream`
+  - `ffab80a5 docs: record release 0.4.1`
   - `e8b91f9f chore(android): release 0.4.1`
   - `64163a15 fix(topology): match react flow positions and edges`
   - `61f413ad docs: record release 0.4.0`
@@ -22,9 +25,6 @@ APK per version.
   - `c1e841d5 fix(i18n): refresh topology and console copy`
   - `18dcb2c0 feat(logs): capture the whole backend in the console`
   - `4ccec96b feat(topology): port the upstream provider graph`
-  - `fed0ccbb docs: record release 0.3.3`
-  - `7501095d chore(android): release 0.3.3`
-  - `c9c0710f fix(update): install the ready file after granting permission`
 - Working tree: no modified or untracked files after the docs commit.
 
 ## Done so far
